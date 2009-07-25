@@ -100,7 +100,7 @@ handle_cast(_Msg, State) ->
 % Description: Handling all non call/cast messages.
 % ----------------------------------------------------------------------------------------------------------
 
-% handle info when misultin server goes down -> take down example_gen_server too [the supervisor will take everything up again]
+% handle info when misultin server goes down -> take down misultin_gen_server too [the supervisor will take everything up again]
 handle_info({'DOWN', _, _, {misultin, _}, _}, State) ->
 	{stop, normal, State};
 
