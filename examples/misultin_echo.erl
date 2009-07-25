@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: simple
+% MISULTIN - Example: Echoes inputted GET variables into an XML.
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.

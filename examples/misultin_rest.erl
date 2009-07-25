@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: simple
+% MISULTIN - Example: RESTful support.
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.

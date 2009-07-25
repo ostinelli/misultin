@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: simple
+% MISULTIN - Example: Gets the GET variable 'value' and prints it out as XML if found.
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.
