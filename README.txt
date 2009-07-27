@@ -15,28 +15,30 @@ Run the appropriate script:
     * OSX | Linux users: ./compile
     * Windows users: compile.bat. Note that Erlang bin directory (by default, C:\Program Files\erl5.7.2\bin\) must be in your path for the script to work. 
 
-Optionally, you may consider setting a logging level with the compile options. Run the script with the -h option for more information.
+This script will compile the .erl files in the Misultin src directory and save the compiled files into the ebin directory. Optionally, you may consider setting a logging level with the compile options: run the script with the -h option for more information.
 
 2. (Optional) Copy Misultin files
 
-This optional step is recommended and will allow Misultin to be called from modules running from any directory on your file system.
+This optional step will allow Misultin to be called from modules running from any directory on your file system.
 
 Locate the directory where Erlang is installed on your system. Under OSX and Linux, it should be something similar to /usr/local/lib/erlang/ and under Windows C:\Program Files\erl5.7.2\.
 
-Browse into the lib directory under this Erlang root and create a misultin directory, then copy all Misultin files and directories into the newly created directory. You should now have Misultin under something similar to:
+Browse into the lib directory under this Erlang root and copy the root misultin-0.x directory into this directory. You should now have Misultin under something similar to:
 
-    * OSX | Linux users: /usr/local/lib/erlang/lib/misultin/
-    * Windows users: C:\Program Files\erl5.7.2\lib\misultin\ 
-
-If you do not want to proceed with this optional step, then all you need to do is copy the relevant Misultin files in the same directory of the code calling it.
+    * OSX | Linux users: /usr/local/lib/erlang/lib/misultin-0.x/
+    * Windows users: C:\Program Files\erl5.7.2\lib\misultin-0.x\ 
 
 3. Test
 
-If you did proceed with step 2, cd to the Misultin examples directory then start an Erlang shell. In it, compile and run misultin_hello_world by issuing:
+If you did proceed with step 2, CD to the Misultin examples directory and start an Erlang shell.
+
+If you did not proceed with step 2, copy the file misultin_hello_world.erl from the Misultin examples directory to the directory where the .beam files compiled in step 1 are located, then CD to this directory and start an Erlang shell.
+
+In the shell, compile and run misultin_hello_world by issuing:
 
 (one@rob.loc)1>c(misultin_hello_world).
 {ok,example_simple}
-(one@rob.loc)2>misultin_hello_world:start().
+(one@rob.loc)2>misultin_hello_world:start(8080).
 {ok,<0.50.0>}
 
 Open your favourite browser and point it to http://localhost:8080/, you should read "Hello World." printed on your page.
