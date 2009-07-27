@@ -21,7 +21,7 @@ This script will compile the .erl files in the Misultin src directory and save t
 
 This optional step will allow Misultin to be called from modules running from any directory on your file system.
 
-Locate the directory where Erlang is installed on your system. Under OSX and Linux, it should be something similar to /usr/local/lib/erlang/ and under Windows C:\Program Files\erl5.7.2\.
+Locate the directory where Erlang is installed on your system. Under OSX and Linux, it should be something similar to /usr/local/lib/erlang/ if you installed it from source, otherwise /usr/lib/erlang/ if you installed it using your package manager. Under Windows, Erlang is installed by default in something similar to C:\Program Files\erl5.7.2\ (version changes may apply).
 
 Browse into the lib directory under this Erlang root and copy the root misultin-0.x directory into this directory. You should now have Misultin under something similar to:
 
@@ -52,6 +52,7 @@ You may now stop the misultin_hello_world HTTP server:
 You're ready to go.
 
 >-|-|-(°>
+
 
 DOCUMENTATION
 ==========================================================================================================
