@@ -70,9 +70,9 @@ respond(HttpCode, Template) ->
 respond(HttpCode, Headers, Template) ->
 	respond(HttpCode, Headers, Template, []).
 respond(HttpCode, Headers, Template, Vars) when is_list(Template) =:= true ->
-	SocketPid ! {HttpCode, Headers, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))};
+	{HttpCode, Headers, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))};
 respond(HttpCode, Headers, Template, _Vars) when is_binary(Template) =:= true ->
-	SocketPid ! {HttpCode, Headers, Template}.
+	{HttpCode, Headers, Template}.
 	
 % Start stream
 stream(close) ->

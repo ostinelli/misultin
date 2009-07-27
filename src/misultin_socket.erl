@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN	- Socket
+% MISULTIN - Socket
 %
 % >-|-|-(°>
 % 
@@ -219,16 +219,28 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 	case catch Loop(Req) of
 		{'EXIT', _Reason} ->
 			?DEBUG(error, "worker crash: ~p", [_Reason]),
-			send(Sock, ?internal_server_error_500),
 			% kill listening socket
 			SocketPid ! shutdown,
+			% send response
+			send(Sock, ?internal_server_error_500),
+			% force exit
 			exit(normal);
+		{HttpCode, Headers0, Body} ->
+			% received normal response
+			?DEBUG(debug, "sending response", []),
+			% kill listening socket
+			SocketPid ! shutdown,
+			% provide response
+			Headers = add_content_length(Headers0, Body),
+			Enc_headers = enc_headers(Headers),
+			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>, Body],
+			send(Sock, Resp);
 		_ ->
 			% loop exited normally, kill listening socket
 			SocketPid ! shutdown
 	end.
 	
-% Description: Socket	TODO: HANDLE LOOP CRASH
+% Description: Socket
 socket_loop(#c{sock = Sock} = C) ->
 	receive
 		{stream_head, HttpCode, Headers} ->
@@ -238,18 +250,14 @@ socket_loop(#c{sock = Sock} = C) ->
 			send(Sock, Resp),
 			socket_loop(C);
 		{stream_data, Body} ->
+			?DEBUG(debug, "sending stream data", []),
 			send(Sock, Body),
 			socket_loop(C);
 		stream_close ->
 			?DEBUG(debug, "closing stream", []),
 			close(Sock);
-		{HttpCode, Headers0, Body} ->
-			?DEBUG(debug, "sending response", []),
-			Headers = add_content_length(Headers0, Body),
-			Enc_headers = enc_headers(Headers),
-			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>, Body],
-			send(Sock, Resp);
 		shutdown ->
+			?DEBUG(debug, "shutting down socket loop", []),
 			shutdown
 	end.
 
