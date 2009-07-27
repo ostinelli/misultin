@@ -35,10 +35,15 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % API
--export([start_link/0, stop/0]).
+-export([start_link/1, stop/0]).
 
 % internal functions
 -export([handle_http/1]).
+
+% records
+-record(state, {
+	port
+}).
 
 % macros
 -define(SERVER, ?MODULE).
@@ -48,8 +53,8 @@
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the server.
-start_link() ->
-	gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(Port) ->
+	gen_server:start_link({local, ?SERVER}, ?MODULE, [Port], []).
 
 % Function: -> ok
 % Description: Manually stops the server.
@@ -65,13 +70,13 @@ stop() ->
 % Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
 % Description: Initiates the server.
 % ----------------------------------------------------------------------------------------------------------
-init([]) ->
+init([Port]) ->
 	% trap_exit -> this gen_server needs to be supervised
 	process_flag(trap_exit, true),
 	% start misultin & set monitor
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> handle_http(Req) end}]),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]),
 	erlang:monitor(process, misultin),
-	{ok, []}.
+	{ok, #state{port = Port}}.
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: handle_call(Request, From, State) -> {reply, Reply, State} | {reply, Reply, State, Timeout} |

@@ -29,11 +29,11 @@
 % ==========================================================================================================
 -module(misultin_hello_world).
 -vsn('0.1').
--export([start/0, stop/0, handle_http/1]).
+-export([start/1, stop/0, handle_http/1]).
 
-% start misultin http server on port 8080
-start() ->
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> handle_http(Req) end}]).
+% start misultin http server
+start(Port) ->
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
