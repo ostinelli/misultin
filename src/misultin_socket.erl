@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN  - Socket
+% MISULTIN	- Socket
 %
 % >-|-|-<°>
 % 
@@ -15,11 +15,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%    following disclaimer.
+%	 following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%    the following disclaimer in the documentation and/or other materials provided with the distribution.
+%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%    products derived from this software without specific prior written permission.
+%	 products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -38,6 +38,9 @@
 
 % callbacks
 -export([init/3]).
+
+% internale
+-export([socket_loop/1]).
 
 % records
 -record(c, {
@@ -117,16 +120,16 @@ headers(C, Req, H) ->
 % string:to_upper is used only as last resort.
 keep_alive({1,1}, "close")		-> close;
 keep_alive({1,1}, "Close")		-> close;
-keep_alive({1,1}, Head)	->
+keep_alive({1,1}, Head) ->
 	case string:to_upper(Head) of
 		"CLOSE" -> close;
-		_ 		-> keep_alive
+		_		-> keep_alive
 	end;
 keep_alive({1,0}, "Keep-Alive") -> keep_alive;
-keep_alive({1,0}, Head)	->
+keep_alive({1,0}, Head) ->
 	case string:to_upper(Head) of
 		"KEEP-ALIVE"	-> keep_alive;
-		_ 				-> close
+		_				-> close
 	end;
 keep_alive({0,9}, _)			-> close;
 keep_alive(_Vsn, _KA)			-> close.
@@ -160,7 +163,7 @@ body(#c{sock = Sock} = C, Req) ->
 					exit(normal)
 			end;
 		_Other ->
-			send(C, ?not_implemented_501),
+			send(C#c.sock, ?not_implemented_501),
 			exit(normal)
 	end.
 
@@ -176,13 +179,13 @@ handle_get(C, #req{connection = Conn} = Req) ->
 			call_mfa(C, Req#req{args = Args, uri = {absoluteURI, F}}),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			send(C, ?not_implemented_501),
+			send(C#c.sock, ?not_implemented_501),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			send(C, ?not_implemented_501),
+			send(C#c.sock, ?not_implemented_501),
 			close;
 		_  ->
-			send(C, ?forbidden_403),
+			send(C#c.sock, ?forbidden_403),
 			close
 	end.
 
@@ -196,37 +199,58 @@ handle_post(C, #req{connection = Conn} = Req) ->
 			call_mfa(C, Req),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			send(C, ?not_implemented_501),
+			send(C#c.sock, ?not_implemented_501),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			send(C, ?not_implemented_501),
+			send(C#c.sock, ?not_implemented_501),
 			close;
 		_  ->
-			send(C, ?forbidden_403),
+			send(C#c.sock, ?forbidden_403),
 			close
 	end.
 
 % Description: Main dispatcher
-call_mfa(#c{loop = Loop} = C, Request) ->
+call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
+	% spawn listening process for Request messages
+	SocketPid = spawn(?MODULE, socket_loop, [C]),
 	% create request
-	Req = misultin_req:new(Request),
+	Req = misultin_req:new(Request, SocketPid),
 	% call loop
 	case catch Loop(Req) of
 		{'EXIT', _Reason} ->
 			?DEBUG(error, "worker crash: ~p", [_Reason]),
-			send(C, ?internal_server_error_500),
+			send(Sock, ?internal_server_error_500),
+			% kill listening socket
+			SocketPid ! shutdown,
 			exit(normal);
+		_ ->
+			% loop exited normally, kill listening socket
+			SocketPid ! shutdown
+	end.
+	
+% Description: Socket	TODO: HANDLE LOOP CRASH
+socket_loop(#c{sock = Sock} = C) ->
+	receive
+		{stream_open, HttpCode, Headers} ->
+			?DEBUG(debug, "sending stream opening", []),
+			Enc_headers = enc_headers(Headers),
+			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>],
+			send(Sock, Resp),
+			socket_loop(C);
+		{stream_data, Body} ->
+			send(Sock, Body),
+			socket_loop(C);
+		stream_close ->
+			?DEBUG(debug, "closing stream", []),
+			close(Sock);
 		{HttpCode, Headers0, Body} ->
 			?DEBUG(debug, "sending response", []),
 			Headers = add_content_length(Headers0, Body),
 			Enc_headers = enc_headers(Headers),
 			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>, Body],
-			send(C, Resp);
-		{raw, Head} ->
-			?DEBUG(debug, "sending httpcode response: ~p", [Head]),
-			send(C, Head);
-		_ ->
-			send(C, ?not_found_404)
+			send(Sock, Resp);
+		shutdown ->
+			shutdown
 	end.
 
 % Description: Add content length
@@ -261,7 +285,7 @@ split_at_q_mark([], Acc) ->
 	{lists:reverse(Acc), []}.
 
 % TCP send
-send(#c{sock = Sock}, Data) ->
+send(Sock, Data) ->
 	case gen_tcp:send(Sock, Data) of
 		ok ->
 			ok;
@@ -270,4 +294,14 @@ send(#c{sock = Sock}, Data) ->
 			exit(normal)
 	end.
 
+% TCP close
+close(Sock) ->
+	case gen_tcp:close(Sock) of
+		ok ->
+			ok;
+		{error, _Reason} ->
+			?DEBUG(debug, "could not close socket: ~p", [_Reason]),
+			exit(normal)
+	end.
+	
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

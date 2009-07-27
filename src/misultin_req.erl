@@ -31,7 +31,7 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_req, [Req]).
+-module(misultin_req, [Req, SocketPid]).
 -vsn('0.1').
 
 % macros
@@ -43,7 +43,7 @@
 
 % API
 -export([raw/0]).
--export([ok/1, ok/2, ok/3, respond/1, respond/2, respond/3, respond/4]).
+-export([ok/1, ok/2, ok/3, respond/2, respond/3, respond/4, stream/1, stream/2, stream/3]).
 -export([get/1, parse_qs/0, parse_post/0, file/1, resource/1]).
 
 % includes
@@ -65,16 +65,26 @@ ok(Headers, Template, Vars) ->
 	respond(200, Headers, Template, Vars).
 
 % Description: Formats a response.
-respond(HttpCode) when is_integer(HttpCode) =:= true ->
-	{raw, lists:flatten(io_lib:format("HTTP/1.1 ~p Not Found\r\n\r\n", [HttpCode]))}.
 respond(HttpCode, Template) ->
 	respond(HttpCode, [], Template, []).
 respond(HttpCode, Headers, Template) ->
 	respond(HttpCode, Headers, Template, []).
 respond(HttpCode, Headers, Template, Vars) when is_list(Template) =:= true ->
-	{HttpCode, Headers, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))};
+	SocketPid ! {HttpCode, Headers, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))};
 respond(HttpCode, Headers, Template, _Vars) when is_binary(Template) =:= true ->
-	{HttpCode, Headers, Template}.
+	SocketPid ! {HttpCode, Headers, Template}.
+	
+% Start stream
+stream(close) ->
+	SocketPid ! stream_close;
+stream(open) ->
+	stream(open, 200, []).
+stream(data, Body) ->
+	SocketPid ! {stream_data, Body};
+stream(open, Headers) ->
+	stream(open, 200, Headers).
+stream(open, HttpCode, Headers) ->
+	SocketPid ! {stream_open, HttpCode, Headers}.
 
 % Description: Sends a file.
 file(FilePath) ->
