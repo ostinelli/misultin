@@ -1,5 +1,7 @@
 % ==========================================================================================================
 % MISULTIN - Example: Hello World.
+%
+% >-|-|-(°>
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.

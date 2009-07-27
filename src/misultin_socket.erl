@@ -1,7 +1,7 @@
 % ==========================================================================================================
 % MISULTIN	- Socket
 %
-% >-|-|-<°>
+% >-|-|-(°>
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
 % All rights reserved.
@@ -231,8 +231,8 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 % Description: Socket	TODO: HANDLE LOOP CRASH
 socket_loop(#c{sock = Sock} = C) ->
 	receive
-		{stream_open, HttpCode, Headers} ->
-			?DEBUG(debug, "sending stream opening", []),
+		{stream_head, HttpCode, Headers} ->
+			?DEBUG(debug, "sending stream head", []),
 			Enc_headers = enc_headers(Headers),
 			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>],
 			send(Sock, Resp),

@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Echoes inputted GET variables into an XML.
+% MISULTIN - Example: Stream data gradually.
 %
 % >-|-|-(°>
 % 
@@ -12,11 +12,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%    following disclaimer.
+%	 following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%    the following disclaimer in the documentation and/or other materials provided with the distribution.
+%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%    products derived from this software without specific prior written permission.
+%	 products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -27,7 +27,7 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_echo).
+-module(misultin_stream).
 -vsn('0.1').
 -export([start/0, stop/0, handle_http/1]).
 
@@ -40,20 +40,17 @@ stop() ->
 	misultin:stop().
 
 % callback on request received
-handle_http(Req) ->	
-	% get params depending on method
-	Method = Req:get(method),
-	case Method of
-		'GET' ->
-			Args = Req:parse_qs();
-		'POST' ->
-			Args = Req:parse_post()
-	end,
-	% build an XML with all parameters and values
-	BuildXml = fun({Param, Value}, Acc) ->
-		[lists:flatten(io_lib:format("<param><name>~s</name><value>~s</value></param>", [Param, Value]))|Acc]
-	end,
-	Xml = lists:flatten(lists:reverse(lists:foldl(BuildXml, [], Args))),
-	% output
-	Req:ok([{"Content-Type", "text/xml"}], "<misultin_test><method>~s</method>~s</misultin_test>", [Method, Xml]).
+handle_http(Req) ->
+	% send headers
+	Req:stream(head, [{"Content-Type", "text/plain"}]),
+	% send stream
+	Req:stream("1"),
+	timer:sleep(2000),
+	% send stream
+	Req:stream("2"),
+	timer:sleep(2000),
+	% send stream
+	Req:stream("3"),
+	% close socket
+	Req:stream(close).
 

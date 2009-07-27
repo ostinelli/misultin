@@ -1,7 +1,7 @@
 % ==========================================================================================================
 % MISULTIN - Request
 %
-% >-|-|-<°>
+% >-|-|-(°>
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>,
 %                     Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
@@ -77,14 +77,16 @@ respond(HttpCode, Headers, Template, _Vars) when is_binary(Template) =:= true ->
 % Start stream
 stream(close) ->
 	SocketPid ! stream_close;
-stream(open) ->
-	stream(open, 200, []).
-stream(data, Body) ->
-	SocketPid ! {stream_data, Body};
-stream(open, Headers) ->
-	stream(open, 200, Headers).
-stream(open, HttpCode, Headers) ->
-	SocketPid ! {stream_open, HttpCode, Headers}.
+stream(head) ->
+	stream(head, 200, []);
+stream(Template) ->
+	stream(Template, []).
+stream(head, Headers) ->
+	stream(head, 200, Headers);
+stream(Template, Vars) ->
+	SocketPid ! {stream_data, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))}.
+stream(head, HttpCode, Headers) ->
+	SocketPid ! {stream_head, HttpCode, Headers}.
 
 % Description: Sends a file.
 file(FilePath) ->

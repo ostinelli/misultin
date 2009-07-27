@@ -1,5 +1,7 @@
 % ==========================================================================================================
 % MISULTIN - Example: Running Misultin from a gen_server.
+%
+% >-|-|-(°>
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.

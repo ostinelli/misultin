@@ -1,7 +1,7 @@
 % ==========================================================================================================
 % MISULTIN - Main
 %
-% >-|-|-<°>
+% >-|-|-(°>
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
 % All rights reserved.
