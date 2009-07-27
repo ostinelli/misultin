@@ -40,6 +40,7 @@
 -define(IS_HEX(C), ((C >= $0 andalso C =< $9) orelse
                     (C >= $a andalso C =< $f) orelse
                     (C >= $A andalso C =< $F))).
+-define(FILE_READ_BUFFER, 64*1012).
 
 % API
 -export([raw/0]).
@@ -48,6 +49,7 @@
 
 % includes
 -include("../include/misultin.hrl").
+-include_lib("kernel/include/file.hrl").
 
 
 % ============================ \/ API ======================================================================
@@ -70,11 +72,9 @@ respond(HttpCode, Template) ->
 respond(HttpCode, Headers, Template) ->
 	respond(HttpCode, Headers, Template, []).
 respond(HttpCode, Headers, Template, Vars) when is_list(Template) =:= true ->
-	{HttpCode, Headers, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))};
-respond(HttpCode, Headers, Template, _Vars) when is_binary(Template) =:= true ->
-	{HttpCode, Headers, Template}.
+	{HttpCode, Headers, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))}.
 	
-% Start stream
+% Description: Start stream.
 stream(close) ->
 	SocketPid ! stream_close;
 stream(head) ->
@@ -83,8 +83,10 @@ stream(Template) ->
 	stream(Template, []).
 stream(head, Headers) ->
 	stream(head, 200, Headers);
-stream(Template, Vars) ->
-	SocketPid ! {stream_data, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))}.
+stream(Template, Vars) when is_list(Template) =:= true ->
+	SocketPid ! {stream_data, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))};
+stream(Template, _Vars) when is_binary(Template) =:= true ->
+	SocketPid ! {stream_data, Template}.
 stream(head, HttpCode, Headers) ->
 	SocketPid ! {stream_head, HttpCode, Headers}.
 
@@ -93,17 +95,28 @@ file(FilePath) ->
 	% get filename
 	FileName = filename:basename(FilePath),
 	?DEBUG(debug, "sending filename ~p", [FileName]),
-	% read file
-	case file:read_file(FilePath) of
-		{error, _Reason} ->
-			{raw, ?internal_server_error_500};
-		{ok, Binary} ->
+	% get file size
+	case file:read_file_info(FilePath) of
+		{ok, FileInfo} ->
+			% get filesize
+			FileSize = FileInfo#file_info.size,
+			% send headers
 			Headers = [
 				{'Content-Type', get_content_type(FileName)},
 				{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))},
-				{'Content-Size', size(Binary)}
+				{'Content-Size', FileSize}
 			],
-			respond(200, Headers, Binary)
+			stream(head, Headers),
+			% do the gradual sending
+			case file_send(FilePath) of
+				{error, _Reason} ->
+					{raw, ?internal_server_error_500};
+				ok ->
+					% sending successful
+					ok
+			end;
+		{error, _Reason} ->
+			{raw, ?internal_server_error_500}
 	end.
 
 % Description: Get request info.
@@ -418,5 +431,37 @@ clean_uri(urldecode, Uri) ->
 % ignore unexisting option
 clean_uri(_Unavailable, Uri) ->
 	Uri.
+
+% sending of a file
+file_send(FilePath) ->
+	case file:open(FilePath, [read, binary]) of
+		{error, Reason} ->
+			{error, Reason};
+		{ok, IoDevice} ->
+			% read portions
+			case file_read_and_send(IoDevice, 0) of 
+				{error, Reason} ->
+					file:close(IoDevice),
+					{error, Reason};
+				ok ->
+					file:close(IoDevice),
+					ok
+			end
+	end.
+file_read_and_send(IoDevice, Position) ->
+	% read buffer
+	case file:pread(IoDevice, Position, ?FILE_READ_BUFFER) of
+		{ok, Data} ->
+			% file read, send
+			stream(Data),
+			% loop
+			file_read_and_send(IoDevice, Position + ?FILE_READ_BUFFER);
+		eof ->
+			% finished, close
+			stream(close),
+			ok;
+		{error, Reason} ->
+			{error, Reason}
+	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

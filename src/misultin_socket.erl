@@ -235,6 +235,8 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 			Enc_headers = enc_headers(Headers),
 			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>, Body],
 			send(Sock, Resp);
+		{raw, Body} ->
+			send(Sock, Body);
 		_ ->
 			% loop exited normally, kill listening socket
 			SocketPid ! shutdown
