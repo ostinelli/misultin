@@ -2,7 +2,7 @@
 MISULTIN - An Erlang library for building fast lightweight HTTP servers.
 <http://code.google.com/p/misultin/>
 
->-|-|-<°>
+>-|-|-(°>
 
 
 INSTALL INSTRUCTIONS
@@ -17,7 +17,6 @@ Run the appropriate script:
 
 Optionally, you may consider setting a logging level with the compile options. Run the script with the -h option for more information.
 
-You may also prefer to compile the files manually. If so, compile the files in the src directory and drop the resulting .beam files into the ebin directory.
 2. (Optional) Copy Misultin files
 
 This optional step is recommended and will allow Misultin to be called from modules running from any directory on your file system.
@@ -30,9 +29,10 @@ Browse into the lib directory under this Erlang root and create a misultin direc
     * Windows users: C:\Program Files\erl5.7.2\lib\misultin\ 
 
 If you do not want to proceed with this optional step, then all you need to do is copy the relevant Misultin files in the same directory of the code calling it.
+
 3. Test
 
-Open an erlang shell, compile and run misultin_hello_world from the Misultin examples directory by issuing:
+If you did proceed with step 2, cd to the Misultin examples directory then start an Erlang shell. In it, compile and run misultin_hello_world by issuing:
 
 (one@rob.loc)1>c(misultin_hello_world).
 {ok,example_simple}
@@ -49,7 +49,7 @@ You may now stop the misultin_hello_world HTTP server:
 
 You're ready to go.
 
->-|-|-<°> 
+>-|-|-(°>
 
 DOCUMENTATION
 ==========================================================================================================
