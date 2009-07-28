@@ -42,6 +42,9 @@
 % internale
 -export([socket_loop/1]).
 
+% macros
+-define(MAX_HEADERS_COUNT, 100).
+
 % records
 -record(c, {
 	sock,
@@ -97,24 +100,28 @@ request(C, Req) ->
 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
 headers(C, Req, H) ->
+	headers(C, Req, H, 0).
+headers(C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
 	case gen_tcp:recv(C#c.sock, 0, ?server_idle_timeout) of
 		{ok, {http_header, _, 'Content-Length', _, Val}} ->
 			Len = list_to_integer(Val),
-			headers(C, Req#req{content_length = Len}, [{'Content-Length', Len}|H]);
+			headers(C, Req#req{content_length = Len}, [{'Content-Length', Len}|H], HeaderCount + 1);
 		{ok, {http_header, _, 'Connection', _, Val}} ->
 			KeepAlive = keep_alive(Req#req.vsn, Val),
-			headers(C, Req#req{connection = KeepAlive}, [{'Connection', Val}|H]);
+			headers(C, Req#req{connection = KeepAlive}, [{'Connection', Val}|H], HeaderCount + 1);
 		{ok, {http_header, _, Header, _, Val}} ->
-			headers(C, Req, [{Header, Val}|H]);
+			headers(C, Req, [{Header, Val}|H], HeaderCount + 1);
 		{error, {http_error, "\r\n"}} ->
-			headers(C, Req, H);
+			headers(C, Req, H, HeaderCount + 1);
 		{error, {http_error, "\n"}} ->
-			headers(C, Req, H);
+			headers(C, Req, H, HeaderCount + 1);
 		{ok, http_eoh} ->
 			body(C, Req#req{headers = lists:reverse(H)});
 		_Other ->
 			exit(normal)
-	end.
+	end;
+headers(C, Req, H, _HeaderCount) ->
+	body(C, Req#req{headers = lists:reverse(H)}).
 
 % Shall we keep the connection alive? Default case for HTTP/1.1 is yes, default for HTTP/1.0 is no.
 % string:to_upper is used only as last resort.
