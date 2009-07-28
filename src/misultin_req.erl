@@ -110,13 +110,13 @@ file(FilePath) ->
 			% do the gradual sending
 			case file_send(FilePath) of
 				{error, _Reason} ->
-					{raw, ?internal_server_error_500};
+					{raw, ?INTERNAL_SERVER_ERROR_500};
 				ok ->
 					% sending successful
 					ok
 			end;
 		{error, _Reason} ->
-			{raw, ?internal_server_error_500}
+			{raw, ?INTERNAL_SERVER_ERROR_500}
 	end.
 
 % Description: Get request info.

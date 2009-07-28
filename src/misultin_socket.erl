@@ -87,9 +87,10 @@ init(ListenSocket, ListenPort, Loop) ->
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
 request(C, Req) ->
-	case gen_tcp:recv(C#c.sock, 0, 30000) of
+	case gen_tcp:recv(C#c.sock, 0, ?SERVER_IDLE_TIMEOUT) of
 		{ok, {http_request, Method, Path, Version}} ->
 			headers(C, Req#req{vsn = Version, method = Method, uri = Path}, []);
+			headers(C, Req#req{vsn = Version, method = Method, uri = Path, connection = default_connection(Version)}, []);
 		{error, {http_error, "\r\n"}} ->
 			request(C, Req);
 		{error, {http_error, "\n"}} ->
@@ -102,7 +103,7 @@ request(C, Req) ->
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
 headers(C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
-	case gen_tcp:recv(C#c.sock, 0, ?server_idle_timeout) of
+	case gen_tcp:recv(C#c.sock, 0, ?SERVER_IDLE_TIMEOUT) of
 		{ok, {http_header, _, 'Content-Length', _, Val}} ->
 			Len = list_to_integer(Val),
 			headers(C, Req#req{content_length = Len}, [{'Content-Length', Len}|H], HeaderCount + 1);
@@ -123,10 +124,15 @@ headers(C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
 headers(C, Req, H, _HeaderCount) ->
 	body(C, Req#req{headers = lists:reverse(H)}).
 
+	
+% default connection
+default_connection({1,1}) -> keep_alive;
+default_connection(_) -> close.
+
 % Shall we keep the connection alive? Default case for HTTP/1.1 is yes, default for HTTP/1.0 is no.
-% string:to_upper is used only as last resort.
 keep_alive({1,1}, "close")		-> close;
 keep_alive({1,1}, "Close")		-> close;
+% string:to_upper is used only as last resort.
 keep_alive({1,1}, Head) ->
 	case string:to_upper(Head) of
 		"CLOSE" -> close;
@@ -156,7 +162,7 @@ body(#c{sock = Sock} = C, Req) ->
 			end;
 		'POST' when is_integer(Req#req.content_length) ->
 			inet:setopts(Sock, [{packet, raw}]),
-			case gen_tcp:recv(Sock, Req#req.content_length, 60000) of
+			case gen_tcp:recv(Sock, Req#req.content_length, 2*?SERVER_IDLE_TIMEOUT) of
 				{ok, Bin} ->
 					Close = handle_post(C, Req#req{body = Bin}),
 					case Close of
@@ -170,7 +176,7 @@ body(#c{sock = Sock} = C, Req) ->
 					exit(normal)
 			end;
 		_Other ->
-			send(C#c.sock, ?not_implemented_501),
+			send(C#c.sock, ?NOT_IMPLEMENTED_501),
 			exit(normal)
 	end.
 
@@ -186,13 +192,13 @@ handle_get(C, #req{connection = Conn} = Req) ->
 			call_mfa(C, Req#req{args = Args, uri = {absoluteURI, F}}),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			send(C#c.sock, ?not_implemented_501),
+			send(C#c.sock, ?NOT_IMPLEMENTED_501),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			send(C#c.sock, ?not_implemented_501),
+			send(C#c.sock, ?NOT_IMPLEMENTED_501),
 			close;
 		_  ->
-			send(C#c.sock, ?forbidden_403),
+			send(C#c.sock, ?FORBIDDEN_403),
 			close
 	end.
 
@@ -206,13 +212,13 @@ handle_post(C, #req{connection = Conn} = Req) ->
 			call_mfa(C, Req),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			send(C#c.sock, ?not_implemented_501),
+			send(C#c.sock, ?NOT_IMPLEMENTED_501),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			send(C#c.sock, ?not_implemented_501),
+			send(C#c.sock, ?NOT_IMPLEMENTED_501),
 			close;
 		_  ->
-			send(C#c.sock, ?forbidden_403),
+			send(C#c.sock, ?FORBIDDEN_403),
 			close
 	end.
 
@@ -229,7 +235,7 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 			% kill listening socket
 			SocketPid ! shutdown,
 			% send response
-			send(Sock, ?internal_server_error_500),
+			send(Sock, ?INTERNAL_SERVER_ERROR_500),
 			% force exit
 			exit(normal);
 		{HttpCode, Headers0, Body} ->
