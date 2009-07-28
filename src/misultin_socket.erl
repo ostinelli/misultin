@@ -89,7 +89,6 @@ init(ListenSocket, ListenPort, Loop) ->
 request(C, Req) ->
 	case gen_tcp:recv(C#c.sock, 0, ?SERVER_IDLE_TIMEOUT) of
 		{ok, {http_request, Method, Path, Version}} ->
-			headers(C, Req#req{vsn = Version, method = Method, uri = Path}, []);
 			headers(C, Req#req{vsn = Version, method = Method, uri = Path, connection = default_connection(Version)}, []);
 		{error, {http_error, "\r\n"}} ->
 			request(C, Req);
