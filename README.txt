@@ -58,3 +58,14 @@ DOCUMENTATION
 ==========================================================================================================
 
 API Documentation is available online on the Misultin's wiki: http://code.google.com/p/misultin/wiki/
+
+
+CHANGELOG
+==========================================================================================================
+
+0.2: - added trap exit for acceptor failure
+     - added backlog option
+     - added fallback if no connection header is present [issue track #1]
+     - minor bug corrections
+
+0.1: initial release.

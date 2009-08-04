@@ -28,7 +28,6 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_gen_server).
--vsn('0.1').
 -behaviour(gen_server).
 
 % gen_server callbacks

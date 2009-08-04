@@ -28,7 +28,6 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_echo).
--vsn('0.1').
 -export([start/1, stop/0, handle_http/1]).
 
 % start misultin http server
