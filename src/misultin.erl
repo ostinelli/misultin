@@ -82,23 +82,24 @@ create_acceptor() ->
 % Description: Initiates the server.
 % ----------------------------------------------------------------------------------------------------------
 init([Options]) ->
-	%%%%% process_flag(trap_exit, true),
+	process_flag(trap_exit, true),
 	?DEBUG(info, "starting with Pid: ~p", [self()]),
 	% test and get options
-	OptionNames = [port, loop],
+	OptionNames = [port, loop, backlog],
 	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionNames),
 	case proplists:get_value(error, OptionsVerified) of
 		undefined ->
 			% get options
 			Port = proplists:get_value(port, OptionsVerified),
 			Loop = proplists:get_value(loop, OptionsVerified),
+			Backlog = proplists:get_value(backlog, OptionsVerified),
 			% ok, no error found in options -> create listening socket.
 			% {backlog, 30} specifies the length of the OS accept queue
 			% {packet, http} puts the socket into http mode. This makes the socket wait for a HTTP Request line,
 			% and if this is received to immediately switch to receiving HTTP header lines. The socket stays in header
 			% mode until the end of header marker is received (CR,NL,CR,NL), at which time it goes back to wait for a
 			% following HTTP Request line.
-			case gen_tcp:listen(Port, [binary, {packet, http}, {reuseaddr, true}, {active, false}, {backlog, 30}]) of
+			case gen_tcp:listen(Port, [binary, {packet, http}, {reuseaddr, true}, {active, false}, {backlog, Backlog}]) of
 				{ok, ListenSocket} ->
 					% create first acceptor process
 					?DEBUG(debug, "creating first acceptor process", []),
@@ -153,19 +154,18 @@ handle_cast(_Msg, State) ->
 
 % The current acceptor has died normally, ignore
 handle_info({'EXIT', Pid, normal}, #state{acceptor = Pid} = State) ->
-	?DEBUG(debug, "current acceptor ~p has died normally", [Pid]),
+	?DEBUG(debug, "current acceptor has died normally", []),
 	{noreply, State};
 
 % The current acceptor has died abnormally, wait a little and try again
 handle_info({'EXIT', Pid, _Abnormal}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid} = State) ->
-	?DEBUG(warning, "current acceptor ~p has died with reason: ~p, waiting a few seconds then respawning", [_Abnormal]),
-	timer:sleep(2000),
+	?DEBUG(warning, "current acceptor has died with reason: ~p, respawning", [_Abnormal]),
 	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % An acceptor has died, ignore
 handle_info({'EXIT', _Pid, _Reason}, State) ->
-	?DEBUG(debug, "the acceptor ~p has died with reason: ~p", [_Reason]),
+	?DEBUG(debug, "the acceptor has died with reason: ~p", [_Reason]),
 	{noreply, State};
 
 % handle_info generic fallback (ignore)
@@ -228,6 +228,21 @@ get_option(loop, Options) ->
 					% ok
 					{loop, Loop}
 			end
+	end;
+get_option(backlog, Options) ->
+	case proplists:get_value(backlog, Options) of
+		undefined ->
+			% default to 30
+			{backlog, 30};
+		Backlog ->
+			case is_integer(Backlog) of
+				false ->
+					% error
+					{error, {backlog_not_integer, Backlog}};
+				true ->
+					% ok
+					{backlog, Backlog}
+			end	
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
