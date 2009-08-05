@@ -63,9 +63,13 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
-0.2: - added trap exit for acceptor failure
-     - added backlog option
-     - added fallback if no connection header is present [issue track #1]
-     - minor bug corrections
+0.2.1: - added support for Content-Type that specifies charset in POST data [thanks to Tuncer Ayaz]
 
-0.1: initial release.
+0.2:   - added trap exit for acceptor failure
+       - added backlog option
+       - added fallback if no connection header is present [issue track #1, thanks to Ciconia]
+       - added limit for parsing headers to avoid malicious attacks [thanks to Mazen Harake]
+       - minor bug corrections
+
+0.1:   - initial release.
+

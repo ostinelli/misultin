@@ -151,8 +151,14 @@ parse_post() ->
 	case proplists:get_value('Content-Type', Req#req.headers) of
 		undefined ->
 			[];
-		"application/x-www-form-urlencoded" ->
-			parse_qs(Req#req.body)
+		ContentType ->
+			[Type|_CharSet] = string:tokens(ContentType, ";"),
+			case Type of
+				"application/x-www-form-urlencoded" ->
+					parse_qs(Req#req.body);
+				_Other ->
+					[]
+			end
 	end.
 
 % Description: Sets resource elements for restful services.
