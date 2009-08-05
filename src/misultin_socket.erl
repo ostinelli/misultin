@@ -250,15 +250,11 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 			?DEBUG(debug, "sending response", []),
 			% kill listening socket
 			SocketPid ! shutdown,
-			?DEBUG(debug, "sending response 1", []),
 			% flatten body [optimization since needed for content length]
 			BodyBinary = convert_to_binary(Body),
-			?DEBUG(debug, "sending response 2", []),
 			% provide response
 			Headers = add_content_length(Headers0, BodyBinary),
-			?DEBUG(debug, "sending response 3", []),
 			Enc_headers = enc_headers(Headers),
-			?DEBUG(debug, "sending response 4", []),
 			Resp = ["HTTP/1.1 ", integer_to_list(HttpCode), " OK\r\n", Enc_headers, <<"\r\n">>, BodyBinary],
 			send(Sock, Resp);
 		{raw, Body} ->
