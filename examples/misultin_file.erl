@@ -40,4 +40,4 @@ stop() ->
 
 % callback on request received
 handle_http(Req) ->	
-	Req:file("1.png").
+	Req:file(attachment, "1.png").

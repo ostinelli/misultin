@@ -45,7 +45,7 @@
 % API
 -export([raw/0]).
 -export([ok/1, ok/2, ok/3, respond/2, respond/3, respond/4, stream/1, stream/2, stream/3]).
--export([get/1, parse_qs/0, parse_post/0, file/1, resource/1]).
+-export([get/1, parse_qs/0, parse_post/0, file/1, file/2, resource/1]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -88,34 +88,17 @@ stream(Template, Vars) when is_list(Template) =:= true ->
 stream(head, HttpCode, Headers) ->
 	SocketPid ! {stream_head, HttpCode, Headers}.
 
-% Description: Sends a file.
+% Description: Sends a file for download.
+
+	
+% Description: Sends a file to the browser.
 file(FilePath) ->
+	file_send(FilePath, []).
+% Description: Sends a file for download.	
+file(attachment, FilePath) ->
 	% get filename
 	FileName = filename:basename(FilePath),
-	?DEBUG(debug, "sending filename ~p", [FileName]),
-	% get file size
-	case file:read_file_info(FilePath) of
-		{ok, FileInfo} ->
-			% get filesize
-			FileSize = FileInfo#file_info.size,
-			% send headers
-			Headers = [
-				{'Content-Type', get_content_type(FileName)},
-				{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))},
-				{'Content-Size', FileSize}
-			],
-			stream(head, Headers),
-			% do the gradual sending
-			case file_send(FilePath) of
-				{error, _Reason} ->
-					{raw, ?INTERNAL_SERVER_ERROR_500};
-				ok ->
-					% sending successful
-					ok
-			end;
-		{error, _Reason} ->
-			{raw, ?INTERNAL_SERVER_ERROR_500}
-	end.
+	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}]).
 
 % Description: Get request info.
 get(peer_addr) ->
@@ -437,7 +420,27 @@ clean_uri(_Unavailable, Uri) ->
 	Uri.
 
 % sending of a file
-file_send(FilePath) ->
+file_send(FilePath, Headers) ->
+	% get file size
+	case file:read_file_info(FilePath) of
+		{ok, FileInfo} ->
+			% get filesize
+			FileSize = FileInfo#file_info.size,
+			% send headers
+			HeadersFull = [{'Content-Type', get_content_type(FilePath)}, {'Content-Size', FileSize} | Headers],
+			stream(head, HeadersFull),
+			% do the gradual sending
+			case file_open_and_send(FilePath) of
+				{error, _Reason} ->
+					{raw, ?INTERNAL_SERVER_ERROR_500};
+				ok ->
+					% sending successful
+					ok
+			end;
+		{error, _Reason} ->
+			{raw, ?INTERNAL_SERVER_ERROR_500}
+	end.
+file_open_and_send(FilePath) ->
 	case file:open(FilePath, [read, binary]) of
 		{error, Reason} ->
 			{error, Reason};
