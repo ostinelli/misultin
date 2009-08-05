@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn('0.2').
+-vsn('0.2.1').
 
 % API
 -export([start_link/3]).
@@ -242,10 +242,14 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 			?DEBUG(debug, "sending response", []),
 			% kill listening socket
 			SocketPid ! shutdown,
+			% flatten body [optimization since needed for content length]
+			BodyBinary = convert_to_binary(Body),
 			% provide response
-			Headers = add_content_length(Headers0, Body),
+			?DEBUG(debug, "sending response 1: ~p", [BodyBinary]),
+			Headers = add_content_length(Headers0, BodyBinary),
+			?DEBUG(debug, "sending response 2", []),
 			Enc_headers = enc_headers(Headers),
-			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>, Body],
+			Resp = ["HTTP/1.1 ", integer_to_list(HttpCode), " OK\r\n", Enc_headers, <<"\r\n">>, BodyBinary],
 			send(Sock, Resp);
 		{raw, Body} ->
 			send(Sock, Body);
@@ -253,14 +257,22 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 			% loop exited normally, kill listening socket
 			SocketPid ! shutdown
 	end.
-	
-% Description: Socket
+
+% Description: Ensure Body is binary.
+convert_to_binary(Body) when is_list(Body) ->
+	list_to_binary(lists:flatten(Body));
+convert_to_binary(Body) when is_binary(Body) ->
+	Body;
+convert_to_binary(Body) when is_atom(Body) ->
+	list_to_binary(atom_to_list(Body)).
+
+% Description: Socket loop for stream responses.
 socket_loop(#c{sock = Sock} = C) ->
 	receive
 		{stream_head, HttpCode, Headers} ->
 			?DEBUG(debug, "sending stream head", []),
 			Enc_headers = enc_headers(Headers),
-			Resp = [list_to_binary(lists:flatten(io_lib:format("HTTP/1.1 ~p OK\r\n", [HttpCode]))), Enc_headers, <<"\r\n">>],
+			Resp = ["HTTP/1.1 ", integer_to_list(HttpCode), " OK\r\n", Enc_headers, <<"\r\n">>],
 			send(Sock, Resp),
 			socket_loop(C);
 		{stream_data, Body} ->
@@ -277,11 +289,11 @@ socket_loop(#c{sock = Sock} = C) ->
 
 % Description: Add content length
 add_content_length(Headers, Body) ->
-	case lists:keysearch('Content-Length', 1, Headers) of
-		{value, _} ->
-			Headers;
+	case proplists:get_value('Content-Length', Headers) of
+	 	undefined ->
+			[{'Content-Length', size(Body)}|Headers];
 		false ->
-			[{'Content-Length', size(Body)}|Headers]
+			Headers
 	end.
 
 % Description: Encode headers
@@ -308,6 +320,7 @@ split_at_q_mark([], Acc) ->
 
 % TCP send
 send(Sock, Data) ->
+	?DEBUG(debug, "sending data", []),
 	case gen_tcp:send(Sock, Data) of
 		ok ->
 			ok;
@@ -318,6 +331,7 @@ send(Sock, Data) ->
 
 % TCP close
 close(Sock) ->
+	?DEBUG(debug, "closing socket", []),
 	case gen_tcp:close(Sock) of
 		ok ->
 			ok;

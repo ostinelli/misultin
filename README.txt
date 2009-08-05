@@ -64,6 +64,8 @@ CHANGELOG
 ==========================================================================================================
 
 0.2.1: - added support for Content-Type that specifies charset in POST data [thanks to Tuncer Ayaz]
+       - added support for iolist in misultin_req:ok/1,2 and misultin_req:respond/2,3
+       - code optimized taking out unnecessary binary conversion and lists:flatten [thanks to Feng Yu]
 
 0.2:   - added trap exit for acceptor failure
        - added backlog option

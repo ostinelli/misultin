@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn('0.2').
+-vsn('0.2.1').
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -60,19 +60,19 @@ raw() ->
 
 % Description: Formats a 200 response.
 ok(Template) ->
-	ok([], Template, []).
+	ok([], Template).
 ok(Headers, Template) ->
-	ok(Headers, Template, []).
+	respond(200, Headers, Template).
 ok(Headers, Template, Vars) ->
 	respond(200, Headers, Template, Vars).
 
 % Description: Formats a response.
 respond(HttpCode, Template) ->
-	respond(HttpCode, [], Template, []).
+	respond(HttpCode, [], Template).
 respond(HttpCode, Headers, Template) ->
-	respond(HttpCode, Headers, Template, []).
+	{HttpCode, Headers, Template}.
 respond(HttpCode, Headers, Template, Vars) when is_list(Template) =:= true ->
-	{HttpCode, Headers, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))}.
+	{HttpCode, Headers, io_lib:format(Template, Vars)}.
 	
 % Description: Start stream.
 stream(close) ->
@@ -80,13 +80,11 @@ stream(close) ->
 stream(head) ->
 	stream(head, 200, []);
 stream(Template) ->
-	stream(Template, []).
+	SocketPid ! {stream_data, Template}.
 stream(head, Headers) ->
 	stream(head, 200, Headers);
 stream(Template, Vars) when is_list(Template) =:= true ->
-	SocketPid ! {stream_data, list_to_binary(lists:flatten(io_lib:format(Template, Vars)))};
-stream(Template, _Vars) when is_binary(Template) =:= true ->
-	SocketPid ! {stream_data, Template}.
+	SocketPid ! {stream_data, io_lib:format(Template, Vars)}.
 stream(head, HttpCode, Headers) ->
 	SocketPid ! {stream_head, HttpCode, Headers}.
 
