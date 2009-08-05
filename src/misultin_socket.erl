@@ -104,8 +104,7 @@ headers(C, Req, H) ->
 headers(C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
 	case gen_tcp:recv(C#c.sock, 0, ?SERVER_IDLE_TIMEOUT) of
 		{ok, {http_header, _, 'Content-Length', _, Val}} ->
-			Len = list_to_integer(Val),
-			headers(C, Req#req{content_length = Len}, [{'Content-Length', Len}|H], HeaderCount + 1);
+			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
 		{ok, {http_header, _, 'Connection', _, Val}} ->
 			KeepAlive = keep_alive(Req#req.vsn, Val),
 			headers(C, Req#req{connection = KeepAlive}, [{'Connection', Val}|H], HeaderCount + 1);
@@ -245,9 +244,7 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 			% flatten body [optimization since needed for content length]
 			BodyBinary = convert_to_binary(Body),
 			% provide response
-			?DEBUG(debug, "sending response 1: ~p", [BodyBinary]),
 			Headers = add_content_length(Headers0, BodyBinary),
-			?DEBUG(debug, "sending response 2", []),
 			Enc_headers = enc_headers(Headers),
 			Resp = ["HTTP/1.1 ", integer_to_list(HttpCode), " OK\r\n", Enc_headers, <<"\r\n">>, BodyBinary],
 			send(Sock, Resp);
