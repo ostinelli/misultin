@@ -31,7 +31,6 @@
 -define(FORBIDDEN_403, "HTTP/1.1 403 Forbidden\r\n\r\n").
 -define(NOT_FOUND_404, "HTTP/1.1 404 Not Found\r\n\r\n").
 -define(CONTENT_LENGTH_REQUIRED_411, "HTTP/1.1 411 Length Required\r\n\r\n").
--define(SERVER_IDLE_TIMEOUT, 30*1000).
 
 % define debug
 -ifdef(debug).

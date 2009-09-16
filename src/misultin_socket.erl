@@ -34,10 +34,10 @@
 -vsn('0.2.2').
 
 % API
--export([start_link/3]).
+-export([start_link/4]).
 
 % callbacks
--export([init/3]).
+-export([init/4]).
 
 % internale
 -export([socket_loop/1]).
@@ -49,7 +49,9 @@
 -record(c, {
 	sock,
 	port,
-	loop
+	loop,
+	recv_timeout,
+	sessionvars		% list() of {atom()|list(), term()}
 }).
 
 % includes
@@ -60,18 +62,18 @@
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
-start_link(ListenSocket, ListenPort, Loop) ->
-	proc_lib:spawn_link(?MODULE, init, [ListenSocket, ListenPort, Loop]).
+start_link(ListenSocket, ListenPort, Loop, RecvTimeout) ->
+	proc_lib:spawn_link(?MODULE, init, [ListenSocket, ListenPort, Loop, RecvTimeout]).
 
 % Description: Initiates the socket.
-init(ListenSocket, ListenPort, Loop) ->
+init(ListenSocket, ListenPort, Loop, RecvTimeout) ->
 	case catch gen_tcp:accept(ListenSocket) of
 	{ok, Socket} ->
 		?DEBUG(debug, "accepted an incoming TCP connection", []),
 		% Send the cast message to the listener process to create a new acceptor
 		misultin:create_acceptor(),
 		{ok, {Addr, Port}} = inet:peername(Socket),
-		C = #c{sock = Socket, port = ListenPort, loop = Loop},
+		C = #c{sock = Socket, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout},
 		% jump to state 'request'
 		?DEBUG(debug, "jump to state request", []),
 		request(C, #req{peer_addr = Addr, peer_port = Port});
@@ -86,8 +88,8 @@ init(ListenSocket, ListenPort, Loop) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
-request(C, Req) ->
-	case gen_tcp:recv(C#c.sock, 0, ?SERVER_IDLE_TIMEOUT) of
+request(#c{recv_timeout = RecvTimeout} = C, Req) ->
+	case gen_tcp:recv(C#c.sock, 0, RecvTimeout) of
 		{ok, {http_request, Method, Path, Version}} ->
 			?DEBUG(debug, "received full headers of a new HTTP packet", []),
 			headers(C, Req#req{vsn = Version, method = Method, uri = Path, connection = default_connection(Version)}, []);
@@ -96,14 +98,15 @@ request(C, Req) ->
 		{error, {http_error, "\n"}} ->
 			request(C, Req);
 		_Other ->
+			?DEBUG(debug, "tcp recv normal error: ~p", [_Other]),
 			exit(normal)
 	end.
 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
-headers(C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
-	case gen_tcp:recv(C#c.sock, 0, ?SERVER_IDLE_TIMEOUT) of
+headers(#c{recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
+	case gen_tcp:recv(C#c.sock, 0, RecvTimeout) of
 		{ok, {http_header, _, 'Content-Length', _, Val}} ->
 			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
 		{ok, {http_header, _, 'Connection', _, Val}} ->
@@ -148,7 +151,7 @@ keep_alive(_Vsn, _KA)			-> close.
 
 % BODY: collect the body of the HTTP request if there is one, and lookup and call the implementation callback.
 % Depending on whether the request is persistent transition back to state request to await the next request or exit.
-body(#c{sock = Sock} = C, Req) ->
+body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 	case Req#req.method of
 		'GET' ->
 			Close = handle_get(C, Req),
@@ -168,7 +171,7 @@ body(#c{sock = Sock} = C, Req) ->
 					exit(normal);
 				Len ->
 					inet:setopts(Sock, [{packet, raw}]),
-					case gen_tcp:recv(Sock, Len, 2*?SERVER_IDLE_TIMEOUT) of
+					case gen_tcp:recv(Sock, Len, 2*RecvTimeout) of
 						{ok, Bin} ->
 							Close = handle_post(C, Req#req{body = Bin}),
 							case Close of
@@ -273,7 +276,7 @@ convert_to_binary(Body) when is_binary(Body) ->
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
-% Description: Socket loop for stream responses.
+% Description: Socket loop for stream responses and session variables
 socket_loop(#c{sock = Sock} = C) ->
 	receive
 		{stream_head, HttpCode, Headers} ->

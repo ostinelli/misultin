@@ -48,7 +48,8 @@
 	listen_socket,
 	port,
 	acceptor,
-	loop
+	loop,
+	recv_timeout
 }).
 
 % includes
@@ -89,7 +90,8 @@ init([Options]) ->
 		{ip, {0, 0, 0, 0}, fun check_and_convert_string_to_ip/1, invalid_ip},
 		{port, 80, fun is_integer/1, port_not_integer},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
-		{backlog, 30, fun is_integer/1, backlog_not_integer}
+		{backlog, 30, fun is_integer/1, backlog_not_integer},
+		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer}
 	],
 	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -99,6 +101,7 @@ init([Options]) ->
 			Port = proplists:get_value(port, OptionsVerified),
 			Loop = proplists:get_value(loop, OptionsVerified),
 			Backlog = proplists:get_value(backlog, OptionsVerified),
+			RecvTimeout = proplists:get_value(recv_timeout, OptionsVerified),
 			% ipv6 support
 			?DEBUG(debug, "ip address is: ~p", [Ip]),
 			InetOpt = case Ip of
@@ -119,8 +122,8 @@ init([Options]) ->
 				{ok, ListenSocket} ->
 					% create first acceptor process
 					?DEBUG(debug, "creating first acceptor process", []),
-					AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop),
-					{ok, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = AcceptorPid}};
+					AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
+					{ok, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = AcceptorPid, recv_timeout = RecvTimeout}};
 				{error, Reason} ->
 					?DEBUG(error, "error starting: ~p", [Reason]),
 					% error
@@ -153,9 +156,9 @@ handle_cast(stop, State) ->
 	{stop, normal, State};
 
 % create
-handle_cast(create_acceptor, #state{listen_socket = ListenSocket, port = Port, loop = Loop} = State) ->
+handle_cast(create_acceptor, #state{listen_socket = ListenSocket, port = Port, loop = Loop, recv_timeout = RecvTimeout} = State) ->
 	?DEBUG(debug, "creating new acceptor process", []),
-	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop),
+	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % handle_cast generic fallback (ignore)
@@ -174,9 +177,9 @@ handle_info({'EXIT', Pid, normal}, #state{acceptor = Pid} = State) ->
 	{noreply, State};
 
 % The current acceptor has died abnormally, wait a little and try again
-handle_info({'EXIT', Pid, _Abnormal}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid} = State) ->
+handle_info({'EXIT', Pid, _Abnormal}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid, recv_timeout = RecvTimeout} = State) ->
 	?DEBUG(warning, "current acceptor has died with reason: ~p, respawning", [_Abnormal]),
-	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop),
+	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % An acceptor has died, ignore
