@@ -102,13 +102,13 @@ init([Options]) ->
 			% ipv6 support
 			?DEBUG(debug, "ip address is: ~p", [Ip]),
 			InetOpt = case Ip of
-		        {_, _, _, _} ->
+				{_, _, _, _} ->
 					% IPv4
 					inet;
-		        {_, _, _, _, _, _, _, _} ->
+				{_, _, _, _, _, _, _, _} ->
 					% IPv6
-		            inet6
-		    end,
+					inet6
+			end,
 			% ok, no error found in options -> create listening socket.
 			% {backlog, 30} specifies the length of the OS accept queue
 			% {packet, http} puts the socket into http mode. This makes the socket wait for a HTTP Request line,
