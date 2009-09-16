@@ -121,6 +121,7 @@ headers(#c{recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) when HeaderCoun
 		{ok, http_eoh} ->
 			body(C, Req#req{headers = lists:reverse(H)});
 		_Other ->
+			?DEBUG(debug, "tcp recv normal error: ~p", [_Other]),
 			exit(normal)
 	end;
 headers(C, Req, H, _HeaderCount) ->
@@ -160,7 +161,7 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 					gen_tcp:close(Sock);
 				keep_alive ->
 					inet:setopts(Sock, [{packet, http}]),
-					request(C, #req{})
+					request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 			end;
 		'POST' ->
 			case catch list_to_integer(Req#req.content_length) of 
@@ -179,9 +180,10 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 									gen_tcp:close(Sock);
 								keep_alive ->
 									inet:setopts(Sock, [{packet, http}]),
-									request(C, #req{})
+									request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 							end;
 						_Other ->
+							?DEBUG(debug, "tcp recv normal error: ~p", [_Other]),
 							exit(normal)
 					end
 			end;
