@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn('0.2.1').
+-vsn('0.2.2').
 
 % API
 -export([start_link/3]).
@@ -296,7 +296,7 @@ socket_loop(#c{sock = Sock} = C) ->
 % Description: Add content length
 add_content_length(Headers, Body) ->
 	case proplists:get_value('Content-Length', Headers) of
-	 	undefined ->
+		undefined ->
 			[{'Content-Length', size(Body)}|Headers];
 		false ->
 			Headers

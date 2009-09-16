@@ -4,7 +4,7 @@
 % >-|-|-(°>
 % 
 % Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>,
-%                     Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
+%					  Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
 % All rights reserved.
 %
 % Code portions from Bob Ippolito have been originally taken under MIT license from MOCHIWEB:
@@ -16,11 +16,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%    following disclaimer.
+%	 following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%    the following disclaimer in the documentation and/or other materials provided with the distribution.
+%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%    products derived from this software without specific prior written permission.
+%	 products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -32,14 +32,14 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn('0.2.1').
+-vsn('0.2.2').
 
 % macros
 -define(PERCENT, 37).  % $\%
 -define(FULLSTOP, 46). % $\.
 -define(IS_HEX(C), ((C >= $0 andalso C =< $9) orelse
-                    (C >= $a andalso C =< $f) orelse
-                    (C >= $A andalso C =< $F))).
+					(C >= $a andalso C =< $f) orelse
+					(C >= $A andalso C =< $F))).
 -define(FILE_READ_BUFFER, 64*1012).
 
 % API
@@ -158,49 +158,49 @@ resource(Options) when is_list(Options) ->
 
 % parse querystring & post
 parse_qs(Binary) when is_binary(Binary) ->
-    parse_qs(binary_to_list(Binary));
+	parse_qs(binary_to_list(Binary));
 parse_qs(String) ->
-    parse_qs(String, []).
+	parse_qs(String, []).
 parse_qs([], Acc) ->
-    lists:reverse(Acc);
+	lists:reverse(Acc);
 parse_qs(String, Acc) ->
-    {Key, Rest} = parse_qs_key(String),
-    {Value, Rest1} = parse_qs_value(Rest),
-    parse_qs(Rest1, [{Key, Value} | Acc]).
+	{Key, Rest} = parse_qs_key(String),
+	{Value, Rest1} = parse_qs_value(Rest),
+	parse_qs(Rest1, [{Key, Value} | Acc]).
 parse_qs_key(String) ->
-    parse_qs_key(String, []).
+	parse_qs_key(String, []).
 parse_qs_key([], Acc) ->
-    {qs_revdecode(Acc), ""};
+	{qs_revdecode(Acc), ""};
 parse_qs_key([$= | Rest], Acc) ->
-    {qs_revdecode(Acc), Rest};
+	{qs_revdecode(Acc), Rest};
 parse_qs_key(Rest=[$; | _], Acc) ->
-    {qs_revdecode(Acc), Rest};
+	{qs_revdecode(Acc), Rest};
 parse_qs_key(Rest=[$& | _], Acc) ->
-    {qs_revdecode(Acc), Rest};
+	{qs_revdecode(Acc), Rest};
 parse_qs_key([C | Rest], Acc) ->
-    parse_qs_key(Rest, [C | Acc]).
+	parse_qs_key(Rest, [C | Acc]).
 parse_qs_value(String) ->
-    parse_qs_value(String, []).
+	parse_qs_value(String, []).
 parse_qs_value([], Acc) ->
-    {qs_revdecode(Acc), ""};
+	{qs_revdecode(Acc), ""};
 parse_qs_value([$; | Rest], Acc) ->
-    {qs_revdecode(Acc), Rest};
+	{qs_revdecode(Acc), Rest};
 parse_qs_value([$& | Rest], Acc) ->
-    {qs_revdecode(Acc), Rest};
+	{qs_revdecode(Acc), Rest};
 parse_qs_value([C | Rest], Acc) ->
-    parse_qs_value(Rest, [C | Acc]).
+	parse_qs_value(Rest, [C | Acc]).
 
 % revdecode
 qs_revdecode(S) ->
-    qs_revdecode(S, []).
+	qs_revdecode(S, []).
 qs_revdecode([], Acc) ->
-    Acc;
+	Acc;
 qs_revdecode([$+ | Rest], Acc) ->
-    qs_revdecode(Rest, [$\s | Acc]);
+	qs_revdecode(Rest, [$\s | Acc]);
 qs_revdecode([Lo, Hi, ?PERCENT | Rest], Acc) when ?IS_HEX(Lo), ?IS_HEX(Hi) ->
-    qs_revdecode(Rest, [(unhexdigit(Lo) bor (unhexdigit(Hi) bsl 4)) | Acc]);
+	qs_revdecode(Rest, [(unhexdigit(Lo) bor (unhexdigit(Hi) bsl 4)) | Acc]);
 qs_revdecode([C | Rest], Acc) ->
-    qs_revdecode(Rest, [C | Acc]).
+	qs_revdecode(Rest, [C | Acc]).
 
 % unexdigit
 unhexdigit(C) when C >= $0, C =< $9 -> C - $0;
@@ -209,9 +209,9 @@ unhexdigit(C) when C >= $A, C =< $F -> C - $A + 10.
 
 % unquote
 unquote(Binary) when is_binary(Binary) ->
-    unquote(binary_to_list(Binary));
+	unquote(binary_to_list(Binary));
 unquote(String) ->
-    qs_revdecode(lists:reverse(String)).
+	qs_revdecode(lists:reverse(String)).
 
 % get content type
 get_content_type(FileName) ->

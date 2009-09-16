@@ -15,11 +15,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%    following disclaimer.
+%	 following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%    the following disclaimer in the documentation and/or other materials provided with the distribution.
+%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%    products derived from this software without specific prior written permission.
+%	 products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn('0.2.1').
+-vsn('0.2.2').
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -85,21 +85,36 @@ init([Options]) ->
 	process_flag(trap_exit, true),
 	?DEBUG(info, "starting with Pid: ~p", [self()]),
 	% test and get options
-	OptionNames = [port, loop, backlog],
-	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionNames),
+	OptionProps = [
+		{ip, "0.0.0.0", fun check_and_convert_string_to_ip/1, invalid_ip},
+		{port, 80, fun is_integer/1, port_not_integer},
+		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
+		{backlog, 30, fun is_integer/1, backlog_not_integer}
+	],
+	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
 		undefined ->
 			% get options
+			Ip = proplists:get_value(ip, OptionsVerified),
 			Port = proplists:get_value(port, OptionsVerified),
 			Loop = proplists:get_value(loop, OptionsVerified),
 			Backlog = proplists:get_value(backlog, OptionsVerified),
+			% ipv6 support
+			InetOpt = case Ip of
+		        {_, _, _, _} ->
+					% IPv4
+					inet;
+		        {_, _, _, _, _, _, _, _} ->
+					% IPv6
+		            inet6
+		    end,
 			% ok, no error found in options -> create listening socket.
 			% {backlog, 30} specifies the length of the OS accept queue
 			% {packet, http} puts the socket into http mode. This makes the socket wait for a HTTP Request line,
 			% and if this is received to immediately switch to receiving HTTP header lines. The socket stays in header
 			% mode until the end of header marker is received (CR,NL,CR,NL), at which time it goes back to wait for a
 			% following HTTP Request line.
-			case gen_tcp:listen(Port, [binary, {packet, http}, {reuseaddr, true}, {active, false}, {backlog, Backlog}]) of
+			case gen_tcp:listen(Port, [binary, {packet, http}, InetOpt, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}]) of
 				{ok, ListenSocket} ->
 					% create first acceptor process
 					?DEBUG(debug, "creating first acceptor process", []),
@@ -171,7 +186,7 @@ handle_info({'EXIT', _Pid, _Reason}, State) ->
 % handle_info generic fallback (ignore)
 handle_info(_Info, State) ->
 	?DEBUG(warning, "received unknown info message: ~p", [_Info]),
-    {noreply, State}.
+	{noreply, State}.
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: terminate(Reason, State) -> void()
@@ -184,65 +199,49 @@ terminate(_Reason, #state{listen_socket = ListenSocket, acceptor = AcceptorPid})
 	exit(AcceptorPid, kill),
 	% stop gen_tcp
 	gen_tcp:close(ListenSocket),
-    terminated.
+	terminated.
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: code_change(OldVsn, State, Extra) -> {ok, NewState}
 % Description: Convert process state when code is changed.
 % ----------------------------------------------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+	{ok, State}.
 
 % ============================ /\ GEN_SERVER CALLBACKS =====================================================
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
+% Function: -> false | IpTuple
+% Description: Checks and converts a string Ip to inet repr.
+check_and_convert_string_to_ip(Ip) ->
+	case inet_parse:address(Ip) of
+		{error, _Reason} ->
+			false;
+		{ok, IpTuple} ->
+			IpTuple
+	end.
+
 % Description: Validate and get misultin options.
-get_option(port, Options) ->
-	case proplists:get_value(port, Options) of
+get_option({OptionName, DefaultValue, CheckAndConvertFun, FailTypeError}, Options) ->
+	case proplists:get_value(OptionName, Options) of
 		undefined ->
-			% default to 80
-			{port, 80};
-		Port ->
-			case is_integer(Port) of
+			case DefaultValue of
+				{error, Reason} ->
+					{error, Reason};
+				Value -> 
+					{OptionName, Value}
+			end;
+		Value ->
+			case CheckAndConvertFun(Value) of
 				false ->
-					% error
-					{error, {port_not_integer, Port}};
-				true ->
-					% ok
-					{port, Port}
-			end	
-	end;
-get_option(loop, Options) ->
-	case proplists:get_value(loop, Options) of
-		undefined ->
-			% error
-			{error, undefined_loop};
-		Loop ->
-			case is_function(Loop) of
-				false ->
-					% error
-					{error, {loop_not_function, Loop}};
-				true ->
-					% ok
-					{loop, Loop}
+					{error, {FailTypeError, Value}};
+				true -> 
+					{OptionName, Value};
+				OutValue ->
+					{OptionName, OutValue}
 			end
-	end;
-get_option(backlog, Options) ->
-	case proplists:get_value(backlog, Options) of
-		undefined ->
-			% default to 30
-			{backlog, 30};
-		Backlog ->
-			case is_integer(Backlog) of
-				false ->
-					% error
-					{error, {backlog_not_integer, Backlog}};
-				true ->
-					% ok
-					{backlog, Backlog}
-			end	
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
