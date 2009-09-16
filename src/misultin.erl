@@ -86,7 +86,7 @@ init([Options]) ->
 	?DEBUG(info, "starting with Pid: ~p", [self()]),
 	% test and get options
 	OptionProps = [
-		{ip, "0.0.0.0", fun check_and_convert_string_to_ip/1, invalid_ip},
+		{ip, {0, 0, 0, 0}, fun check_and_convert_string_to_ip/1, invalid_ip},
 		{port, 80, fun is_integer/1, port_not_integer},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{backlog, 30, fun is_integer/1, backlog_not_integer}
@@ -100,6 +100,7 @@ init([Options]) ->
 			Loop = proplists:get_value(loop, OptionsVerified),
 			Backlog = proplists:get_value(backlog, OptionsVerified),
 			% ipv6 support
+			?DEBUG(debug, "ip address is: ~p", [Ip]),
 			InetOpt = case Ip of
 		        {_, _, _, _} ->
 					% IPv4

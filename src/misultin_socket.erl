@@ -231,7 +231,7 @@ handle_post(C, #req{connection = Conn} = Req) ->
 
 % Description: Main dispatcher
 call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
-	% spawn listening process for Request messages
+	% spawn listening process for Request messages [only used to support stream requests]
 	SocketPid = spawn(?MODULE, socket_loop, [C]),
 	% create request
 	Req = misultin_req:new(Request, SocketPid),
