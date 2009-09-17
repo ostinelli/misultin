@@ -50,8 +50,7 @@
 	sock,
 	port,
 	loop,
-	recv_timeout,
-	sessionvars		% list() of {atom()|list(), term()}
+	recv_timeout
 }).
 
 % includes
@@ -278,7 +277,7 @@ convert_to_binary(Body) when is_binary(Body) ->
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
-% Description: Socket loop for stream responses and session variables
+% Description: Socket loop for stream responses
 socket_loop(#c{sock = Sock} = C) ->
 	receive
 		{stream_head, HttpCode, Headers} ->
