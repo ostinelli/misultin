@@ -90,7 +90,7 @@ init([Options]) ->
 		{ip, {0, 0, 0, 0}, fun check_and_convert_string_to_ip/1, invalid_ip},
 		{port, 80, fun is_integer/1, port_not_integer},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
-		{backlog, 30, fun is_integer/1, backlog_not_integer},
+		{backlog, 128, fun is_integer/1, backlog_not_integer},
 		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer}
 	],
 	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionProps),
