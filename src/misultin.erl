@@ -169,7 +169,7 @@ handle_cast(_Msg, State) ->
 
 % The current acceptor has died, respawn
 handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid, recv_timeout = RecvTimeout} = State) ->
-	?DEBUG(warning, "acceptor has died with reason: ~p, respawning", [_Abnormal]),
+	?DEBUG(warning, "acceptor has died with reason: ~p, respawning", [_Reason]),
 	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
