@@ -63,11 +63,17 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
+0.3:   - reengineering of the listener process, using active instead of passive mode in request parsing,
+         except for BODY where passive is still used [thanks to lev walkin]
+       - added better support for request timeout
+
 0.2.2: - added .app file [thanks to Essien Ita Essien]
        - simplified get_options [thanks to Essien Ita Essien]
        - added ip address option [thanks to Essien Ita Essien]
        - added ipv6 support
-       - bug correction on requests peer address and port being reset on open connections
+       - added recv_timeout option
+       - bug correction: requests peer address and port are now not reset on open connections multiple
+         requests
 
 0.2.1: - added support for Content-Type that specifies charset in POST data [thanks to Tuncer Ayaz]
        - added support for iolist in misultin_req:ok/1,2 and misultin_req:respond/2,3

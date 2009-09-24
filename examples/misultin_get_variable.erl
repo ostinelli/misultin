@@ -45,9 +45,9 @@ handle_http(Req) ->
 	Value = proplists:get_value("value", Args),
 	case Value of
 		undefined ->
-			Req:ok([{"Content-Type", "text/xml"}], "<http_test><error>no value specified</error></http_test>");
+			Req:ok([{"Content-Type", "text/xml"}], "<misultin_test><error>no value specified</error></misultin_test>");
 		_ ->
-			Req:ok([{"Content-Type", "text/xml"}], "<http_test><value>~s</value></http_test>", [Value])
+			Req:ok([{"Content-Type", "text/xml"}], "<misultin_test><value>~s</value></misultin_test>", [Value])
 	end.
 
 

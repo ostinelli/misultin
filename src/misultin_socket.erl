@@ -31,13 +31,13 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn('0.2.2').
+-vsn('0.3').
 
 % API
 -export([start_link/4]).
 
 % callbacks
--export([init/4]).
+-export([listener/4]).
 
 % internale
 -export([socket_loop/1]).
@@ -62,23 +62,37 @@
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
 start_link(ListenSocket, ListenPort, Loop, RecvTimeout) ->
-	proc_lib:spawn_link(?MODULE, init, [ListenSocket, ListenPort, Loop, RecvTimeout]).
+	proc_lib:spawn_link(?MODULE, listener, [ListenSocket, ListenPort, Loop, RecvTimeout]).
 
-% Description: Initiates the socket.
-init(ListenSocket, ListenPort, Loop, RecvTimeout) ->
+% Function: {ok,Pid} | ignore | {error, Error}
+% Description: Starts the socket.
+listener(ListenSocket, ListenPort, Loop, RecvTimeout) ->
 	case catch gen_tcp:accept(ListenSocket) of
-	{ok, Socket} ->
-		?DEBUG(debug, "accepted an incoming TCP connection", []),
-		% Send the cast message to the listener process to create a new acceptor
-		misultin:create_acceptor(),
-		{ok, {Addr, Port}} = inet:peername(Socket),
-		C = #c{sock = Socket, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout},
-		% jump to state 'request'
-		?DEBUG(debug, "jump to state request", []),
-		request(C, #req{peer_addr = Addr, peer_port = Port});
-	_Else ->
-		?DEBUG(error, "accept failed error: ~p", [_Else]),
-		exit({error, accept_failed})
+		{ok, Sock} ->
+			?DEBUG(debug, "accepted an incoming TCP connection, spawning controlling process", []),
+			Pid = spawn(fun () ->
+				receive
+					set ->
+						inet:setopts(Sock, [{active, true}]),
+						?DEBUG(debug, "activated controlling process", [])
+				after 60000 ->
+					exit({error, controlling_failed})
+				end,
+				% build connection record
+				{ok, {Addr, Port}} = inet:peername(Sock),
+				C = #c{sock = Sock, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout},
+				% jump to state 'request'
+				?DEBUG(debug, "jump to state request", []),
+				request(C, #req{peer_addr = Addr, peer_port = Port})
+			end),
+			% set controlling process
+			gen_tcp:controlling_process(Sock, Pid),
+			Pid ! set,
+			% get back to accept loop
+			listener(ListenSocket, ListenPort, Loop, RecvTimeout);
+		_Else ->
+			?DEBUG(error, "accept failed error: ~p", [_Else]),
+			exit({error, accept_failed})
 	end.
 
 % ============================ /\ API ======================================================================
@@ -87,46 +101,51 @@ init(ListenSocket, ListenPort, Loop, RecvTimeout) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
-request(#c{recv_timeout = RecvTimeout} = C, Req) ->
-	case gen_tcp:recv(C#c.sock, 0, RecvTimeout) of
-		{ok, {http_request, Method, Path, Version}} ->
+request(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
+	receive
+		{http, Sock, {http_request, Method, Path, Version}} ->
 			?DEBUG(debug, "received full headers of a new HTTP packet", []),
 			headers(C, Req#req{vsn = Version, method = Method, uri = Path, connection = default_connection(Version)}, []);
-		{error, {http_error, "\r\n"}} ->
+		{http, Sock, {http_error, "\r\n"}} ->
 			request(C, Req);
-		{error, {http_error, "\n"}} ->
+		{http, Sock, {http_error, "\n"}} ->
 			request(C, Req);
-		_Other ->
-			?DEBUG(debug, "tcp recv normal error: ~p", [_Other]),
-			exit(normal)
+		{http, Sock, _Other} ->
+			?DEBUG(debug, "tcp normal error treating request: ~p", [_Other]),
+			exit(normal)	
+	after RecvTimeout ->
+		?DEBUG(debug, "request timeout, sending error", []),
+		send(Sock, ?REQUEST_TIMEOUT_408)
 	end.
 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
-headers(#c{recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
-	case gen_tcp:recv(C#c.sock, 0, RecvTimeout) of
-		{ok, {http_header, _, 'Content-Length', _, Val}} ->
+headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
+	receive
+		{http, Sock, {http_header, _, 'Content-Length', _, Val}} ->
 			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
-		{ok, {http_header, _, 'Connection', _, Val}} ->
+		{http, Sock, {http_header, _, 'Connection', _, Val}} ->
 			KeepAlive = keep_alive(Req#req.vsn, Val),
 			headers(C, Req#req{connection = KeepAlive}, [{'Connection', Val}|H], HeaderCount + 1);
-		{ok, {http_header, _, Header, _, Val}} ->
+		{http, Sock, {http_header, _, Header, _, Val}} ->
 			headers(C, Req, [{Header, Val}|H], HeaderCount + 1);
-		{error, {http_error, "\r\n"}} ->
-			headers(C, Req, H, HeaderCount + 1);
-		{error, {http_error, "\n"}} ->
-			headers(C, Req, H, HeaderCount + 1);
-		{ok, http_eoh} ->
+		{http, Sock, {http_error, "\r\n"}} ->
+			headers(C, Req, H, HeaderCount);
+		{http, Sock, {http_error, "\n"}} ->
+			headers(C, Req, H, HeaderCount);
+		{http, Sock, http_eoh} ->
 			body(C, Req#req{headers = lists:reverse(H)});
-		_Other ->
-			?DEBUG(debug, "tcp recv normal error: ~p", [_Other]),
+		{http, Sock, _Other} ->
+			?DEBUG(debug, "tcp normal error treating headers: ~p", [_Other]),
 			exit(normal)
+	after RecvTimeout ->
+		?DEBUG(debug, "headers timeout, sending error", []),
+		send(Sock, ?REQUEST_TIMEOUT_408)
 	end;
 headers(C, Req, H, _HeaderCount) ->
 	body(C, Req#req{headers = lists:reverse(H)}).
 
-	
 % default connection
 default_connection({1,1}) -> keep_alive;
 default_connection(_) -> close.
@@ -159,7 +178,8 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 				close ->
 					gen_tcp:close(Sock);
 				keep_alive ->
-					inet:setopts(Sock, [{packet, http}]),
+					% TODO: REMOVE inet:setopts(Sock, [{packet, http}]),
+					% inet:setopts(Sock, [{active, false}, {packet, 0}]),
 					request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 			end;
 		'POST' ->
@@ -167,11 +187,11 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 				{'EXIT', _} ->
 					% TODO: provide a fallback when content length is not or wrongly specified
 					?DEBUG(debug, "specified content length is not a valid integer number: ~p", [Req#req.content_length]),
-					send(C#c.sock, ?CONTENT_LENGTH_REQUIRED_411),
+					send(Sock, ?CONTENT_LENGTH_REQUIRED_411),
 					exit(normal);
 				Len ->
-					inet:setopts(Sock, [{packet, raw}]),
-					case gen_tcp:recv(Sock, Len, 2*RecvTimeout) of
+					inet:setopts(Sock, [{packet, raw}, {active, false}]),
+					case gen_tcp:recv(Sock, Len, RecvTimeout) of
 						{ok, Bin} ->
 							Close = handle_post(C, Req#req{body = Bin}),
 							case Close of
@@ -181,14 +201,17 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 									inet:setopts(Sock, [{packet, http}]),
 									request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 							end;
+						{error, timeout} ->
+							?DEBUG(debug, "request timeout, sending error", []),
+							send(Sock, ?REQUEST_TIMEOUT_408);	
 						_Other ->
-							?DEBUG(debug, "tcp recv normal error: ~p", [_Other]),
+							?DEBUG(debug, "tcp normal error treating post: ~p", [_Other]),
 							exit(normal)
 					end
 			end;
 		_Other ->
 			?DEBUG(debug, "method not implemented: ~p", [_Other]),
-			send(C#c.sock, ?NOT_IMPLEMENTED_501),
+			send(Sock, ?NOT_IMPLEMENTED_501),
 			exit(normal)
 	end.
 
