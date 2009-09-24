@@ -51,7 +51,7 @@ echo compiling...
 FOR %%f in (src/*.erl) DO erlc %command% -o ebin src/%%f
 echo ok.
 echo copying...
-cp src/misultin.app ebin/misultin.app
+copy src\misultin.app ebin\misultin.app /Y
 echo ok.
 GOTO END
 
