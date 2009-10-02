@@ -31,13 +31,13 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn('0.3').
+-vsn('0.3.1').
 
 % API
--export([start_link/4]).
+-export([start_link/5]).
 
 % callbacks
--export([listener/4]).
+-export([listener/5]).
 
 % internale
 -export([socket_loop/1]).
@@ -50,7 +50,8 @@
 	sock,
 	port,
 	loop,
-	recv_timeout
+	recv_timeout,
+	stream_support
 }).
 
 % includes
@@ -61,26 +62,26 @@
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
-start_link(ListenSocket, ListenPort, Loop, RecvTimeout) ->
-	proc_lib:spawn_link(?MODULE, listener, [ListenSocket, ListenPort, Loop, RecvTimeout]).
+start_link(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
+	proc_lib:spawn_link(?MODULE, listener, [ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport]).
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
-listener(ListenSocket, ListenPort, Loop, RecvTimeout) ->
+listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 	case catch gen_tcp:accept(ListenSocket) of
 		{ok, Sock} ->
 			?DEBUG(debug, "accepted an incoming TCP connection, spawning controlling process", []),
 			Pid = spawn(fun () ->
 				receive
 					set ->
-						inet:setopts(Sock, [{active, true}]),
-						?DEBUG(debug, "activated controlling process", [])
+						?DEBUG(debug, "activated controlling process", []),
+						ok
 				after 60000 ->
 					exit({error, controlling_failed})
 				end,
 				% build connection record
 				{ok, {Addr, Port}} = inet:peername(Sock),
-				C = #c{sock = Sock, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout},
+				C = #c{sock = Sock, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport},
 				% jump to state 'request'
 				?DEBUG(debug, "jump to state request", []),
 				request(C, #req{peer_addr = Addr, peer_port = Port})
@@ -89,7 +90,7 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout) ->
 			gen_tcp:controlling_process(Sock, Pid),
 			Pid ! set,
 			% get back to accept loop
-			listener(ListenSocket, ListenPort, Loop, RecvTimeout);
+			listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport);
 		_Else ->
 			?DEBUG(error, "accept failed error: ~p", [_Else]),
 			exit({error, accept_failed})
@@ -102,6 +103,7 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout) ->
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
 request(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
+	inet:setopts(Sock, [{active, once}]),
 	receive
 		{http, Sock, {http_request, Method, Path, Version}} ->
 			?DEBUG(debug, "received full headers of a new HTTP packet", []),
@@ -111,17 +113,21 @@ request(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 		{http, Sock, {http_error, "\n"}} ->
 			request(C, Req);
 		{http, Sock, _Other} ->
-			?DEBUG(debug, "tcp normal error treating request: ~p", [_Other]),
-			exit(normal)	
+			?DEBUG(debug, "tcp error on incoming request: ~p, send bad request error back", [_Other]),
+			send(Sock, misultin_utility:get_http_status_code(400))
 	after RecvTimeout ->
-		?DEBUG(debug, "request timeout, sending error", []),
-		send(Sock, ?REQUEST_TIMEOUT_408)
+		?DEBUG(debug, "normal receive timeout, exit", []),
+		exit(normal)
 	end.
 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
-headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) when HeaderCount =< ?MAX_HEADERS_COUNT ->
+headers(#c{sock = Sock}, _Req, _H, ?MAX_HEADERS_COUNT) ->
+	?DEBUG(debug, "too many headers sent, bad request",[]),
+	send(Sock, misultin_utility:get_http_status_code(400));
+headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) ->
+	inet:setopts(Sock, [{active, once}]),
 	receive
 		{http, Sock, {http_header, _, 'Content-Length', _, Val}} ->
 			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
@@ -137,14 +143,12 @@ headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) wh
 		{http, Sock, http_eoh} ->
 			body(C, Req#req{headers = lists:reverse(H)});
 		{http, Sock, _Other} ->
-			?DEBUG(debug, "tcp normal error treating headers: ~p", [_Other]),
-			exit(normal)
+			?DEBUG(debug, "tcp error treating headers: ~p, send bad request error back", [_Other]),
+			send(Sock, misultin_utility:get_http_status_code(400))
 	after RecvTimeout ->
-		?DEBUG(debug, "headers timeout, sending error", []),
-		send(Sock, ?REQUEST_TIMEOUT_408)
-	end;
-headers(C, Req, H, _HeaderCount) ->
-	body(C, Req#req{headers = lists:reverse(H)}).
+		?DEBUG(debug, "headers timeout, sending request timeout error", []),
+		send(Sock, misultin_utility:get_http_status_code(408))
+	end.
 
 % default connection
 default_connection({1,1}) -> keep_alive;
@@ -178,8 +182,6 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 				close ->
 					gen_tcp:close(Sock);
 				keep_alive ->
-					% TODO: REMOVE inet:setopts(Sock, [{packet, http}]),
-					% inet:setopts(Sock, [{active, false}, {packet, 0}]),
 					request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 			end;
 		'POST' ->
@@ -187,7 +189,7 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 				{'EXIT', _} ->
 					% TODO: provide a fallback when content length is not or wrongly specified
 					?DEBUG(debug, "specified content length is not a valid integer number: ~p", [Req#req.content_length]),
-					send(Sock, ?CONTENT_LENGTH_REQUIRED_411),
+					send(Sock, misultin_utility:get_http_status_code(411)),
 					exit(normal);
 				Len ->
 					inet:setopts(Sock, [{packet, raw}, {active, false}]),
@@ -203,15 +205,15 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 							end;
 						{error, timeout} ->
 							?DEBUG(debug, "request timeout, sending error", []),
-							send(Sock, ?REQUEST_TIMEOUT_408);	
+							send(Sock, misultin_utility:get_http_status_code(408));	
 						_Other ->
-							?DEBUG(debug, "tcp normal error treating post: ~p", [_Other]),
-							exit(normal)
+							?DEBUG(debug, "tcp error treating post data: ~p, send bad request error back", [_Other]),
+							send(Sock, misultin_utility:get_http_status_code(400))
 					end
 			end;
 		_Other ->
 			?DEBUG(debug, "method not implemented: ~p", [_Other]),
-			send(Sock, ?NOT_IMPLEMENTED_501),
+			send(Sock, misultin_utility:get_http_status_code(501)),
 			exit(normal)
 	end.
 
@@ -227,13 +229,13 @@ handle_get(C, #req{connection = Conn} = Req) ->
 			call_mfa(C, Req#req{args = Args, uri = {absoluteURI, F}}),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			send(C#c.sock, ?NOT_IMPLEMENTED_501),
+			send(C#c.sock, misultin_utility:get_http_status_code(501)),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			send(C#c.sock, ?NOT_IMPLEMENTED_501),
+			send(C#c.sock, misultin_utility:get_http_status_code(510)),
 			close;
 		_  ->
-			send(C#c.sock, ?FORBIDDEN_403),
+			send(C#c.sock, misultin_utility:get_http_status_code(403)),
 			close
 	end.
 
@@ -247,20 +249,25 @@ handle_post(C, #req{connection = Conn} = Req) ->
 			call_mfa(C, Req),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			send(C#c.sock, ?NOT_IMPLEMENTED_501),
+			send(C#c.sock, misultin_utility:get_http_status_code(501)),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			send(C#c.sock, ?NOT_IMPLEMENTED_501),
+			send(C#c.sock, misultin_utility:get_http_status_code(501)),
 			close;
 		_  ->
-			send(C#c.sock, ?FORBIDDEN_403),
+			send(C#c.sock, misultin_utility:get_http_status_code(403)),
 			close
 	end.
 
 % Description: Main dispatcher
-call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
+call_mfa(#c{sock = Sock, loop = Loop, stream_support = StreamSupport} = C, Request) ->
 	% spawn listening process for Request messages [only used to support stream requests]
-	SocketPid = spawn(?MODULE, socket_loop, [C]),
+	case StreamSupport of
+		true ->
+			SocketPid = spawn(?MODULE, socket_loop, [C]);
+		false ->
+			SocketPid = no_stream_support_proc
+	end,
 	% create request
 	Req = misultin_req:new(Request, SocketPid),
 	% call loop
@@ -268,28 +275,28 @@ call_mfa(#c{sock = Sock, loop = Loop} = C, Request) ->
 		{'EXIT', _Reason} ->
 			?DEBUG(error, "worker crash: ~p", [_Reason]),
 			% kill listening socket
-			SocketPid ! shutdown,
+			catch SocketPid ! shutdown,
 			% send response
-			send(Sock, ?INTERNAL_SERVER_ERROR_500),
+			send(Sock, misultin_utility:get_http_status_code(500)),
 			% force exit
 			exit(normal);
 		{HttpCode, Headers0, Body} ->
 			% received normal response
 			?DEBUG(debug, "sending response", []),
 			% kill listening socket
-			SocketPid ! shutdown,
+			catch SocketPid ! shutdown,
 			% flatten body [optimization since needed for content length]
 			BodyBinary = convert_to_binary(Body),
 			% provide response
 			Headers = add_content_length(Headers0, BodyBinary),
 			Enc_headers = enc_headers(Headers),
-			Resp = ["HTTP/1.1 ", integer_to_list(HttpCode), " OK\r\n", Enc_headers, <<"\r\n">>, BodyBinary],
+			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			send(Sock, Resp);
 		{raw, Body} ->
 			send(Sock, Body);
 		_ ->
 			% loop exited normally, kill listening socket
-			SocketPid ! shutdown
+			catch SocketPid ! shutdown
 	end.
 
 % Description: Ensure Body is binary.
@@ -306,7 +313,7 @@ socket_loop(#c{sock = Sock} = C) ->
 		{stream_head, HttpCode, Headers} ->
 			?DEBUG(debug, "sending stream head", []),
 			Enc_headers = enc_headers(Headers),
-			Resp = ["HTTP/1.1 ", integer_to_list(HttpCode), " OK\r\n", Enc_headers, <<"\r\n">>],
+			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
 			send(Sock, Resp),
 			socket_loop(C);
 		{stream_data, Body} ->

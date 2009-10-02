@@ -42,11 +42,10 @@ stop() ->
 handle_http(Req) ->
 	% get params
 	Args = Req:parse_qs(),
-	Value = proplists:get_value("value", Args),
-	case Value of
+	case proplists:get_value("value", Args) of
 		undefined ->
 			Req:ok([{"Content-Type", "text/xml"}], "<misultin_test><error>no value specified</error></misultin_test>");
-		_ ->
+		Value ->
 			Req:ok([{"Content-Type", "text/xml"}], "<misultin_test><value>~s</value></misultin_test>", [Value])
 	end.
 

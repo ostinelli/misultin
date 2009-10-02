@@ -63,6 +63,12 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
+0.3.1: - added flow control using inet options {active, once} [issue track #1, thanks to Max Lapshin]
+       - added support to standard http headers response
+       - added http 400 bad request error in socket handling
+       - bug correction: removed erroneous sending of response timeout on listening open connections
+       - added stream_support optimization option
+
 0.3:   - reengineering of the listener process, using active instead of passive mode in request parsing,
          except for BODY where passive is still used [thanks to lev walkin]
        - added better support for request timeout

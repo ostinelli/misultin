@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn('0.3').
+-vsn('0.3.1').
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -76,17 +76,17 @@ respond(HttpCode, Headers, Template, Vars) when is_list(Template) =:= true ->
 	
 % Description: Start stream.
 stream(close) ->
-	SocketPid ! stream_close;
+	catch SocketPid ! stream_close;
 stream(head) ->
 	stream(head, 200, []);
 stream(Template) ->
-	SocketPid ! {stream_data, Template}.
+	catch SocketPid ! {stream_data, Template}.
 stream(head, Headers) ->
 	stream(head, 200, Headers);
 stream(Template, Vars) when is_list(Template) =:= true ->
-	SocketPid ! {stream_data, io_lib:format(Template, Vars)}.
+	catch SocketPid ! {stream_data, io_lib:format(Template, Vars)}.
 stream(head, HttpCode, Headers) ->
-	SocketPid ! {stream_head, HttpCode, Headers}.
+	catch SocketPid ! {stream_head, HttpCode, Headers}.
 	
 % Description: Sends a file to the browser.
 file(FilePath) ->
@@ -429,13 +429,13 @@ file_send(FilePath, Headers) ->
 			% do the gradual sending
 			case file_open_and_send(FilePath) of
 				{error, _Reason} ->
-					{raw, ?INTERNAL_SERVER_ERROR_500};
+					{raw, misultin_utility:get_http_status_code(500)};
 				ok ->
 					% sending successful
 					ok
 			end;
 		{error, _Reason} ->
-			{raw, ?INTERNAL_SERVER_ERROR_500}
+			{raw, misultin_utility:get_http_status_code(500)}
 	end.
 file_open_and_send(FilePath) ->
 	case file:open(FilePath, [read, binary]) of

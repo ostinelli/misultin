@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn('0.3').
+-vsn('0.3.1').
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -48,8 +48,9 @@
 	listen_socket,
 	port,
 	loop,
+	acceptor,
 	recv_timeout,
-	acceptor
+	stream_support
 }).
 
 % includes
@@ -91,7 +92,8 @@ init([Options]) ->
 		{port, 80, fun is_integer/1, port_not_integer},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{backlog, 128, fun is_integer/1, backlog_not_integer},
-		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer}
+		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer},
+		{stream_support, true, fun is_boolean/1, invalid_stream_support_option}
 	],
 	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -102,6 +104,7 @@ init([Options]) ->
 			Loop = proplists:get_value(loop, OptionsVerified),
 			Backlog = proplists:get_value(backlog, OptionsVerified),
 			RecvTimeout = proplists:get_value(recv_timeout, OptionsVerified),
+			StreamSupport = proplists:get_value(stream_support, OptionsVerified),
 			% ipv6 support
 			?DEBUG(debug, "ip address is: ~p", [Ip]),
 			InetOpt = case Ip of
@@ -118,8 +121,8 @@ init([Options]) ->
 					% start listening
 					?DEBUG(debug, "starting listener loop", []),
 					% create acceptor
-					AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
-					{ok, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = AcceptorPid, recv_timeout = RecvTimeout}};
+					AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport),
+					{ok, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = AcceptorPid, recv_timeout = RecvTimeout, stream_support = StreamSupport}};
 				{error, Reason} ->
 					?DEBUG(error, "error starting: ~p", [Reason]),
 					% error

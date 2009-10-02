@@ -25,13 +25,6 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
-% macros
--define(INTERNAL_SERVER_ERROR_500, "HTTP/1.1 500 Internal Server Error\r\n\r\n").
--define(NOT_IMPLEMENTED_501, "HTTP/1.1 501 Not Implemented\r\n\r\n").
--define(FORBIDDEN_403, "HTTP/1.1 403 Forbidden\r\n\r\n").
--define(NOT_FOUND_404, "HTTP/1.1 404 Not Found\r\n\r\n").
--define(CONTENT_LENGTH_REQUIRED_411, "HTTP/1.1 411 Length Required\r\n\r\n").
--define(REQUEST_TIMEOUT_408, "HTTP/1.1 408 Request Timeout\r\n\r\n").
 
 % define debug
 -ifdef(debug).
