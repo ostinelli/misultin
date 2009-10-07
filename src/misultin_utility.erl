@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
+% Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>.
 % All rights reserved.
 %
 % BSD License
@@ -36,7 +36,7 @@
 
 % ============================ \/ API ======================================================================
 
-% Function: HttpStatus | invalid
+% Function: HttpStatus
 % Description: Returns a complete HTTP header
 % most common first
 get_http_status_code(200) ->
