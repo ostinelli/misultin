@@ -29,9 +29,27 @@ REM NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 REM POSSIBILITY OF SUCH DAMAGE.
 REM ==========================================================================================================
 
-echo compiling...
-FOR %%f in (src/*.erl) DO erlc %command% -o ebin src/%%f
-echo ok.
-echo copying additional files...
+:BEGIN
+IF "%1"=="debug" GOTO SETDEBUG
+IF "%1"=="example" GOTO EXAMPLES
+IF "%1"=="clean" GOTO CLEAN
+GOTO COMPILE
+
+:SETDEBUG
+SET command=-D log_debug
+GOTO COMPILE
+
+:EXAMPLES
+mkdir ebin
+FOR %%f in (examples\*.erl) DO erlc -W %command% -o ebin "%%f"
+
+:COMPILE
+mkdir ebin
+FOR %%f in (src\*.erl) DO erlc -W %command% -o ebin "%%f"
 copy src\misultin.app ebin\misultin.app /Y
-echo ok.
+GOTO END
+
+:CLEAN
+FOR %%f in (ebin\*) DO del "%%f"
+
+:END
