@@ -28,7 +28,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_rest).
--export([start/0, stop/0, handle_http/1]).
+-export([start/1, stop/0, handle_http/1]).
 
 % start misultin http server
 start(Port) ->

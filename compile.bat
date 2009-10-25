@@ -29,36 +29,9 @@ REM NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 REM POSSIBILITY OF SUCH DAMAGE.
 REM ==========================================================================================================
 
-:BEGIN
-IF "%1"=="-d" GOTO SETDEBUG
-IF "%1"=="-h" GOTO SHOWHELP
-GOTO COMPILE
-
-:SETDEBUG
-SET command=
-IF "%2"=="error" GOTO SETCOMMAND
-IF "%2"=="warning" GOTO SETCOMMAND
-IF "%2"=="info" GOTO SETCOMMAND
-IF "%2"=="debug" GOTO SETCOMMAND
-echo [ERROR]: unknown debug level %2%
-GOTO END
-
-:SETCOMMAND
-SET command=-D debug=%2
-
-:COMPILE
 echo compiling...
 FOR %%f in (src/*.erl) DO erlc %command% -o ebin src/%%f
 echo ok.
-echo copying...
+echo copying additional files...
 copy src\misultin.app ebin\misultin.app /Y
 echo ok.
-GOTO END
-
-:SHOWHELP
-echo Usage:	    compile.bat [options]
-echo Options:
-echo -d [level]  compile with debug mode: error warning info debug
-echo -h          print this help
-
-:END

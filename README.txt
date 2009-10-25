@@ -12,16 +12,16 @@ INSTALL INSTRUCTIONS
 
 Run the appropriate script:
 
-    * OSX | Linux users: ./compile
-    * Windows users: compile.bat. Note that Erlang bin directory (by default, C:\Program Files\erl5.7.2\bin\) must be in your path for the script to work. 
+    * OSX | Linux users:  make
+    * Windows users: compile.bat. Note that Erlang bin directory (by default, C:\Program Files\erl5.7.2\bin\) must be in your path for the script to work.
 
-This script will compile the .erl files in the Misultin src directory and save the compiled files into the ebin directory. Optionally, you may consider setting a logging level with the compile options: run the script with the -h option for more information.
+This script will compile the .erl files in the Misultin src directory and save the compiled files into the ebin directory.
 
 2. (Optional) Copy Misultin files
 
 This optional step will allow Misultin to be called from modules running from any directory on your file system.
 
-Locate the directory where Erlang is installed on your system. Under OSX and Linux, it should be something similar to /usr/local/lib/erlang/ if you installed it from source, otherwise /usr/lib/erlang/ if you installed it using your package manager. Under Windows, Erlang is installed by default in something similar to C:\Program Files\erl5.7.2\ (version changes may apply).
+Locate the directory where Erlang is installed on your system. Under OSX and Linux, it should be something similar to /usr/local/lib/erlang/ or /usr/lib/erlang/. Under Windows, Erlang is installed by default in something similar to C:\Program Files\erl5.7.2\ (version changes may apply).
 
 Browse into the lib directory under this Erlang root and copy the root misultin-0.x directory into this directory. You should now have Misultin under something similar to:
 
@@ -63,14 +63,16 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
-0.3.1: - added flow control using inet options {active, once} [issue track #1, thanks to Max Lapshin]
+0.3.2: - optimized error handling [issue track #5, thanks to Max Lapshin]
+
+0.3.1: - added flow control using inet options {active, once} [issue track #4, thanks to Max Lapshin]
        - added support to standard http headers response
        - added http 400 bad request error in socket handling
        - bug correction: removed erroneous sending of response timeout on listening open connections
        - added stream_support optimization option
 
 0.3:   - reengineering of the listener process, using active instead of passive mode in request parsing,
-         except for BODY where passive is still used [thanks to lev walkin]
+         except for BODY where passive is still used [thanks to Lev Walkin]
        - added better support for request timeout
 
 0.2.2: - added .app file [thanks to Essien Ita Essien]

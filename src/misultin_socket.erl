@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn('0.3.1').
+-vsn('0.3.2').
 
 % API
 -export([start_link/5]).
@@ -70,11 +70,11 @@ start_link(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 	case catch gen_tcp:accept(ListenSocket) of
 		{ok, Sock} ->
-			?DEBUG(debug, "accepted an incoming TCP connection, spawning controlling process", []),
+			?LOG_DEBUG("accepted an incoming TCP connection, spawning controlling process", []),
 			Pid = spawn(fun () ->
 				receive
 					set ->
-						?DEBUG(debug, "activated controlling process", []),
+						?LOG_DEBUG("activated controlling process", []),
 						ok
 				after 60000 ->
 					exit({error, controlling_failed})
@@ -83,7 +83,7 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 				{ok, {Addr, Port}} = inet:peername(Sock),
 				C = #c{sock = Sock, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport},
 				% jump to state 'request'
-				?DEBUG(debug, "jump to state request", []),
+				?LOG_DEBUG("jump to state request", []),
 				request(C, #req{peer_addr = Addr, peer_port = Port})
 			end),
 			% set controlling process
@@ -92,7 +92,7 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 			% get back to accept loop
 			listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport);
 		_Else ->
-			?DEBUG(error, "accept failed error: ~p", [_Else]),
+			?LOG_ERROR("accept failed error: ~p", [_Else]),
 			exit({error, accept_failed})
 	end.
 
@@ -106,17 +106,17 @@ request(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 	inet:setopts(Sock, [{active, once}]),
 	receive
 		{http, Sock, {http_request, Method, Path, Version}} ->
-			?DEBUG(debug, "received full headers of a new HTTP packet", []),
+			?LOG_DEBUG("received full headers of a new HTTP packet", []),
 			headers(C, Req#req{vsn = Version, method = Method, uri = Path, connection = default_connection(Version)}, []);
 		{http, Sock, {http_error, "\r\n"}} ->
 			request(C, Req);
 		{http, Sock, {http_error, "\n"}} ->
 			request(C, Req);
 		{http, Sock, _Other} ->
-			?DEBUG(debug, "tcp error on incoming request: ~p, send bad request error back", [_Other]),
+			?LOG_DEBUG("tcp error on incoming request: ~p, send bad request error back", [_Other]),
 			send(Sock, misultin_utility:get_http_status_code(400))
 	after RecvTimeout ->
-		?DEBUG(debug, "normal receive timeout, exit", []),
+		?LOG_DEBUG("normal receive timeout, exit", []),
 		exit(normal)
 	end.
 
@@ -124,7 +124,7 @@ request(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
 headers(#c{sock = Sock}, _Req, _H, ?MAX_HEADERS_COUNT) ->
-	?DEBUG(debug, "too many headers sent, bad request",[]),
+	?LOG_DEBUG("too many headers sent, bad request",[]),
 	send(Sock, misultin_utility:get_http_status_code(400));
 headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) ->
 	inet:setopts(Sock, [{active, once}]),
@@ -143,10 +143,10 @@ headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) ->
 		{http, Sock, http_eoh} ->
 			body(C, Req#req{headers = lists:reverse(H)});
 		{http, Sock, _Other} ->
-			?DEBUG(debug, "tcp error treating headers: ~p, send bad request error back", [_Other]),
+			?LOG_DEBUG("tcp error treating headers: ~p, send bad request error back", [_Other]),
 			send(Sock, misultin_utility:get_http_status_code(400))
 	after RecvTimeout ->
-		?DEBUG(debug, "headers timeout, sending request timeout error", []),
+		?LOG_DEBUG("headers timeout, sending request timeout error", []),
 		send(Sock, misultin_utility:get_http_status_code(408))
 	end.
 
@@ -188,7 +188,7 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 			case catch list_to_integer(Req#req.content_length) of 
 				{'EXIT', _} ->
 					% TODO: provide a fallback when content length is not or wrongly specified
-					?DEBUG(debug, "specified content length is not a valid integer number: ~p", [Req#req.content_length]),
+					?LOG_DEBUG("specified content length is not a valid integer number: ~p", [Req#req.content_length]),
 					send(Sock, misultin_utility:get_http_status_code(411)),
 					exit(normal);
 				Len ->
@@ -204,15 +204,15 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 									request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 							end;
 						{error, timeout} ->
-							?DEBUG(debug, "request timeout, sending error", []),
+							?LOG_DEBUG("request timeout, sending error", []),
 							send(Sock, misultin_utility:get_http_status_code(408));	
 						_Other ->
-							?DEBUG(debug, "tcp error treating post data: ~p, send bad request error back", [_Other]),
+							?LOG_DEBUG("tcp error treating post data: ~p, send bad request error back", [_Other]),
 							send(Sock, misultin_utility:get_http_status_code(400))
 					end
 			end;
 		_Other ->
-			?DEBUG(debug, "method not implemented: ~p", [_Other]),
+			?LOG_DEBUG("method not implemented: ~p", [_Other]),
 			send(Sock, misultin_utility:get_http_status_code(501)),
 			exit(normal)
 	end.
@@ -273,7 +273,7 @@ call_mfa(#c{sock = Sock, loop = Loop, stream_support = StreamSupport} = C, Reque
 	% call loop
 	case catch Loop(Req) of
 		{'EXIT', _Reason} ->
-			?DEBUG(error, "worker crash: ~p", [_Reason]),
+			?LOG_ERROR("worker crash: ~p", [_Reason]),
 			% kill listening socket
 			catch SocketPid ! shutdown,
 			% send response
@@ -282,7 +282,7 @@ call_mfa(#c{sock = Sock, loop = Loop, stream_support = StreamSupport} = C, Reque
 			exit(normal);
 		{HttpCode, Headers0, Body} ->
 			% received normal response
-			?DEBUG(debug, "sending response", []),
+			?LOG_DEBUG("sending response", []),
 			% kill listening socket
 			catch SocketPid ! shutdown,
 			% flatten body [optimization since needed for content length]
@@ -311,20 +311,20 @@ convert_to_binary(Body) when is_atom(Body) ->
 socket_loop(#c{sock = Sock} = C) ->
 	receive
 		{stream_head, HttpCode, Headers} ->
-			?DEBUG(debug, "sending stream head", []),
+			?LOG_DEBUG("sending stream head", []),
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
 			send(Sock, Resp),
 			socket_loop(C);
 		{stream_data, Body} ->
-			?DEBUG(debug, "sending stream data", []),
+			?LOG_DEBUG("sending stream data", []),
 			send(Sock, Body),
 			socket_loop(C);
 		stream_close ->
-			?DEBUG(debug, "closing stream", []),
+			?LOG_DEBUG("closing stream", []),
 			close(Sock);
 		shutdown ->
-			?DEBUG(debug, "shutting down socket loop", []),
+			?LOG_DEBUG("shutting down socket loop", []),
 			shutdown
 	end.
 
@@ -361,23 +361,23 @@ split_at_q_mark([], Acc) ->
 
 % TCP send
 send(Sock, Data) ->
-	?DEBUG(debug, "sending data: ~p", [Data]),
+	?LOG_DEBUG("sending data: ~p", [Data]),
 	case gen_tcp:send(Sock, Data) of
 		ok ->
 			ok;
 		{error, _Reason} ->
-			?DEBUG(debug, "worker crash: ~p", [_Reason]),
+			?LOG_ERROR("worker crash: ~p", [_Reason]),
 			exit(normal)
 	end.
 
 % TCP close
 close(Sock) ->
-	?DEBUG(debug, "closing socket", []),
+	?LOG_DEBUG("closing socket", []),
 	case gen_tcp:close(Sock) of
 		ok ->
 			ok;
 		{error, _Reason} ->
-			?DEBUG(debug, "could not close socket: ~p", [_Reason]),
+			?LOG_WARNING("could not close socket: ~p", [_Reason]),
 			exit(normal)
 	end.
 	

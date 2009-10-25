@@ -27,47 +27,31 @@
 % ==========================================================================================================
 
 % define debug
--ifdef(debug).
--define(DEBUG(Level, Str, Args),
-	% Level = error | warning | info | debug
-	case Level of
-		error ->
-			erlang:apply(error_logger, error_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args]);
-		warning ->
-			case ?debug of
-				debug ->
-					erlang:apply(error_logger, info_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args]);
-				info ->
-					erlang:apply(error_logger, info_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args]);
-				warning	->
-					erlang:apply(error_logger, warning_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args]);
-				_ ->
-					ok
-			end;
-		info ->
-			case ?debug of
-				debug ->
-					erlang:apply(error_logger, info_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args]);
-				info ->
-					erlang:apply(error_logger, info_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args]);
-				_ ->
-					ok
-			end;
-		debug ->
-			case ?debug of
-				debug ->
-					erlang:apply(error_logger, info_msg, [lists:concat(["[DEBUG]	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args]);
-				_ ->
-					ok
-			end;			
-		_ ->
-			ok
-	end
-).
+-ifdef(log_debug).
+-define(LOG_DEBUG(Str, Args), erlang:apply(error_logger, info_msg, [lists:concat(["[DEBUG]	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-define(LOG_INFO(Str, Args), erlang:apply(error_logger, info_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-define(LOG_WARNING(Str, Args), erlang:apply(error_logger, warning_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-define(LOG_ERROR(Str, Args), erlang:apply(error_logger, error_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
 -else.
--define(DEBUG(Level, Str, Args), true).
+-ifdef(log_info).
+-define(LOG_DEBUG(Str, Args), ok).
+-define(LOG_INFO(Str, Args), erlang:apply(error_logger, info_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-define(LOG_WARNING(Str, Args), erlang:apply(error_logger, warning_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-define(LOG_ERROR(Str, Args), erlang:apply(error_logger, error_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-else.
+-ifdef(log_warning).
+-define(LOG_DEBUG(Str, Args), ok).
+-define(LOG_INFO(Str, Args), ok).
+-define(LOG_WARNING(Str, Args), erlang:apply(error_logger, warning_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-define(LOG_ERROR(Str, Args), erlang:apply(error_logger, error_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-else.
+-define(LOG_DEBUG(Str, Args), ok).
+-define(LOG_INFO(Str, Args), ok).
+-define(LOG_WARNING(Str, Args), ok).
+-define(LOG_ERROR(Str, Args), erlang:apply(error_logger, error_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
 -endif.
-
+-endif.
+-endif.
 
 % Request
 -record(req, {

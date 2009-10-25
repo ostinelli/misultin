@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn('0.3.1').
+-vsn('0.3.2').
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -85,7 +85,7 @@ create_acceptor() ->
 % ----------------------------------------------------------------------------------------------------------
 init([Options]) ->
 	process_flag(trap_exit, true),
-	?DEBUG(info, "starting with Pid: ~p", [self()]),
+	?LOG_INFO("starting with Pid: ~p", [self()]),
 	% test and get options
 	OptionProps = [
 		{ip, {0, 0, 0, 0}, fun check_and_convert_string_to_ip/1, invalid_ip},
@@ -106,7 +106,7 @@ init([Options]) ->
 			RecvTimeout = proplists:get_value(recv_timeout, OptionsVerified),
 			StreamSupport = proplists:get_value(stream_support, OptionsVerified),
 			% ipv6 support
-			?DEBUG(debug, "ip address is: ~p", [Ip]),
+			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			InetOpt = case Ip of
 				{_, _, _, _} ->
 					% IPv4
@@ -119,12 +119,12 @@ init([Options]) ->
 			case gen_tcp:listen(Port, [binary, {packet, http}, InetOpt, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}]) of
 				{ok, ListenSocket} ->
 					% start listening
-					?DEBUG(debug, "starting listener loop", []),
+					?LOG_DEBUG("starting listener loop", []),
 					% create acceptor
 					AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport),
 					{ok, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = AcceptorPid, recv_timeout = RecvTimeout, stream_support = StreamSupport}};
 				{error, Reason} ->
-					?DEBUG(error, "error starting: ~p", [Reason]),
+					?LOG_ERROR("error starting: ~p", [Reason]),
 					% error
 					{stop, Reason}
 			end;
@@ -151,18 +151,18 @@ handle_call(_Request, _From, State) ->
 
 % manual shutdown
 handle_cast(stop, State) ->
-	?DEBUG(info, "manual shutdown..", []),
+	?LOG_INFO("manual shutdown..", []),
 	{stop, normal, State};
 
 % create
 handle_cast(create_acceptor, #state{listen_socket = ListenSocket, port = Port, loop = Loop, recv_timeout = RecvTimeout} = State) ->
-	?DEBUG(debug, "creating new acceptor process", []),
+	?LOG_DEBUG("creating new acceptor process", []),
 	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % handle_cast generic fallback (ignore)
 handle_cast(_Msg, State) ->
-	?DEBUG(warning, "received unknown cast message: ~p", [_Msg]),
+	?LOG_WARNING("received unknown cast message: ~p", [_Msg]),
 	{noreply, State}.
 
 % ----------------------------------------------------------------------------------------------------------
@@ -172,13 +172,13 @@ handle_cast(_Msg, State) ->
 
 % The current acceptor has died, respawn
 handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid, recv_timeout = RecvTimeout} = State) ->
-	?DEBUG(warning, "acceptor has died with reason: ~p, respawning", [_Reason]),
+	?LOG_WARNING("acceptor has died with reason: ~p, respawning", [_Reason]),
 	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % handle_info generic fallback (ignore)
 handle_info(_Info, State) ->
-	?DEBUG(warning, "received unknown info message: ~p", [_Info]),
+	?LOG_WARNING("received unknown info message: ~p", [_Info]),
 	{noreply, State}.
 
 % ----------------------------------------------------------------------------------------------------------
@@ -187,7 +187,7 @@ handle_info(_Info, State) ->
 % the gen_server terminates with Reason. The return value is ignored.
 % ----------------------------------------------------------------------------------------------------------
 terminate(_Reason, #state{listen_socket = ListenSocket, acceptor = AcceptorPid}) ->
-	?DEBUG(info, "shutting down server with Pid ~p", [self()]),
+	?LOG_INFO("shutting down server with Pid ~p", [self()]),
 	% kill acceptor - TODO: find a more gentle way to do so
 	exit(AcceptorPid, kill),
 	% stop gen_tcp
