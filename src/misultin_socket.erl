@@ -40,7 +40,7 @@
 -export([listener/5]).
 
 % internale
--export([socket_loop/1]).
+-export([socket_loop/2]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -132,8 +132,7 @@ headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) ->
 		{http, Sock, {http_header, _, 'Content-Length', _, Val}} ->
 			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
 		{http, Sock, {http_header, _, 'Connection', _, Val}} ->
-			KeepAlive = keep_alive(Req#req.vsn, Val),
-			headers(C, Req#req{connection = KeepAlive}, [{'Connection', Val}|H], HeaderCount + 1);
+			headers(C, Req#req{connection = keep_alive(Req#req.vsn, Val)}, [{'Connection', Val}|H], HeaderCount + 1);
 		{http, Sock, {http_header, _, Header, _, Val}} ->
 			headers(C, Req, [{Header, Val}|H], HeaderCount + 1);
 		{http, Sock, {http_error, "\r\n"}} ->
@@ -264,7 +263,7 @@ call_mfa(#c{sock = Sock, loop = Loop, stream_support = StreamSupport} = C, Reque
 	% spawn listening process for Request messages [only used to support stream requests]
 	case StreamSupport of
 		true ->
-			SocketPid = spawn(?MODULE, socket_loop, [C]);
+			SocketPid = spawn(?MODULE, socket_loop, [C, Request]);
 		false ->
 			SocketPid = no_stream_support_proc
 	end,
@@ -288,7 +287,8 @@ call_mfa(#c{sock = Sock, loop = Loop, stream_support = StreamSupport} = C, Reque
 			% flatten body [optimization since needed for content length]
 			BodyBinary = convert_to_binary(Body),
 			% provide response
-			Headers = add_content_length(Headers0, BodyBinary),
+			Headers1 = add_output_header('Content-Length', {Headers0, BodyBinary}),
+			Headers = add_output_header('Connection', {Headers1, Request}),
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			send(Sock, Resp);
@@ -308,18 +308,19 @@ convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
 % Description: Socket loop for stream responses
-socket_loop(#c{sock = Sock} = C) ->
+socket_loop(#c{sock = Sock} = C, Request) ->
 	receive
-		{stream_head, HttpCode, Headers} ->
+		{stream_head, HttpCode, Headers0} ->
 			?LOG_DEBUG("sending stream head", []),
+			Headers = add_output_header('Connection', {Headers0, Request}),
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
 			send(Sock, Resp),
-			socket_loop(C);
+			socket_loop(C, Request);
 		{stream_data, Body} ->
 			?LOG_DEBUG("sending stream data", []),
 			send(Sock, Body),
-			socket_loop(C);
+			socket_loop(C, Request);
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			close(Sock);
@@ -328,14 +329,34 @@ socket_loop(#c{sock = Sock} = C) ->
 			shutdown
 	end.
 
-% Description: Add content length
-add_content_length(Headers, Body) ->
+% Description: Add necessary Content-Length Header
+add_output_header('Content-Length', {Headers, Body}) ->
 	case proplists:get_value('Content-Length', Headers) of
 		undefined ->
 			[{'Content-Length', size(Body)}|Headers];
-		false ->
+		_ExistingContentLength ->
 			Headers
+	end;
+
+% Description: Add necessary Connection Header
+add_output_header('Connection', {Headers, Req}) ->
+	case Req#req.connection of
+		undefined ->
+			% nothing to echo
+			Headers;
+		Connection ->
+			% echo
+			case proplists:get_value('Connection', Headers) of
+				undefined ->
+					[{'Connection', connection_str(Connection)}|Headers];
+				_ExistingConnectionHeaderValue ->
+					Headers
+			end
 	end.
+
+% Helper to Connection string
+connection_str(keep_alive) -> "Keep-Alive";
+connection_str(close) -> "Close".
 
 % Description: Encode headers
 enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
