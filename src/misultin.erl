@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn('0.3.2').
+-vsn('0.3.3').
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -155,9 +155,9 @@ handle_cast(stop, State) ->
 	{stop, normal, State};
 
 % create
-handle_cast(create_acceptor, #state{listen_socket = ListenSocket, port = Port, loop = Loop, recv_timeout = RecvTimeout} = State) ->
+handle_cast(create_acceptor, #state{listen_socket = ListenSocket, port = Port, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport} = State) ->
 	?LOG_DEBUG("creating new acceptor process", []),
-	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
+	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % handle_cast generic fallback (ignore)
@@ -171,9 +171,9 @@ handle_cast(_Msg, State) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % The current acceptor has died, respawn
-handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid, recv_timeout = RecvTimeout} = State) ->
+handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid, recv_timeout = RecvTimeout, stream_support = StreamSupport} = State) ->
 	?LOG_WARNING("acceptor has died with reason: ~p, respawning", [_Reason]),
-	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout),
+	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % handle_info generic fallback (ignore)
