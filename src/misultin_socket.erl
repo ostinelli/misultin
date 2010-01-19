@@ -84,7 +84,7 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 				C = #c{sock = Sock, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport},
 				% jump to state 'request'
 				?LOG_DEBUG("jump to state request", []),
-				request(C, #req{peer_addr = Addr, peer_port = Port})
+				request(C, #req{socket = Sock, peer_addr = Addr, peer_port = Port})
 			end),
 			% set controlling process
 			gen_tcp:controlling_process(Sock, Pid),
