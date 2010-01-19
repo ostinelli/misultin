@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn('0.3.3').
+-vsn('0.3.4').
 
 % API
 -export([start_link/5]).
@@ -176,6 +176,7 @@ keep_alive(_Vsn, _KA)			-> close.
 body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 	case Req#req.method of
 		'GET' ->
+			?LOG_DEBUG("GET request received",[]),
 			Close = handle_get(C, Req),
 			case Close of
 				close ->
@@ -184,13 +185,25 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 					request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 			end;
 		'POST' ->
-			case catch list_to_integer(Req#req.content_length) of 
+			?LOG_DEBUG("POST request received", []),
+			case catch list_to_integer(Req#req.content_length) of
 				{'EXIT', _} ->
 					% TODO: provide a fallback when content length is not or wrongly specified
 					?LOG_DEBUG("specified content length is not a valid integer number: ~p", [Req#req.content_length]),
 					send(Sock, misultin_utility:get_http_status_code(411)),
 					exit(normal);
+				0 ->
+					?LOG_DEBUG("zero content-lenght specified, skipping parsing body of request", []),
+					Close = handle_post(C, Req),
+					case Close of
+						close ->
+							gen_tcp:close(Sock);
+						keep_alive ->
+							inet:setopts(Sock, [{packet, http}]),
+							request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
+					end;					
 				Len ->
+					?LOG_DEBUG("parsing POST content in body of request", []),
 					inet:setopts(Sock, [{packet, raw}, {active, false}]),
 					case gen_tcp:recv(Sock, Len, RecvTimeout) of
 						{ok, Bin} ->

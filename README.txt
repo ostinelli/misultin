@@ -63,6 +63,10 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
+0.3.4: - added Req support to return the socket handling the request
+       - bug correction on Content-Length: 0 header causing timeout on POST requests [issue track #12,
+         thanks to gdamjan]
+
 0.3.3: - added echoing of the Connection header [issue track #7, thanks to thijsterlouw]
        - bug correction on acceptor respawning [issue track #10, thanks to thijsterlouw]
 

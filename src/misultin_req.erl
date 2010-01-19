@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn('0.3.3').
+-vsn('0.3.4').
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -98,6 +98,8 @@ file(attachment, FilePath) ->
 	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}]).
 
 % Description: Get request info.
+get(socket) ->
+	Req#req.socket;
 get(peer_addr) ->
 	Req#req.peer_addr;
 get(peer_port) ->

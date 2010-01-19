@@ -28,7 +28,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_utility).
--vsn('0.3.3').
+-vsn('0.3.4').
 
 % API
 -export([get_http_status_code/1]).

@@ -55,6 +55,7 @@
 
 % Request
 -record(req, {
+	socket,						% the socket handling the request
 	peer_addr,					% peer IP | undefined
 	peer_port,					% peer port | undefined
 	connection = keep_alive,	% keep_alive | close
