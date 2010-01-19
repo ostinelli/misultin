@@ -182,7 +182,7 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 				close ->
 					gen_tcp:close(Sock);
 				keep_alive ->
-					request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
+					request(C, #req{socket = Sock, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 			end;
 		'POST' ->
 			?LOG_DEBUG("POST request received", []),
@@ -200,7 +200,7 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 							gen_tcp:close(Sock);
 						keep_alive ->
 							inet:setopts(Sock, [{packet, http}]),
-							request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
+							request(C, #req{socket = Sock, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 					end;					
 				Len ->
 					?LOG_DEBUG("parsing POST content in body of request", []),
@@ -213,7 +213,7 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 									gen_tcp:close(Sock);
 								keep_alive ->
 									inet:setopts(Sock, [{packet, http}]),
-									request(C, #req{peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
+									request(C, #req{socket = Sock, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 							end;
 						{error, timeout} ->
 							?LOG_DEBUG("request timeout, sending error", []),
