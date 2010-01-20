@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
+% Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
 % All rights reserved.
 %
 % Code portions from Sean Hinde have been originally taken under BSD license from Trapexit at the address:
@@ -32,13 +32,13 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn('0.3.4').
+-vsn('0.4.0').
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % API
--export([start_link/1, stop/0, create_acceptor/0]).
+-export([start_link/1, stop/0, create_acceptor/0, websocket_pid_add/1, websocket_pid_remove/1]).
 
 % macros
 -define(SERVER, ?MODULE).
@@ -50,7 +50,9 @@
 	loop,
 	acceptor,
 	recv_timeout,
-	stream_support
+	stream_support,
+	ws_loop,
+	ws_references = []
 }).
 
 % includes
@@ -74,6 +76,16 @@ stop() ->
 create_acceptor() ->
 	gen_server:cast(?SERVER, create_acceptor).
 
+% Function -> ok
+% Description: Adds a new websocket pid reference to status
+websocket_pid_add(WsPid) ->
+	gen_server:cast(?SERVER, {add_ws_pid, WsPid}).
+
+% Function -> ok
+% Description: Remove a websocket pid reference from status
+websocket_pid_remove(WsPid) ->
+	gen_server:cast(?SERVER, {remove_ws_pid, WsPid}).
+
 % ============================ /\ API ======================================================================
 
 
@@ -93,7 +105,8 @@ init([Options]) ->
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{backlog, 128, fun is_integer/1, backlog_not_integer},
 		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer},
-		{stream_support, true, fun is_boolean/1, invalid_stream_support_option}
+		{stream_support, true, fun is_boolean/1, invalid_stream_support_option},
+		{ws_loop, none, fun is_function/1, ws_loop_not_function}
 	],
 	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -105,6 +118,7 @@ init([Options]) ->
 			Backlog = proplists:get_value(backlog, OptionsVerified),
 			RecvTimeout = proplists:get_value(recv_timeout, OptionsVerified),
 			StreamSupport = proplists:get_value(stream_support, OptionsVerified),
+			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
 			% ipv6 support
 			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			InetOpt = case Ip of
@@ -121,8 +135,8 @@ init([Options]) ->
 					% start listening
 					?LOG_DEBUG("starting listener loop", []),
 					% create acceptor
-					AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport),
-					{ok, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = AcceptorPid, recv_timeout = RecvTimeout, stream_support = StreamSupport}};
+					AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport, WsLoop),
+					{ok, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = AcceptorPid, recv_timeout = RecvTimeout, stream_support = StreamSupport, ws_loop = WsLoop}};
 				{error, Reason} ->
 					?LOG_ERROR("error starting: ~p", [Reason]),
 					% error
@@ -155,11 +169,19 @@ handle_cast(stop, State) ->
 	{stop, normal, State};
 
 % create
-handle_cast(create_acceptor, #state{listen_socket = ListenSocket, port = Port, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport} = State) ->
+handle_cast(create_acceptor, #state{listen_socket = ListenSocket, port = Port, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport, ws_loop = WsLoop} = State) ->
 	?LOG_DEBUG("creating new acceptor process", []),
-	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport),
+	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport, WsLoop),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
+% add websocket reference to server
+handle_cast({add_ws_pid, WsPid}, #state{ws_references = WsReferences} = State) ->
+	{noreply, State#state{ws_references = [WsPid|WsReferences]}};
+
+% remove websocket reference from server
+handle_cast({remove_ws_pid, WsPid}, #state{ws_references = WsReferences} = State) ->
+	{noreply, State#state{ws_references = lists:delete(WsPid, WsReferences)}};
+	
 % handle_cast generic fallback (ignore)
 handle_cast(_Msg, State) ->
 	?LOG_WARNING("received unknown cast message: ~p", [_Msg]),
@@ -171,9 +193,9 @@ handle_cast(_Msg, State) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % The current acceptor has died, respawn
-handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid, recv_timeout = RecvTimeout, stream_support = StreamSupport} = State) ->
+handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, port = Port, loop = Loop, acceptor = Pid, recv_timeout = RecvTimeout, stream_support = StreamSupport, ws_loop = WsLoop} = State) ->
 	?LOG_WARNING("acceptor has died with reason: ~p, respawning", [_Reason]),
-	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport),
+	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, Loop, RecvTimeout, StreamSupport, WsLoop),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % handle_info generic fallback (ignore)
@@ -186,10 +208,13 @@ handle_info(_Info, State) ->
 % Description: This function is called by a gen_server when it is about to terminate. When it returns,
 % the gen_server terminates with Reason. The return value is ignored.
 % ----------------------------------------------------------------------------------------------------------
-terminate(_Reason, #state{listen_socket = ListenSocket, acceptor = AcceptorPid}) ->
+terminate(_Reason, #state{listen_socket = ListenSocket, acceptor = AcceptorPid, ws_references = WsReferences}) ->
 	?LOG_INFO("shutting down server with Pid ~p", [self()]),
-	% kill acceptor - TODO: find a more gentle way to do so
+	% kill acceptor
 	exit(AcceptorPid, kill),
+	% send a shutdown message to all websockets, if any
+	?LOG_DEBUG("sending shutdown message to websockets, if any", []),
+	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsReferences),
 	% stop gen_tcp
 	gen_tcp:close(ListenSocket),
 	terminated.

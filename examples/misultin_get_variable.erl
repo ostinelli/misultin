@@ -28,7 +28,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_get_variable).
--export([start/1, stop/0, handle_http/1]).
+-export([start/1, stop/0]).
 
 % start misultin http server
 start(Port) ->

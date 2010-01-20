@@ -36,9 +36,6 @@
 % API
 -export([start_link/1, stop/0]).
 
-% internal functions
--export([handle_http/1]).
-
 % records
 -record(state, {
 	port

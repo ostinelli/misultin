@@ -1,8 +1,8 @@
 {application, misultin,
 [
-	{description, "Lightweight HTTP Server Library"},
-	{vsn, '0.3.4'},
-	{modules, [misultin_socket, misultin_req, misultin]},
+	{description, "Lightweight HTTP and Websockets Server Library"},
+	{vsn, '0.4.0'},
+	{modules, [misultin, misultin_req, misultin_socket, misultin_utility, misultin_websocket, misultin_ws]},
 	{registered, [misultin]},
 	{env, []},
 	{applications, [kernel, stdlib]}

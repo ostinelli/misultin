@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
+% Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
 % All rights reserved.
 %
 % Code portions from Sean Hinde have been originally taken under BSD license from Trapexit at the address:
@@ -31,16 +31,16 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn('0.3.4').
+-vsn('0.4.0').
 
 % API
--export([start_link/5]).
+-export([start_link/6]).
 
 % callbacks
--export([listener/5]).
+-export([init/6, listener/6]).
 
-% internale
--export([socket_loop/2]).
+% internal
+-export([socket_loop/2, send/2, close/1]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -51,7 +51,8 @@
 	port,
 	loop,
 	recv_timeout,
-	stream_support
+	stream_support,
+	ws_loop
 }).
 
 % includes
@@ -62,12 +63,18 @@
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
-start_link(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
-	proc_lib:spawn_link(?MODULE, listener, [ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport]).
+start_link(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop) ->
+	proc_lib:spawn_link(?MODULE, init, [ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop]).
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
-listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
+init(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop) ->
+	process_flag(trap_exit, true),
+	listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop).
+
+% Function: {ok,Pid} | ignore | {error, Error}
+% Description: Starts the socket.
+listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop) ->
 	case catch gen_tcp:accept(ListenSocket) of
 		{ok, Sock} ->
 			?LOG_DEBUG("accepted an incoming TCP connection, spawning controlling process", []),
@@ -81,7 +88,7 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 				end,
 				% build connection record
 				{ok, {Addr, Port}} = inet:peername(Sock),
-				C = #c{sock = Sock, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport},
+				C = #c{sock = Sock, port = ListenPort, loop = Loop, recv_timeout = RecvTimeout, stream_support = StreamSupport, ws_loop = WsLoop},
 				% jump to state 'request'
 				?LOG_DEBUG("jump to state request", []),
 				request(C, #req{socket = Sock, peer_addr = Addr, peer_port = Port})
@@ -90,7 +97,7 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport) ->
 			gen_tcp:controlling_process(Sock, Pid),
 			Pid ! set,
 			% get back to accept loop
-			listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport);
+			listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop);
 		_Else ->
 			?LOG_ERROR("accept failed error: ~p", [_Else]),
 			exit({error, accept_failed})
@@ -114,9 +121,12 @@ request(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 			request(C, Req);
 		{http, Sock, _Other} ->
 			?LOG_DEBUG("tcp error on incoming request: ~p, send bad request error back", [_Other]),
-			send(Sock, misultin_utility:get_http_status_code(400))
+			send(Sock, misultin_utility:get_http_status_code(400));
+		_Other ->
+			request(C, Req)
 	after RecvTimeout ->
 		?LOG_DEBUG("normal receive timeout, exit", []),
+		close(Sock),
 		exit(normal)
 	end.
 
@@ -126,7 +136,7 @@ headers(C, Req, H) ->
 headers(#c{sock = Sock}, _Req, _H, ?MAX_HEADERS_COUNT) ->
 	?LOG_DEBUG("too many headers sent, bad request",[]),
 	send(Sock, misultin_utility:get_http_status_code(400));
-headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) ->
+headers(#c{sock = Sock, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
 	inet:setopts(Sock, [{active, once}]),
 	receive
 		{http, Sock, {http_header, _, 'Content-Length', _, Val}} ->
@@ -140,10 +150,26 @@ headers(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req, H, HeaderCount) ->
 		{http, Sock, {http_error, "\n"}} ->
 			headers(C, Req, H, HeaderCount);
 		{http, Sock, http_eoh} ->
-			body(C, Req#req{headers = lists:reverse(H)});
+			Headers = lists:reverse(H),
+			{_PathType, Path} = Req#req.uri,
+			% check if it's a websocket request
+			CheckWs = case WsLoop of
+				none -> false;
+				_Function -> misultin_websocket:check(Path, Headers)
+			end,	
+			case CheckWs of
+				false ->
+					?LOG_DEBUG("normal http request received", []),
+					body(C, Req#req{headers = Headers});
+				{true, Origin, Host, Path} ->
+					?LOG_DEBUG("websocket request received", []),
+					misultin_websocket:connect(#ws{socket = Sock, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, origin = Origin, host = Host, path = Path}, WsLoop)
+			end;
 		{http, Sock, _Other} ->
 			?LOG_DEBUG("tcp error treating headers: ~p, send bad request error back", [_Other]),
-			send(Sock, misultin_utility:get_http_status_code(400))
+			send(Sock, misultin_utility:get_http_status_code(400));
+		_Other ->
+			headers(C, Req, H, HeaderCount)
 	after RecvTimeout ->
 		?LOG_DEBUG("headers timeout, sending request timeout error", []),
 		send(Sock, misultin_utility:get_http_status_code(408))
@@ -168,8 +194,8 @@ keep_alive({1,0}, Head) ->
 		"KEEP-ALIVE"	-> keep_alive;
 		_				-> close
 	end;
-keep_alive({0,9}, _)			-> close;
-keep_alive(_Vsn, _KA)			-> close.
+keep_alive({0,9}, _)	-> close;
+keep_alive(_Vsn, _KA)	-> close.
 
 % BODY: collect the body of the HTTP request if there is one, and lookup and call the implementation callback.
 % Depending on whether the request is persistent transition back to state request to await the next request or exit.
@@ -180,7 +206,8 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 			Close = handle_get(C, Req),
 			case Close of
 				close ->
-					gen_tcp:close(Sock);
+					% close socket
+					close(Sock);
 				keep_alive ->
 					request(C, #req{socket = Sock, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
 			end;
@@ -197,7 +224,8 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 					Close = handle_post(C, Req),
 					case Close of
 						close ->
-							gen_tcp:close(Sock);
+							% close socket
+							close(Sock);
 						keep_alive ->
 							inet:setopts(Sock, [{packet, http}]),
 							request(C, #req{socket = Sock, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
@@ -210,7 +238,8 @@ body(#c{sock = Sock, recv_timeout = RecvTimeout} = C, Req) ->
 							Close = handle_post(C, Req#req{body = Bin}),
 							case Close of
 								close ->
-									gen_tcp:close(Sock);
+									% close socket
+									close(Sock);
 								keep_alive ->
 									inet:setopts(Sock, [{packet, http}]),
 									request(C, #req{socket = Sock, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port})
