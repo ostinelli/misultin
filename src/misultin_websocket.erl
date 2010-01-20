@@ -6,7 +6,7 @@
 % Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>, Joe Armstrong.
 % All rights reserved.
 %
-% Code portions from Joe Armostrong have been originally taken under MIT license at the address:
+% Code portions from Joe Armstrong have been originally taken under MIT license at the address:
 % <http://armstrongonsoftware.blogspot.com/2009/12/comet-is-dead-long-live-websockets.html>
 %
 % BSD License
