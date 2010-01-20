@@ -37,7 +37,7 @@
 -export([start_link/6]).
 
 % callbacks
--export([init/6, listener/6]).
+-export([listener/6]).
 
 % internal
 -export([socket_loop/2, send/2, close/1]).
@@ -64,13 +64,7 @@
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
 start_link(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop) ->
-	proc_lib:spawn_link(?MODULE, init, [ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop]).
-
-% Function: {ok,Pid} | ignore | {error, Error}
-% Description: Starts the socket.
-init(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop) ->
-	process_flag(trap_exit, true),
-	listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop).
+	proc_lib:spawn_link(?MODULE, listener, [ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop]).
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.

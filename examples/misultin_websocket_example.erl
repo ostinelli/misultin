@@ -71,7 +71,7 @@ handle_http(Req, Port) ->
 						};
 					} else {
 						// browser does not support websockets
-						document.getElementById('status').innerHTML = \"sorry, your browser does not support websockets.\";
+						addStatus(\"sorry, your browser does not support websockets.\");
 					}
 				}
 			</script>
@@ -90,6 +90,6 @@ handle_websocket(Ws) ->
 		_Ignore ->
 			handle_websocket(Ws)
 	after 5000 ->
-		Ws:send(["pushing!"]),
+		Ws:send("pushing!"),
 		handle_websocket(Ws)
 	end.
