@@ -6,8 +6,8 @@
 % Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>, Joe Armstrong.
 % All rights reserved.
 %
-% Code portions from Sean Hinde have been originally taken under BSD license from Trapexit at the address:
-% <http://www.trapexit.org/A_fast_web_server_demonstrating_some_undocumented_Erlang_features>
+% Code portions from Joe Armostrong have been originally taken under MIT license at the address:
+% <http://armstrongonsoftware.blogspot.com/2009/12/comet-is-dead-long-live-websockets.html>
 %
 % BSD License
 % 
