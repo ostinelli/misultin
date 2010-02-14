@@ -13,7 +13,7 @@ INSTALL INSTRUCTIONS
 Run the appropriate script:
 
     * OSX | Linux users:  make
-    * Windows users: compile.bat. Note that Erlang bin directory (by default, C:\Program Files\erl5.7.2\bin\) must be in your path for the script to work.
+    * Windows users: make.bat. Note that Erlang bin directory (by default, C:\Program Files\erl5.7.2\bin\) must be in your path for the script to work.
 
 This script will compile the .erl files in the Misultin src directory and save the compiled files into the ebin directory.
 
