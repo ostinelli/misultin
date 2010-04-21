@@ -63,6 +63,9 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
+0.5:   - added SSL support
+       - refactoring of the acceptor loop
+
 0.4:   - added preliminary websocket support
 
 0.3.4: - added Req support to return the socket handling the request

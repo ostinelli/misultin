@@ -1,9 +1,9 @@
 % ==========================================================================================================
-% MISULTIN - Websocket Request
+% MISULTIN - Example: Echoes inputted GET variables into an XML.
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>.
+% Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.
 %
 % BSD License
@@ -12,11 +12,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%	 following disclaimer.
+%    following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
+%    the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%	 products derived from this software without specific prior written permission.
+%    products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -27,48 +27,25 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ws, [Ws, SocketPid]).
--vsn("0.5.0").
+-module(misultin_ssl).
+-export([start/1, stop/0]).
 
-% API
--export([raw/0, get/1, send/1]).
+% start misultin http server
+start(Port) ->
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end},
+		{ssl, [
+			{certfile, "../priv/test_certificate.pem"},
+			{keyfile, "../priv/test_privkey.pem"},
+			{password, "misultin"}
+		]}
+	]).
 
-% includes
--include("../include/misultin.hrl").
+% stop misultin
+stop() ->
+	misultin:stop().
 
+% callback on request received
+handle_http(Req) ->	
+	% output
+	Req:ok("ok").
 
-% ============================ \/ API ======================================================================
-
-% Description: Returns raw websocket content.
-raw() ->
-	Ws.
-
-% Description: Get websocket info.
-get(socket) ->
-	Ws#ws.socket;
-get(socket_mode) ->
-	Ws#req.socket_mode;
-get(peer_addr) ->
-	Ws#ws.peer_addr;
-get(peer_port) ->
-	Ws#ws.peer_port;
-get(peer_cert) ->
-	Ws#ws.peer_cert;
-get(origin) ->
-	Ws#ws.origin;
-get(host) ->
-	Ws#ws.host;
-get(path) ->
-	Ws#ws.path.
-	
-% send data
-send(Data) ->
-	SocketPid ! {send, Data}.
-		
-% ============================ /\ API ======================================================================
-
-
-
-% ============================ \/ INTERNAL FUNCTIONS =======================================================
-
-% ============================ /\ INTERNAL FUNCTIONS =======================================================

@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn("0.4.0").
+-vsn("0.5.0").
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -61,10 +61,14 @@ raw() ->
 % Description: Get request info.
 get(socket) ->
 	Req#req.socket;
+get(socket_mode) ->
+	Req#req.socket_mode;
 get(peer_addr) ->
 	Req#req.peer_addr;
 get(peer_port) ->
 	Req#req.peer_port;
+get(peer_cert) ->
+	Req#req.peer_cert;
 get(connection) ->
 	Req#req.connection;
 get(content_length) ->

@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_websocket).
--vsn("0.4.0").
+-vsn("0.5.0").
 
 % API
 -export([check/2, connect/2]).
@@ -57,7 +57,7 @@ check(Path, Headers) ->
 	end.
 
 % Connect and handshake with Websocket.
-connect(#ws{socket = Socket, origin = Origin, host = Host, path = Path} = Ws, WsLoop) ->
+connect(#ws{socket = Socket, socket_mode = SocketMode, origin = Origin, host = Host, path = Path} = Ws, WsLoop) ->
 	?LOG_DEBUG("received websocket handshake request", []),
 	HandshakeServer = ["HTTP/1.1 101 Web Socket Protocol Handshake\r\n",
 		"Upgrade: WebSocket\r\n",
@@ -66,17 +66,17 @@ connect(#ws{socket = Socket, origin = Origin, host = Host, path = Path} = Ws, Ws
 		"WebSocket-Location: ws://", lists:concat([Host, Path]), "\r\n\r\n"
 	],
 	% send handshake back
-	misultin_socket:send(Socket, HandshakeServer),
+	misultin_socket:send(Socket, HandshakeServer, SocketMode),
 	% spawn controlling process
 	Ws0 = misultin_ws:new(Ws, self()),
 	WsHandleLoopPid = spawn(fun() -> WsLoop(Ws0) end),
 	erlang:monitor(process, WsHandleLoopPid),
 	% set opts
-	inet:setopts(Socket, [{packet, 0}, {active, true}]),
+	misultin_socket:setopts(Socket, [{packet, 0}, {active, true}], SocketMode),
 	% add main websocket pid to misultin server reference
 	misultin:websocket_pid_add(self()),
 	% start listening for incoming data
-	ws_loop(Socket, none, WsHandleLoopPid).	
+	ws_loop(Socket, none, WsHandleLoopPid, SocketMode).	
 	
 % ============================ /\ API ======================================================================
 
@@ -84,14 +84,14 @@ connect(#ws{socket = Socket, origin = Origin, host = Host, path = Path} = Ws, Ws
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % Main Websocket loop
-ws_loop(Socket, Buffer, WsHandleLoopPid) ->
+ws_loop(Socket, Buffer, WsHandleLoopPid, SocketMode) ->
 	receive
 		{tcp, Socket, Data} ->
-			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid);
+			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode);
 		{tcp_closed, Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
-			websocket_close(Socket, WsHandleLoopPid);
+			websocket_close(Socket, WsHandleLoopPid, SocketMode);
 		{'DOWN', Ref, process, WsHandleLoopPid, Reason} ->
 			case Reason of
 				normal ->
@@ -102,40 +102,40 @@ ws_loop(Socket, Buffer, WsHandleLoopPid) ->
 			% demonitor
 			erlang:demonitor(Ref),
 			% close websocket and custom controlling loop
-			websocket_close(Socket, WsHandleLoopPid);
+			websocket_close(Socket, WsHandleLoopPid, SocketMode);
 		{send, Data} ->
 			?LOG_DEBUG("sending data to websocket: ~p", [Data]),
-			misultin_socket:send(Socket, [0, Data, 255]),
-			ws_loop(Socket, Buffer, WsHandleLoopPid);
+			misultin_socket:send(Socket, [0, Data, 255], SocketMode),
+			ws_loop(Socket, Buffer, WsHandleLoopPid, SocketMode);
 		shutdown ->
 			?LOG_DEBUG("shutdown request received, closing websocket with pid ~p", [self()]),
 			% close websocket and custom controlling loop
-			websocket_close(Socket, WsHandleLoopPid);
+			websocket_close(Socket, WsHandleLoopPid, SocketMode);
 		_Ignored ->
 			?LOG_WARNING("received unexpected message, ignoring: ~p", [_Ignored]),
-			ws_loop(Socket, Buffer, WsHandleLoopPid)
+			ws_loop(Socket, Buffer, WsHandleLoopPid, SocketMode)
 	end.
 
 % Buffering and data handling
-handle_data(none, [0|T], Socket, WsHandleLoopPid) ->
-	handle_data([], T, Socket, WsHandleLoopPid);
-handle_data(none, [], Socket, WsHandleLoopPid) ->
-	ws_loop(Socket, none, WsHandleLoopPid);
-handle_data(L, [255|T], Socket, WsHandleLoopPid) ->
+handle_data(none, [0|T], Socket, WsHandleLoopPid, SocketMode) ->
+	handle_data([], T, Socket, WsHandleLoopPid, SocketMode);
+handle_data(none, [], Socket, WsHandleLoopPid, SocketMode) ->
+	ws_loop(Socket, none, WsHandleLoopPid, SocketMode);
+handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode) ->
 	WsHandleLoopPid ! {browser, lists:reverse(L)},
-	handle_data(none, T, Socket, WsHandleLoopPid);
-handle_data(L, [H|T], Socket, WsHandleLoopPid) ->
-	handle_data([H|L], T, Socket, WsHandleLoopPid);
-handle_data([], L, Socket, WsHandleLoopPid) ->
-	ws_loop(Socket, L, WsHandleLoopPid).
+	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode);
+handle_data(L, [H|T], Socket, WsHandleLoopPid, SocketMode) ->
+	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode);
+handle_data([], L, Socket, WsHandleLoopPid, SocketMode) ->
+	ws_loop(Socket, L, WsHandleLoopPid, SocketMode).
 
 % Close socket and custom handling loop dependency
-websocket_close(Socket, WsHandleLoopPid) ->
+websocket_close(Socket, WsHandleLoopPid, SocketMode) ->
 	% remove main websocket pid from misultin server reference
 	misultin:websocket_pid_remove(self()),
 	% kill custom handling loop process
 	exit(WsHandleLoopPid, kill),
 	% close main socket
-	misultin_socket:close(Socket).
+	misultin_socket:close(Socket, SocketMode).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

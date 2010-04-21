@@ -28,7 +28,7 @@
 
 % define debug
 -ifdef(log_debug).
--define(LOG_DEBUG(Str, Args), erlang:apply(error_logger, info_msg, [lists:concat(["[DEBUG]	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
+-define(LOG_DEBUG(Str, Args), erlang:apply(error_logger, info_msg, [lists:concat(["[DEBUG]	pid: ", pid_to_list(self()), "~n	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
 -define(LOG_INFO(Str, Args), erlang:apply(error_logger, info_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
 -define(LOG_WARNING(Str, Args), erlang:apply(error_logger, warning_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
 -define(LOG_ERROR(Str, Args), erlang:apply(error_logger, error_msg, [lists:concat(["	module: ", ?MODULE, "~n	line: ", ?LINE, "~n", Str, "~n"]), Args])).
@@ -56,8 +56,10 @@
 % Request
 -record(req, {
 	socket,						% the socket handling the request
+	socket_mode,				% http | ssl
 	peer_addr,					% peer IP | undefined
 	peer_port,					% peer port | undefined
+	peer_cert,					% undefined | the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
 	connection = keep_alive,	% keep_alive | close
 	content_length,				% Integer
 	vsn,						% {Maj,Min}
@@ -71,8 +73,10 @@
 % Websocket Request
 -record(ws, {
 	socket,						% the socket handling the request
+	socket_mode,				% http | ssl
 	peer_addr,					% peer IP | undefined
 	peer_port,					% peer port | undefined
+	peer_cert,					% undefined | the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
 	origin,						% the originator
 	host,						% the host
 	path						% the websocket GET request path
