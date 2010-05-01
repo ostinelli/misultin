@@ -78,9 +78,9 @@ listener(ListenSocket, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop, Soc
 				case ssl:ssl_accept(Sock, 60000) of
 					ok ->
 						create_socket_pid(Sock, ListenPort, Loop, RecvTimeout, StreamSupport, WsLoop, SocketMode);
-					{error, Reason} ->
+					{error, _Reason} ->
 						% could not negotiate a SSL transaction, leave process
-						?LOG_WARNING("could not negotiate a SSL transaction: ~p", [Reason]),
+						?LOG_WARNING("could not negotiate a SSL transaction: ~p", [_Reason]),
 						catch close(Sock, SocketMode)
 				end
 			end),
@@ -176,20 +176,20 @@ headers(#c{sock = Sock, socket_mode = SocketMode}, _Req, _H, ?MAX_HEADERS_COUNT)
 headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
 	setopts(Sock, [{active, once}], SocketMode),
 	receive
-		{SocketMode, Sock, {http_header, _, 'Content-Length', _, Val} = Head} ->
-			?LOG_DEBUG("received header: ~p", [Head]),
+		{SocketMode, Sock, {http_header, _, 'Content-Length', _, Val} = _Head} ->
+			?LOG_DEBUG("received header: ~p", [_Head]),
 			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
-		{SocketMode, Sock, {http_header, _, 'Connection', _, Val} = Head} ->
-			?LOG_DEBUG("received header: ~p", [Head]),
+		{SocketMode, Sock, {http_header, _, 'Connection', _, Val} = _Head} ->
+			?LOG_DEBUG("received header: ~p", [_Head]),
 			headers(C, Req#req{connection = keep_alive(Req#req.vsn, Val)}, [{'Connection', Val}|H], HeaderCount + 1);
-		{SocketMode, Sock, {http_header, _, Header, _, Val} = Head} ->
-			?LOG_DEBUG("received header: ~p", [Head]),
+		{SocketMode, Sock, {http_header, _, Header, _, Val} = _Head} ->
+			?LOG_DEBUG("received header: ~p", [_Head]),
 			headers(C, Req, [{Header, Val}|H], HeaderCount + 1);
-		{SocketMode, Sock, {http_error, "\r\n"} = Head} ->
-			?LOG_DEBUG("received header: ~p", [Head]),
+		{SocketMode, Sock, {http_error, "\r\n"} = _Head} ->
+			?LOG_DEBUG("received header: ~p", [_Head]),
 			headers(C, Req, H, HeaderCount);
-		{SocketMode, Sock, {http_error, "\n"} = Head} ->
-			?LOG_DEBUG("received header: ~p", [Head]),
+		{SocketMode, Sock, {http_error, "\n"} = _Head} ->
+			?LOG_DEBUG("received header: ~p", [_Head]),
 			headers(C, Req, H, HeaderCount);
 		{SocketMode, Sock, http_eoh} ->
 			?LOG_DEBUG("received EOH header", []),
