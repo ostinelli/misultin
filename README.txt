@@ -37,7 +37,7 @@ If you did not proceed with step 2, copy the file misultin_hello_world.erl from 
 In the shell, compile and run misultin_hello_world by issuing:
 
 (one@rob.loc)1>c(misultin_hello_world).
-{ok,example_simple}
+{ok,misultin_hello_world}
 (one@rob.loc)2>misultin_hello_world:start(8080).
 {ok,<0.50.0>}
 
@@ -62,6 +62,11 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 
 CHANGELOG
 ==========================================================================================================
+
+0.6:   - added HTTP compression option
+       - refactoring of the main server loop, so that it is now isolated from the HTTP functionality
+       - removed unnecessary compilation warnings
+       - replaced proplists:get_value with much faster utility function
 
 0.5:   - added SSL support
        - refactoring of the acceptor loop

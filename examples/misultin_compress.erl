@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Sends file as attachment.
+% MISULTIN - Example: Hello World Compressed.
 %
 % >-|-|-(°>
 % 
@@ -27,12 +27,12 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_file).
+-module(misultin_compress).
 -export([start/1, stop/0]).
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]).
+	misultin:start_link([{port, Port}, {compress, true}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
@@ -40,4 +40,4 @@ stop() ->
 
 % callback on request received
 handle_http(Req) ->	
-	Req:file(attachment, "1.png").
+	Req:ok("Hello World Compressed.").

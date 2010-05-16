@@ -28,7 +28,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_ws, [Ws, SocketPid]).
--vsn("0.5.0").
+-vsn("0.6.0").
 
 % API
 -export([raw/0, get/1, send/1]).

@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Echoes inputted GET variables into an XML.
+% MISULTIN - Example: Hello World SSL.
 %
 % >-|-|-(°>
 % 
@@ -47,5 +47,5 @@ stop() ->
 % callback on request received
 handle_http(Req) ->	
 	% output
-	Req:ok("ok").
+	Req:ok("Hello World SSL.").
 

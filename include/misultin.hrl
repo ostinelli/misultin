@@ -53,6 +53,14 @@
 -endif.
 -endif.
 
+% misultin server Options
+-record(custom_opts, {
+	compress,					% send compressed output if supported by browser
+	stream_support,				% stream support option
+	loop,						% the fun handling requests
+	ws_loop						% the fun handling websockets 
+}).
+
 % Request
 -record(req, {
 	socket,						% the socket handling the request

@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_websocket).
--vsn("0.5.0").
+-vsn("0.6.0").
 
 % API
 -export([check/2, connect/2]).
@@ -74,7 +74,7 @@ connect(#ws{socket = Socket, socket_mode = SocketMode, origin = Origin, host = H
 	% set opts
 	misultin_socket:setopts(Socket, [{packet, 0}, {active, true}], SocketMode),
 	% add main websocket pid to misultin server reference
-	misultin:websocket_pid_add(self()),
+	misultin:persistent_socket_pid_add(self()),
 	% start listening for incoming data
 	ws_loop(Socket, none, WsHandleLoopPid, SocketMode).	
 	
@@ -132,7 +132,7 @@ handle_data([], L, Socket, WsHandleLoopPid, SocketMode) ->
 % Close socket and custom handling loop dependency
 websocket_close(Socket, WsHandleLoopPid, SocketMode) ->
 	% remove main websocket pid from misultin server reference
-	misultin:websocket_pid_remove(self()),
+	misultin:persistent_socket_pid_remove(self()),
 	% kill custom handling loop process
 	exit(WsHandleLoopPid, kill),
 	% close main socket

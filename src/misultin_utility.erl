@@ -28,10 +28,10 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_utility).
--vsn("0.5.0").
+-vsn("0.6.0").
 
 % API
--export([get_http_status_code/1, get_content_type/1]).
+-export([get_http_status_code/1, get_content_type/1, get_key_value/2]).
 
 
 % ============================ \/ API ======================================================================
@@ -319,7 +319,14 @@ get_content_type(FileName) ->
 		".xof" -> "x-world/x-vrml";
 		_ -> "application/octet-stream"
 	end.
-	
+
+% faster than proplists:get_value
+get_key_value(Key, List)->
+	case lists:keyfind(Key, 1, List) of
+		false-> undefined;
+		{_K, Value}-> Value
+	end.
+
 % ============================ /\ API ======================================================================
 
 

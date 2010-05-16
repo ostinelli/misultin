@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn("0.5.0").
+-vsn("0.6.0").
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -132,7 +132,7 @@ parse_qs() ->
 % Description: Parse Post
 parse_post() ->
 	% get header confirmation
-	case proplists:get_value('Content-Type', Req#req.headers) of
+	case misultin_utility:get_key_value('Content-Type', Req#req.headers) of
 		undefined ->
 			[];
 		ContentType ->
