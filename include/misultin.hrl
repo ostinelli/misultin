@@ -58,7 +58,8 @@
 	compress,					% send compressed output if supported by browser
 	stream_support,				% stream support option
 	loop,						% the fun handling requests
-	ws_loop						% the fun handling websockets 
+	ws_loop,					% the loop handling websockets
+	ws_autoexit					% true | false
 }).
 
 % Request
@@ -82,10 +83,13 @@
 -record(ws, {
 	socket,						% the socket handling the request
 	socket_mode,				% http | ssl
+	ws_autoexit,				% websocket process is automatically killed: true | false
 	peer_addr,					% peer IP | undefined
 	peer_port,					% peer port | undefined
 	peer_cert,					% undefined | the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
+	vsn,						% {Maj,Min} | {'draft-hixie', Ver}
 	origin,						% the originator
 	host,						% the host
-	path						% the websocket GET request path
+	path,						% the websocket GET request path
+	headers						% [{Tag, Val}]
 }).

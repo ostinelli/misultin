@@ -63,6 +63,12 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
+0.6.1: - added support to websocket protocol hixie draft 76 [thanks to sergio veiga]
+       - added support to multiple websocket draft protocols [for backwards compatibility]
+       - added ws_autoexit option which allows to get an event on websocket controlling processes [issue track #15, suggestion of esente]
+       - added headers also in misultin websockets [thanks to jlirochon]
+       - made it basho's rebar friendly [thanks to mrinalwadhwa]
+
 0.6:   - added HTTP compression option
        - refactoring of the main server loop, so that it is now isolated from the HTTP functionality
        - removed unnecessary compilation warnings

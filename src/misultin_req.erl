@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn("0.6.0").
+-vsn("0.6.1").
 
 % macros
 -define(PERCENT, 37).  % $\%

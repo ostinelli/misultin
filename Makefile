@@ -8,7 +8,7 @@ ERLC_FLAGS := -W -I $(INCLUDE_DIR) -o $(EBIN_DIR)
 all:
 	@mkdir -p $(EBIN_DIR)
 	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/*.app $(EBIN_DIR)/
+	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
 	
 clean:
 	@rm -rf $(EBIN_DIR)/*
@@ -17,10 +17,10 @@ clean:
 debug:
 	@mkdir -p $(EBIN_DIR)
 	$(ERLC) -D log_debug $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/*.app $(EBIN_DIR)/
+	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
 
 example:
 	@mkdir -p $(EBIN_DIR)
 	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/*.app $(EBIN_DIR)/
+	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
 	$(ERLC) $(ERLC_FLAGS) $(EXAMPLES_DIR)/*.erl

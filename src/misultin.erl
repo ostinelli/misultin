@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn("0.6.0").
+-vsn("0.6.1").
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -107,7 +107,8 @@ init([Options]) ->
 		{compress, false, fun is_boolean/1, invalid_compress_option},
 		{stream_support, true, fun is_boolean/1, invalid_stream_support_option},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
-		{ws_loop, none, fun is_function/1, ws_loop_not_function}
+		{ws_loop, none, fun is_function/1, ws_loop_not_function},
+		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option}
 	],
 	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -124,6 +125,7 @@ init([Options]) ->
 			StreamSupport = proplists:get_value(stream_support, OptionsVerified),
 			Loop = proplists:get_value(loop, OptionsVerified),
 			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
+			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
 			% ipv6 support
 			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			% set additional options according to socket mode if necessary
@@ -165,7 +167,7 @@ init([Options]) ->
 					% set options
 					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
 					% build custom_opts
-					CustomOpts = #custom_opts{compress = Compress, stream_support = StreamSupport, loop = Loop, ws_loop = WsLoop},
+					CustomOpts = #custom_opts{compress = Compress, stream_support = StreamSupport, loop = Loop, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
 					% create listening socket and acceptor
 					case create_listener_and_acceptor(Port, OptionsTcp, RecvTimeout, SocketMode, CustomOpts) of
 						{ok, ListenSocket, AcceptorPid} ->

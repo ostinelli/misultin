@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.6.0").
+-vsn("0.6.1").
 
 % API
 -export([handle_data/8]).
@@ -52,7 +52,8 @@
 	compress,
 	stream_support,
 	loop,
-	ws_loop
+	ws_loop,
+	ws_autoexit
 }).
 
 % includes
@@ -64,7 +65,7 @@
 % Callback from misultin_socket
 handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% build connection & request records
-	C = #c{sock = Sock, socket_mode = SocketMode, port = ListenPort, recv_timeout = RecvTimeout, compress = CustomOpts#custom_opts.compress, stream_support = CustomOpts#custom_opts.stream_support, loop = CustomOpts#custom_opts.loop, ws_loop = CustomOpts#custom_opts.ws_loop},
+	C = #c{sock = Sock, socket_mode = SocketMode, port = ListenPort, recv_timeout = RecvTimeout, compress = CustomOpts#custom_opts.compress, stream_support = CustomOpts#custom_opts.stream_support, loop = CustomOpts#custom_opts.loop, ws_loop = CustomOpts#custom_opts.ws_loop, ws_autoexit = CustomOpts#custom_opts.ws_autoexit},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
 	request(C, Req).
@@ -138,14 +139,14 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			CheckWs = case WsLoop of
 				none -> false;
 				_Function -> misultin_websocket:check(Path, Headers)
-			end,	
+			end,
 			case CheckWs of
 				false ->
 					?LOG_DEBUG("normal http request received", []),
 					body(C, Req#req{headers = Headers});
-				{true, Origin, Host, Path} ->
+				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(#ws{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, origin = Origin, host = Host, path = Path}, WsLoop)
+					misultin_websocket:connect(Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_DEBUG("tcp error treating headers: ~p, send bad request error back", [_Other]),
@@ -228,10 +229,10 @@ body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = C, 
 									request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert})
 							end;
 						{error, timeout} ->
-							?LOG_DEBUG("request timeout, sending error", []),
+							?LOG_WARNING("request timeout, sending error", []),
 							misultin_socket:send(Sock, misultin_utility:get_http_status_code(408), SocketMode); 
 						_Other ->
-							?LOG_DEBUG("tcp error treating post data: ~p, send bad request error back", [_Other]),
+							?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [_Other]),
 							misultin_socket:send(Sock, misultin_utility:get_http_status_code(400), SocketMode)
 					end
 			end;

@@ -46,7 +46,7 @@ FOR %%f in (examples\*.erl) DO erlc -W %command% -o ebin "%%f"
 :COMPILE
 mkdir ebin
 FOR %%f in (src\*.erl) DO erlc -W %command% -o ebin "%%f"
-copy src\misultin.app ebin\misultin.app /Y
+copy src\misultin.app.src ebin\misultin.app /Y
 GOTO END
 
 :CLEAN

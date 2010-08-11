@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Main
+% MISULTIN - Various Utilities
 %
 % >-|-|-(°>
 % 
@@ -28,10 +28,10 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_utility).
--vsn("0.6.0").
+-vsn("0.6.1").
 
 % API
--export([get_http_status_code/1, get_content_type/1, get_key_value/2]).
+-export([get_http_status_code/1, get_content_type/1, get_key_value/2, header_get_value/2]).
 
 
 % ============================ \/ API ======================================================================
@@ -325,6 +325,27 @@ get_key_value(Key, List)->
 	case lists:keyfind(Key, 1, List) of
 		false-> undefined;
 		{_K, Value}-> Value
+	end.
+
+% Function: Value | false
+% Description: Find atom Tag in Headers, Headers being both atoms [for known headers] and strings. Comparison on string Header Tags is case insensitive.
+header_get_value(Tag, Headers) when is_atom(Tag) ->
+	case lists:keyfind(Tag, 1, Headers) of
+		false ->
+			% header not found, test also conversion to string -> convert all string tags to lowercase (HTTP tags are case insensitive)
+			F =  fun({HTag, HValue}) -> 
+				case is_atom(HTag) of
+					true -> {HTag, HValue};
+					false -> {string:to_lower(HTag), HValue}
+				end
+			end,
+			HeadersStr = lists:map(F, Headers),
+			% test
+			case lists:keyfind(string:to_lower(atom_to_list(Tag)), 1, HeadersStr) of
+				false -> false;
+				{_, Value} -> Value
+			end;
+		{_, Value} -> Value
 	end.
 
 % ============================ /\ API ======================================================================
