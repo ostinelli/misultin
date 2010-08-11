@@ -176,6 +176,7 @@ handshake({'draft-hixie', 68}, _Req, _Headers, {Path, Origin, Host}) ->
 
 % Function: List
 % Description: Builds the challenge for a handshake response.
+% Code portions from Sergio Veiga <http://sergioveiga.com/index.php/2010/06/17/websocket-handshake-76-in-erlang/>
 build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
 	Ikey1 = [D || D <- Key1, $0 =< D, D =< $9],
 	Ikey2 = [D || D <- Key2, $0 =< D, D =< $9],
