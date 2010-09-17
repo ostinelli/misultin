@@ -85,11 +85,11 @@ handle_http(Req, Port) ->
 handle_websocket(Ws) ->
 	receive
 		{browser, Data} ->
-			Ws:send(["received '", Data, "'"]),
+			Ws:send(iolist_to_binary(["received '", Data, "'"])),
 			handle_websocket(Ws);
 		_Ignore ->
 			handle_websocket(Ws)
 	after 5000 ->
-		Ws:send("pushing!"),
+		Ws:send(<<"pushing!">>),
 		handle_websocket(Ws)
 	end.
