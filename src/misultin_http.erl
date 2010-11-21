@@ -47,7 +47,6 @@
 	port,
 	recv_timeout,
 	compress,
-	stream_support,
 	loop,
 	ws_loop,
 	ws_autoexit
@@ -62,7 +61,7 @@
 % Callback from misultin_socket
 handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% build connection & request records
-	C = #c{sock = Sock, socket_mode = SocketMode, port = ListenPort, recv_timeout = RecvTimeout, compress = CustomOpts#custom_opts.compress, stream_support = CustomOpts#custom_opts.stream_support, loop = CustomOpts#custom_opts.loop, ws_loop = CustomOpts#custom_opts.ws_loop, ws_autoexit = CustomOpts#custom_opts.ws_autoexit},
+	C = #c{sock = Sock, socket_mode = SocketMode, port = ListenPort, recv_timeout = RecvTimeout, compress = CustomOpts#custom_opts.compress, loop = CustomOpts#custom_opts.loop, ws_loop = CustomOpts#custom_opts.ws_loop, ws_autoexit = CustomOpts#custom_opts.ws_autoexit},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
 	request(C, Req).

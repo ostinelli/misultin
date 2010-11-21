@@ -105,7 +105,6 @@ init([Options]) ->
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		% misultin
 		{compress, false, fun is_boolean/1, invalid_compress_option},
-		{stream_support, true, fun is_boolean/1, invalid_stream_support_option},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{ws_loop, none, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option}
@@ -122,7 +121,6 @@ init([Options]) ->
 			SslOptions0 = proplists:get_value(ssl, OptionsVerified),
 			% misultin options
 			Compress = proplists:get_value(compress, OptionsVerified),
-			StreamSupport = proplists:get_value(stream_support, OptionsVerified),
 			Loop = proplists:get_value(loop, OptionsVerified),
 			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
@@ -167,7 +165,7 @@ init([Options]) ->
 					% set options
 					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
 					% build custom_opts
-					CustomOpts = #custom_opts{compress = Compress, stream_support = StreamSupport, loop = Loop, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
+					CustomOpts = #custom_opts{compress = Compress, loop = Loop, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
 					% create listening socket and acceptor
 					case create_listener_and_acceptor(Port, OptionsTcp, RecvTimeout, SocketMode, CustomOpts) of
 						{ok, ListenSocket, AcceptorPid} ->
