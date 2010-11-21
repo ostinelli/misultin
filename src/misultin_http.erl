@@ -31,13 +31,10 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.6.1").
+-vsn("0.6.2").
 
 % API
 -export([handle_data/8]).
-
-% internal
--export([socket_loop/2]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -94,7 +91,7 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = 
 			request(C, Req);
 		{http, Sock, {http_error, _Other}}  ->
 			?LOG_WARNING("received a http error, might be a ssl request while socket in http mode: ~p, sending forbidden response and closing socket", [_Other]),
-			misultin_socket:send(Sock, misultin_utility:get_http_status_code(403), SocketMode),
+			misultin_socket:send(Sock, build_error_message(403, Req), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
 			exit(normal);
 		_Other ->
@@ -110,9 +107,9 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
-headers(#c{sock = Sock, socket_mode = SocketMode}, _Req, _H, ?MAX_HEADERS_COUNT) ->
+headers(#c{sock = Sock, socket_mode = SocketMode}, Req, _H, ?MAX_HEADERS_COUNT) ->
 	?LOG_DEBUG("too many headers sent, bad request",[]),
-	misultin_socket:send(Sock, misultin_utility:get_http_status_code(400), SocketMode);
+	misultin_socket:send(Sock, build_error_message(400, Req), SocketMode);
 headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	receive
@@ -150,13 +147,13 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_DEBUG("tcp error treating headers: ~p, send bad request error back", [_Other]),
-			misultin_socket:send(Sock, misultin_utility:get_http_status_code(400), SocketMode);
+			misultin_socket:send(Sock, build_error_message(400, Req), SocketMode);
 		_Other ->
 			?LOG_DEBUG("received unknown message: ~p, ignoring", [_Other]),
 			ignored
 	after RecvTimeout ->
 		?LOG_DEBUG("headers timeout, sending request timeout error", []),
-		misultin_socket:send(Sock, misultin_utility:get_http_status_code(408), SocketMode)
+		misultin_socket:send(Sock, build_error_message(408, Req), SocketMode)
 	end.
 
 % default connection
@@ -201,7 +198,7 @@ body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = C, 
 				{'EXIT', _} ->
 					% TODO: provide a fallback when content length is not or wrongly specified
 					?LOG_DEBUG("specified content length is not a valid integer number: ~p", [Req#req.content_length]),
-					misultin_socket:send(Sock, misultin_utility:get_http_status_code(411), SocketMode),
+					misultin_socket:send(Sock, build_error_message(411, Req), SocketMode),
 					exit(normal);
 				0 ->
 					?LOG_DEBUG("zero content-lenght specified, skipping parsing body of request", []),
@@ -230,15 +227,15 @@ body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = C, 
 							end;
 						{error, timeout} ->
 							?LOG_WARNING("request timeout, sending error", []),
-							misultin_socket:send(Sock, misultin_utility:get_http_status_code(408), SocketMode); 
+							misultin_socket:send(Sock, build_error_message(408, Req), SocketMode);
 						_Other ->
 							?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [_Other]),
-							misultin_socket:send(Sock, misultin_utility:get_http_status_code(400), SocketMode)
+							misultin_socket:send(Sock, build_error_message(400, Req), SocketMode)
 					end
 			end;
 		_Other ->
 			?LOG_DEBUG("method not implemented: ~p", [_Other]),
-			misultin_socket:send(Sock, misultin_utility:get_http_status_code(501), SocketMode),
+			misultin_socket:send(Sock, build_error_message(501, Req), SocketMode),
 			exit(normal)
 	end.
 
@@ -254,13 +251,13 @@ handle_get(C, #req{socket_mode = SocketMode, connection = Conn} = Req) ->
 			call_mfa(C, Req#req{args = Args, uri = {absoluteURI, F}}),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			misultin_socket:send(C#c.sock, misultin_utility:get_http_status_code(501), SocketMode),
+			misultin_socket:send(C#c.sock, build_error_message(501, Req), SocketMode),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			misultin_socket:send(C#c.sock, misultin_utility:get_http_status_code(510), SocketMode),
+			misultin_socket:send(C#c.sock, build_error_message(510, Req), SocketMode),
 			close;
 		_  ->
-			misultin_socket:send(C#c.sock, misultin_utility:get_http_status_code(403), SocketMode),
+			misultin_socket:send(C#c.sock, build_error_message(403, Req), SocketMode),
 			close
 	end.
 
@@ -274,56 +271,89 @@ handle_post(C, #req{socket_mode = SocketMode, connection = Conn} = Req) ->
 			call_mfa(C, Req),
 			Conn;
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
-			misultin_socket:send(C#c.sock, misultin_utility:get_http_status_code(501), SocketMode),
+			misultin_socket:send(C#c.sock, build_error_message(501, Req), SocketMode),
 			close;
 		{scheme, _Scheme, _RequestString} ->
-			misultin_socket:send(C#c.sock, misultin_utility:get_http_status_code(501), SocketMode),
+			misultin_socket:send(C#c.sock, build_error_message(501, Req), SocketMode),
 			close;
 		_  ->
-			misultin_socket:send(C#c.sock, misultin_utility:get_http_status_code(403), SocketMode),
+			misultin_socket:send(C#c.sock, build_error_message(403, Req), SocketMode),
 			close
 	end.
 
 % Description: Main dispatcher
-call_mfa(#c{sock = Sock, socket_mode = SocketMode, compress = Compress, stream_support = StreamSupport, loop = Loop} = C, #req{headers = RequestHeaders} = Request) ->
-	% spawn listening process for Request messages [only used to support stream requests]
-	case StreamSupport of
-		true ->
-			SocketPid = spawn(?MODULE, socket_loop, [C, Request]);
-		false ->
-			SocketPid = no_stream_support_proc
-	end,
-	% create request
-	Req = misultin_req:new(Request, SocketPid),
-	% call loop
-	case catch Loop(Req) of
-		{'EXIT', _Reason} ->
-			?LOG_ERROR("worker crash: ~p", [_Reason]),
-			% kill listening socket
-			catch SocketPid ! shutdown,
-			% send response
-			misultin_socket:send(Sock, misultin_utility:get_http_status_code(500), SocketMode),
-			% force exit
-			exit(normal);
+call_mfa(#c{loop = Loop} = C, Request) ->
+	% spawn custom loop
+	Self = self(),
+	LoopPid = spawn(fun() ->
+		% create request
+		Req = misultin_req:new(Request, Self),
+		% start custom loop
+		Loop(Req)
+	end),
+	erlang:monitor(process, LoopPid),
+	socket_loop(C, Request, LoopPid).
+
+% socket loop
+socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Request, LoopPid) ->
+	% receive
+	receive
+		{stream_head, HttpCode, Headers0} ->
+			?LOG_DEBUG("sending stream head", []),
+			Headers = add_output_header('Connection', {Headers0, Request}),
+			Enc_headers = enc_headers(Headers),
+			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
+			misultin_socket:send(Sock, Resp, SocketMode),
+			socket_loop(C, Request, LoopPid);
 		{HttpCode, Headers0, Body} ->
 			% received normal response
-			?LOG_DEBUG("sending response", []),
-			% kill listening socket
-			catch SocketPid ! shutdown,
+			?LOG_DEBUG("sending normal response", []),
 			% build binary body & compress if necessary
 			{CompressHeaders, BodyBinary} = compress_body(RequestHeaders, convert_to_binary(Body), Compress),
-			% build headers
-			Headers1 = add_output_header('Content-Length', {Headers0, BodyBinary}),
-			Headers = add_output_header('Connection', {Headers1, Request}),
-			Enc_headers = enc_headers(lists:flatten([CompressHeaders|Headers])),
+			% are there any raw headers?
+			Enc_headers = case Headers0 of
+				{HeadersList, HeadersStr} ->
+					Headers1 = add_output_header('Content-Length', {HeadersList, BodyBinary}),
+					Headers = add_output_header('Connection', {Headers1, Request}),
+					[HeadersStr|enc_headers(lists:flatten([CompressHeaders|Headers]))];
+				_ ->
+					Headers1 = add_output_header('Content-Length', {Headers0, BodyBinary}),
+					Headers = add_output_header('Connection', {Headers1, Request}),
+					enc_headers(lists:flatten([CompressHeaders|Headers]))
+			end,
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
-			misultin_socket:send(Sock, Resp, SocketMode);
-		{raw, Body} ->
-			misultin_socket:send(Sock, Body, SocketMode);
-		_ ->
-			% loop exited normally, kill listening socket
-			catch SocketPid ! shutdown
+			misultin_socket:send(Sock, Resp, SocketMode),
+			socket_loop(C, Request, LoopPid);
+		{stream_data, Data} ->
+			?LOG_DEBUG("sending stream data", []),
+			misultin_socket:send(Sock, Data, SocketMode),
+			socket_loop(C, Request, LoopPid);
+		stream_end ->
+			?LOG_DEBUG("done sending stream data", []),
+			socket_loop(C, Request, LoopPid);
+		stream_close ->
+			?LOG_DEBUG("closing stream", []),
+			misultin_socket:close(Sock, SocketMode),
+			socket_loop(C, Request, LoopPid);
+		{stream_error, 404} ->
+			?LOG_ERROR("file not found", []),
+			misultin_socket:send(Sock, build_error_message(404, Request), SocketMode),
+			socket_loop(C, Request, LoopPid);
+		{stream_error, _Reason} ->
+			?LOG_ERROR("error sending stream: ~p", [_Reason]),
+			misultin_socket:send(Sock, build_error_message(500, Request), SocketMode),
+			misultin_socket:close(Sock, SocketMode),
+			socket_loop(C, Request, LoopPid);
+		{'DOWN', _Ref, process, LoopPid, normal} ->
+			?LOG_DEBUG("normal finishing of custom loop",[]),
+			ok;
+		{'DOWN', _Ref, process, LoopPid, _Reason} ->
+			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Request]),
+			misultin_socket:send(Sock, build_error_message(500, Request), SocketMode);
+		_Else ->
+			?LOG_DEBUG("unknown message received: ~p, ignoring", [_Else]),
+			socket_loop(C, Request, LoopPid)
 	end.
 
 % Description: Ensure Body is binary.
@@ -333,28 +363,6 @@ convert_to_binary(Body) when is_binary(Body) ->
 	Body;
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
-
-% Description: Socket loop for stream responses
-socket_loop(#c{sock = Sock, socket_mode = SocketMode} = C, Request) ->
-	receive
-		{stream_head, HttpCode, Headers0} ->
-			?LOG_DEBUG("sending stream head", []),
-			Headers = add_output_header('Connection', {Headers0, Request}),
-			Enc_headers = enc_headers(Headers),
-			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
-			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Request);
-		{stream_data, Body} ->
-			?LOG_DEBUG("sending stream data", []),
-			misultin_socket:send(Sock, Body, SocketMode),
-			socket_loop(C, Request);
-		stream_close ->
-			?LOG_DEBUG("closing stream", []),
-			misultin_socket:close(Sock, SocketMode);
-		shutdown ->
-			?LOG_DEBUG("shutting down socket loop", []),
-			shutdown
-	end.
 
 % Description: Add necessary Content-Length Header
 add_output_header('Content-Length', {Headers, Body}) ->
@@ -485,4 +493,13 @@ list_to_number(L) ->
 		Value -> Value
 	end.
 
+build_error_message(HttpCode, Request) ->
+	% build headers
+	Headers1 = add_output_header('Content-Length', {[], <<>>}),
+	Headers = add_output_header('Connection', {Headers1, Request}),
+	Enc_headers = enc_headers(Headers),
+	% build and send response
+	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].
+	
+	
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

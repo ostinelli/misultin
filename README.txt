@@ -63,6 +63,9 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
+0.6.2: - refactored to considerably improve sending of static files
+       - minor bug corrections
+
 0.6.1: - added support to websocket protocol hixie draft 76 [thanks to sergio veiga]
        - added support to multiple websocket draft protocols [for backwards compatibility]
        - added ws_autoexit option which allows to get an event on websocket controlling processes [issue track #15, suggestion of esente]

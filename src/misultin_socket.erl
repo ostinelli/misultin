@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn("0.6.1").
+-vsn("0.6.2").
 
 % API
 -export([start_link/5]).
@@ -173,7 +173,7 @@ send(Sock, Data, F) ->
 		ok ->
 			ok;
 		{error, _Reason} ->
-			?LOG_ERROR("worker crash: ~p", [_Reason]),
+			?LOG_ERROR("error sending data: ~p", [_Reason]),
 			exit(normal)
 	end.
 

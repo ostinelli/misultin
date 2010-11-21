@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_websocket).
--vsn("0.6.1").
+-vsn("0.6.2").
 
 % API
 -export([check/2, connect/3]).

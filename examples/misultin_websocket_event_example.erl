@@ -91,7 +91,7 @@ handle_websocket(Ws) ->
 			Ws:send(["received '", Data, "'"]),
 			handle_websocket(Ws);
 		closed ->
-			% IMPORTANT: since we specified the {ws_autoexit, false} option, we need to manually ensure that this process exists
+			% IMPORTANT: since we specified the {ws_autoexit, false} option, we need to manually ensure that this process exits
 			% [otherwise it will become a zombie]
 			io:format("The WebSocket was CLOSED!~n"),
 			closed;

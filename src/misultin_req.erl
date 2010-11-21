@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn("0.6.1").
+-vsn("0.6.2").
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -44,7 +44,8 @@
 
 % API
 -export([raw/0]).
--export([ok/1, ok/2, ok/3, respond/2, respond/3, respond/4, stream/1, stream/2, stream/3]).
+-export([ok/1, ok/2, ok/3, respond/1, respond/2, respond/3, respond/4, raw_headers_respond/1, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4]).
+-export([stream/1, stream/2, stream/3]).
 -export([get/1, parse_qs/0, parse_post/0, file/1, file/2, resource/1]).
 
 % includes
@@ -95,20 +96,37 @@ ok(Headers, Template, Vars) ->
 	respond(200, Headers, Template, Vars).
 
 % Description: Formats a response.
+respond(HttpCode) ->
+	respond(HttpCode, [], []).
 respond(HttpCode, Template) ->
 	respond(HttpCode, [], Template).
 respond(HttpCode, Headers, Template) ->
-	{HttpCode, Headers, Template}.
+	SocketPid ! {HttpCode, Headers, Template}.
 respond(HttpCode, Headers, Template, Vars) when is_list(Template) =:= true ->
-	{HttpCode, Headers, io_lib:format(Template, Vars)}.
+	SocketPid ! {HttpCode, Headers, io_lib:format(Template, Vars)}.
+	
+% Description: Allow to add already formatted headers, untouched
+raw_headers_respond(Body) ->
+	raw_headers_respond(200, [], [], Body).
+raw_headers_respond(HeadersStr, Body) ->
+	raw_headers_respond(200, [], HeadersStr, Body).
+raw_headers_respond(HttpCode, HeadersStr, Body) ->
+	raw_headers_respond(HttpCode, [], HeadersStr, Body).
+raw_headers_respond(HttpCode, Headers, HeadersStr, Body) ->
+	SocketPid ! {HttpCode, {Headers, HeadersStr}, Body}.
+	
 	
 % Description: Start stream.
 stream(close) ->
-	catch SocketPid ! stream_close;
+	SocketPid ! stream_close;
 stream(head) ->
 	stream(head, 200, []);
-stream(Template) ->
-	catch SocketPid ! {stream_data, Template}.
+stream(done) ->
+	SocketPid ! stream_end;
+stream({error, Reason}) ->
+	SocketPid ! {stream_error, Reason};
+stream(Data) ->
+	catch SocketPid ! {stream_data, Data}.
 stream(head, Headers) ->
 	stream(head, 200, Headers);
 stream(Template, Vars) when is_list(Template) =:= true ->
@@ -232,25 +250,26 @@ file_send(FilePath, Headers) ->
 		{ok, FileInfo} ->
 			% get filesize
 			FileSize = FileInfo#file_info.size,
-			% send headers
-			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Size', FileSize} | Headers],
-			stream(head, HeadersFull),
 			% do the gradual sending
-			case file_open_and_send(FilePath) of
-				{error, _Reason} ->
-					{raw, misultin_utility:get_http_status_code(500)};
+			case file_open_and_send(FilePath, FileSize, Headers) of
+				{error, Reason} ->
+					stream({error, Reason});
 				ok ->
 					% sending successful
-					ok
+					stream(done)
 			end;
 		{error, _Reason} ->
-			{raw, misultin_utility:get_http_status_code(500)}
+			% file not found or other errors
+			stream({error, 404})
 	end.
-file_open_and_send(FilePath) ->
+file_open_and_send(FilePath, FileSize, Headers) ->
 	case file:open(FilePath, [read, binary]) of
 		{error, Reason} ->
 			{error, Reason};
 		{ok, IoDevice} ->
+			% send headers
+			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize} | Headers],
+			stream(head, HeadersFull),
 			% read portions
 			case file_read_and_send(IoDevice, 0) of 
 				{error, Reason} ->
@@ -270,8 +289,7 @@ file_read_and_send(IoDevice, Position) ->
 			% loop
 			file_read_and_send(IoDevice, Position + ?FILE_READ_BUFFER);
 		eof ->
-			% finished, close
-			stream(close),
+			% finished
 			ok;
 		{error, Reason} ->
 			{error, Reason}
