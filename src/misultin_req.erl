@@ -121,8 +121,6 @@ stream(close) ->
 	SocketPid ! stream_close;
 stream(head) ->
 	stream(head, 200, []);
-stream(done) ->
-	SocketPid ! stream_end;
 stream({error, Reason}) ->
 	SocketPid ! {stream_error, Reason};
 stream(Data) ->
@@ -256,7 +254,7 @@ file_send(FilePath, Headers) ->
 					stream({error, Reason});
 				ok ->
 					% sending successful
-					stream(done)
+					ok
 			end;
 		{error, _Reason} ->
 			% file not found or other errors

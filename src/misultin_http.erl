@@ -328,9 +328,6 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("sending stream data", []),
 			misultin_socket:send(Sock, Data, SocketMode),
 			socket_loop(C, Request, LoopPid);
-		stream_end ->
-			?LOG_DEBUG("done sending stream data", []),
-			socket_loop(C, Request, LoopPid);
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			misultin_socket:close(Sock, SocketMode),
