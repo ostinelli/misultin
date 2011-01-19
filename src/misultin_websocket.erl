@@ -192,7 +192,7 @@ ws_loop(Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	?LOG_DEBUG("websocket loop", []),
 	receive
 		{tcp, Socket, Data} ->
-			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+			handle_data(Buffer, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{tcp_closed, Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
@@ -222,17 +222,16 @@ ws_loop(Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	end.
 
 % Buffering and data handling
-handle_data(none, [0|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
-	handle_data([], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data(none, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
-	ws_loop(Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
-	WsHandleLoopPid ! {browser, lists:reverse(L)},
-	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data(L, [H|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
-	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data([], L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
-	ws_loop(Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit).
+handle_data(_, <<0, Rest/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
+	handle_data(<<>>, Rest, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data(Buffer, <<255, _/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
+	WsHandleLoopPid ! {browser, binary_to_list(Buffer)},
+	ws_loop(Socket, <<>>, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data(Buffer, <<B:1/binary, Rest/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
+	handle_data(binary:list_to_bin([Buffer, B]), Rest, Socket, WsHandleLoopPid, SocketMode,
+		WsAutoExit);
+handle_data(Buffer, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
+	ws_loop(Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit).
 
 % Close socket and custom handling loop dependency
 websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
