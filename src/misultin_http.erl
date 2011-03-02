@@ -351,6 +351,9 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
         {tcp_closed, _Port} ->
             ?LOG_WARNING("tcp connection was closed",[]),
             ok;
+        {ssl_closed, _Port} ->
+            ?LOG_WARNING("ssl connection was closed",[]),
+            ok;
 		_Else ->
 			?LOG_DEBUG("unknown message received: ~p, ignoring", [_Else]),
 			socket_loop(C, Request, LoopPid)
