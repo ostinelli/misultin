@@ -295,6 +295,7 @@ call_mfa(#c{loop = Loop} = C, Request) ->
 
 % socket loop
 socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Request, LoopPid) ->
+	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	% receive
 	receive
 		{stream_head, HttpCode, Headers0} ->
@@ -347,6 +348,9 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 		{'DOWN', _Ref, process, LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Request]),
 			misultin_socket:send(Sock, build_error_message(500, Request), SocketMode);
+        {tcp_closed, _Port} ->
+            ?LOG_WARNING("tcp connection was closed",[]),
+            ok;
 		_Else ->
 			?LOG_DEBUG("unknown message received: ~p, ignoring", [_Else]),
 			socket_loop(C, Request, LoopPid)
