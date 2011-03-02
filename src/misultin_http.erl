@@ -348,10 +348,10 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 		{'DOWN', _Ref, process, LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Request]),
 			misultin_socket:send(Sock, build_error_message(500, Request), SocketMode);
-        {tcp_closed, _Port} ->
+        {tcp_closed, Sock} ->
             ?LOG_WARNING("tcp connection was closed",[]),
             ok;
-        {ssl_closed, _Port} ->
+        {ssl_closed, Sock} ->
             ?LOG_WARNING("ssl connection was closed",[]),
             ok;
 		_Else ->
