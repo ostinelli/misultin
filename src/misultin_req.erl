@@ -123,6 +123,8 @@ stream(head) ->
 	stream(head, 200, []);
 stream({error, Reason}) ->
 	SocketPid ! {stream_error, Reason};
+stream({chunk, Data}) ->
+    stream(integer_to_list(length(Data), 16) ++ "\r\n" ++ Data ++ "\r\n");
 stream(Data) ->
 	catch SocketPid ! {stream_data, Data}.
 stream(head, Headers) ->
