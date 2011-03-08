@@ -37,7 +37,6 @@
 -export([handle_data/8]).
 
 % macros
--define(MAX_HEADERS_COUNT, 100).
 -define(SUPPORTED_ENCODINGS, ["gzip", "deflate"]).
 
 % records
@@ -106,9 +105,6 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
-headers(#c{sock = Sock, socket_mode = SocketMode}, Req, _H, ?MAX_HEADERS_COUNT) ->
-	?LOG_DEBUG("too many headers sent, bad request",[]),
-	misultin_socket:send(Sock, build_error_message(400, Req), SocketMode);
 headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	receive
