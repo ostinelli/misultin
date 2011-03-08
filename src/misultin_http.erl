@@ -353,10 +353,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
             ok;
         {ssl_closed, Sock} ->
             ?LOG_WARNING("ssl connection was closed",[]),
-            ok;
-		_Else ->
-			?LOG_DEBUG("unknown message received: ~p, ignoring", [_Else]),
-			socket_loop(C, Request, LoopPid)
+            ok
 	end.
 
 % Description: Ensure Body is binary.
