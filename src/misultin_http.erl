@@ -295,7 +295,7 @@ call_mfa(#c{loop = Loop} = C, Request) ->
 
 % socket loop
 socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Request, LoopPid) ->
-	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
+	misultin_socket:setopts(Sock, [{active, once},{packet, http}], SocketMode),
 	% receive
 	receive
 		{stream_head, HttpCode, Headers0} ->
