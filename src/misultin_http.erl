@@ -295,6 +295,7 @@ call_mfa(#c{loop = Loop} = C, Request) ->
 
 % socket loop
 socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Request, LoopPid) ->
+	misultin_socket:setopts(Sock, [{active, once},{packet, http}], SocketMode),
 	% receive
 	receive
 		{stream_head, HttpCode, Headers0} ->
@@ -347,9 +348,12 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 		{'DOWN', _Ref, process, LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Request]),
 			misultin_socket:send(Sock, build_error_message(500, Request), SocketMode);
-		_Else ->
-			?LOG_DEBUG("unknown message received: ~p, ignoring", [_Else]),
-			socket_loop(C, Request, LoopPid)
+        {tcp_closed, Sock} ->
+            ?LOG_WARNING("tcp connection was closed",[]),
+            ok;
+        {ssl_closed, Sock} ->
+            ?LOG_WARNING("ssl connection was closed",[]),
+            ok
 	end.
 
 % Description: Ensure Body is binary.
