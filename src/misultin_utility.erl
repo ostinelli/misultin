@@ -145,6 +145,7 @@ get_content_type(FileName) ->
 		".jpg" -> "image/jpeg";
 		".tif" -> "image/tiff";
 		".tiff" -> "image/tiff";
+        ".png" -> "image/png";
 		".htm" -> "text/html";
 		".html" -> "text/html";
 		".txt" -> "text/plain";
