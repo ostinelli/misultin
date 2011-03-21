@@ -69,7 +69,7 @@ CHANGELOG
        - added get_url_max_size options parameter, which sets the maximum length of URI
        - added CHUNKED support, both for incoming requests and outgoing responses [thanks to yrashk
          suggestion]
-       - added trapping of client closing a browser in Comet applications [thanks to yrash]
+       - added trapping of client closing a browser in Comet applications [thanks to yrashk]
        - added SSL support for websockets [enhancement track #25, thanks to viplifes]
        - added Comet Long Polling example
        - added Comet iFrame example
