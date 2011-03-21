@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.
 %
 % BSD License

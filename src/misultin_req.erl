@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>,
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>,
 %					  Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
 % All rights reserved.
 %
@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn("0.6.2").
+-vsn("0.7-dev").
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -45,7 +45,7 @@
 % API
 -export([raw/0]).
 -export([ok/1, ok/2, ok/3, respond/1, respond/2, respond/3, respond/4, raw_headers_respond/1, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4]).
--export([stream/1, stream/2, stream/3]).
+-export([chunk/1, chunk/2, stream/1, stream/2, stream/3]).
 -export([get/1, parse_qs/0, parse_post/0, file/1, file/2, resource/1]).
 
 % includes
@@ -114,9 +114,26 @@ raw_headers_respond(HttpCode, HeadersStr, Body) ->
 	raw_headers_respond(HttpCode, [], HeadersStr, Body).
 raw_headers_respond(HttpCode, Headers, HeadersStr, Body) ->
 	SocketPid ! {HttpCode, {Headers, HeadersStr}, Body}.
+
+% Description: Chunked Transfer-Encoding.
+chunk(head) ->
+	chunk(head, []);
+chunk(done) ->
+	stream("0\r\n\r\n");
+chunk(Template) ->
+	stream([integer_to_list(length(Template), 16), "\r\n", Template, "\r\n"]).
+chunk(head, Headers) ->
+	% add Transfer-Encoding chunked header if needed
+	Headers0 = case misultin_utility:header_get_value('Transfer-Encoding', Headers) of
+		false -> [{'Transfer-Encoding', "chunked"} | Headers];
+		_ -> Headers
+	end,
+	stream(head, Headers0);
+chunk(Template, Vars) ->
+	Data = io_lib:format(Template, Vars),
+	stream([integer_to_list(length(Data), 16), "\r\n", Data, "\r\n"]).
 	
-	
-% Description: Start stream.
+% Description: Stream support.
 stream(close) ->
 	SocketPid ! stream_close;
 stream(head) ->
@@ -148,8 +165,8 @@ parse_qs() ->
 % Description: Parse Post
 parse_post() ->
 	% get header confirmation
-	case misultin_utility:get_key_value('Content-Type', Req#req.headers) of
-		undefined ->
+	case misultin_utility:header_get_value('Content-Type', Req#req.headers) of
+		false ->
 			[];
 		ContentType ->
 			[Type|_CharSet] = string:tokens(ContentType, ";"),

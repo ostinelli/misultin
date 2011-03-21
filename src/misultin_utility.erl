@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
 % All rights reserved.
 %
 % BSD License
@@ -28,7 +28,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_utility).
--vsn("0.6.2").
+-vsn("0.7-dev").
 
 % API
 -export([get_http_status_code/1, get_content_type/1, get_key_value/2, header_get_value/2]).
@@ -145,6 +145,7 @@ get_content_type(FileName) ->
 		".jpg" -> "image/jpeg";
 		".tif" -> "image/tiff";
 		".tiff" -> "image/tiff";
+		".png" -> "image/png";
 		".htm" -> "text/html";
 		".html" -> "text/html";
 		".txt" -> "text/plain";

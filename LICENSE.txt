@@ -4,7 +4,7 @@ MISULTIN - An Erlang library for building fast lightweight HTTP servers.
 
 >-|-|-(°>
 
-Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>, Joe Armstrong, Sean Hinde,
+Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>, Joe Armstrong, Sean Hinde,
                     Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
 
 All rights reserved.

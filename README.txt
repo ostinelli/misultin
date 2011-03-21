@@ -63,12 +63,27 @@ API Documentation is available online on the Misultin's wiki: http://code.google
 CHANGELOG
 ==========================================================================================================
 
+0.7:   - added max_connections options parameter, which specifies maximum concurrent open connections
+         accepted by the server
+       - added post_max_size options parameter, which sets the maximum size of POST data
+       - added get_url_max_size options parameter, which sets the maximum length of URI
+       - added CHUNKED support, both for incoming requests and outgoing responses [thanks to yrashk
+         suggestion]
+       - added trapping of client closing a browser in Comet applications [thanks to yrash]
+       - added SSL support for websockets [enhancement track #25, thanks to viplifes]
+       - added Comet Long Polling example
+       - added Comet iFrame example
+       - added the killing of alive processes on server shutdown
+       - the GET uri parameters are now also available on POST requests
+       - additional minor adjustments
+
 0.6.2: - refactored to considerably improve sending of static files
        - minor bug corrections
 
 0.6.1: - added support to websocket protocol hixie draft 76 [thanks to sergio veiga]
        - added support to multiple websocket draft protocols [for backwards compatibility]
-       - added ws_autoexit option which allows to get an event on websocket controlling processes [issue track #15, suggestion of esente]
+       - added ws_autoexit option which allows to get an event on websocket controlling processes [issue
+         track #15, suggestion of esente]
        - added headers also in misultin websockets [thanks to jlirochon]
        - made it basho's rebar friendly [thanks to mrinalwadhwa]
 

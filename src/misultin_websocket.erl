@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2010, Roberto Ostinelli <roberto@ostinelli.net>, Joe Armstrong.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>, Joe Armstrong.
 % All rights reserved.
 %
 % Code portions from Joe Armstrong have been originally taken under MIT license at the address:
@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_websocket).
--vsn("0.6.2").
+-vsn("0.7-dev").
 
 % API
 -export([check/2, connect/3]).
@@ -69,7 +69,7 @@ connect(Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Pa
 	% set opts
 	misultin_socket:setopts(Socket, [{packet, 0}, {active, true}], SocketMode),
 	% add main websocket pid to misultin server reference
-	misultin:persistent_socket_pid_add(self()),
+	misultin:ws_pid_ref_add(self()),
 	% start listening for incoming data
 	ws_loop(Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit).	
 	
@@ -158,20 +158,28 @@ handshake({'draft-hixie', 76}, #req{socket = Sock, socket_mode = SocketMode}, He
 	end,
 	?LOG_DEBUG("got content in body of websocket request: ~p", [Body]),	
 	% prepare handhsake response
+	WsMode = case SocketMode of
+		ssl -> "wss";
+		_ -> "ws"
+	end,
 	["HTTP/1.1 101 WebSocket Protocol Handshake\r\n",
 		"Upgrade: WebSocket\r\n",
 		"Connection: Upgrade\r\n",
 		"Sec-WebSocket-Origin: ", Origin, "\r\n",
-		"Sec-WebSocket-Location: ws://", lists:concat([Host, Path]), "\r\n\r\n",
+		"Sec-WebSocket-Location: ", WsMode, "://", lists:concat([Host, Path]), "\r\n\r\n",
 		build_challenge({'draft-hixie', 76}, {Key1, Key2, Body})
 	];
-handshake({'draft-hixie', 68}, _Req, _Headers, {Path, Origin, Host}) ->
+handshake({'draft-hixie', 68}, #req{socket_mode = SocketMode} = _Req, _Headers, {Path, Origin, Host}) ->
 	% prepare handhsake response
+	WsMode = case SocketMode of
+		ssl -> "wss";
+		_ -> "ws"
+	end,
 	["HTTP/1.1 101 Web Socket Protocol Handshake\r\n",
 		"Upgrade: WebSocket\r\n",
 		"Connection: Upgrade\r\n",
 		"WebSocket-Origin: ", Origin , "\r\n",
-		"WebSocket-Location: ws://", lists:concat([Host, Path]), "\r\n\r\n"
+		"WebSocket-Location: ", WsMode, "://", lists:concat([Host, Path]), "\r\n\r\n"
 	].
 
 % Function: List
@@ -193,8 +201,14 @@ ws_loop(Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	receive
 		{tcp, Socket, Data} ->
 			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+		{ssl, Socket, Data} ->
+			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{tcp_closed, Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
+			% close websocket and custom controlling loop
+			websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+		{ssl_closed, Socket} ->
+			?LOG_DEBUG("ssl tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
 			websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{'DOWN', Ref, process, WsHandleLoopPid, Reason} ->
@@ -237,7 +251,7 @@ handle_data([], L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 % Close socket and custom handling loop dependency
 websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	% remove main websocket pid from misultin server reference
-	misultin:persistent_socket_pid_remove(self()),
+	misultin:ws_pid_ref_remove(self()),
 	case WsAutoExit of
 		true ->
 			% kill custom handling loop process
