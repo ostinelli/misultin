@@ -457,7 +457,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			ssl_closed;
 		_Else ->
 			?LOG_WARNING("received message from client when client should not send messages since it should wait for a complete reponse: ~p, closing socket", [_Else]),
-			misultin_socket:send(Sock, build_error_message(409, Req#req.connection), SocketMode),
+			misultin_socket:send(Sock, build_error_message(409, close), SocketMode),
 			misultin_socket:close(Sock, SocketMode)
 	end.
 	
