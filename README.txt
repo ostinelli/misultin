@@ -1,6 +1,6 @@
 ==========================================================================================================
 MISULTIN - An Erlang library for building fast lightweight HTTP servers.
-<http://code.google.com/p/misultin/>
+<https://github.com/ostinelli/misultin>
 
 >-|-|-(°>
 
@@ -57,7 +57,7 @@ You're ready to go.
 DOCUMENTATION
 ==========================================================================================================
 
-API Documentation is available online on the Misultin's wiki: http://code.google.com/p/misultin/wiki/
+API Documentation is available online on the Misultin's wiki: https://github.com/ostinelli/misultin/wiki
 
 
 CHANGELOG
