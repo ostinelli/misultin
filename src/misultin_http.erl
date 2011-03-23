@@ -44,7 +44,6 @@
 -record(c, {
 	sock,
 	socket_mode,
-	socket_mode_packet_name,
 	port,
 	recv_timeout,
 	post_max_size,
@@ -66,15 +65,10 @@
 handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% add pid reference
 	misultin:http_pid_ref_add(self()),
-	% build connection & request records
-	SocketModePacketName = case SocketMode of 
-		ssl -> httph;
-		_ -> http
-	end,
+	% build C record
 	C = #c{
 		sock = Sock,
 		socket_mode = SocketMode,
-		socket_mode_packet_name = SocketModePacketName,
 		port = ListenPort,
 		recv_timeout = RecvTimeout,
 		post_max_size = CustomOpts#custom_opts.post_max_size,
@@ -97,8 +91,8 @@ handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTime
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
-request(#c{sock = Sock, socket_mode = SocketMode, socket_mode_packet_name = SocketModePacketName, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
-	misultin_socket:setopts(Sock, [{active, once}, {packet, SocketModePacketName}], SocketMode),
+request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
+	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_request, _Method, {_, Uri} = _Path, _Version}} when length(Uri) > GetUrlMaxSize ->
 			?LOG_WARNING("get url request uri of ~p exceed maximum length of ~p", [length(Uri), GetUrlMaxSize]),				
@@ -106,6 +100,11 @@ request(#c{sock = Sock, socket_mode = SocketMode, socket_mode_packet_name = Sock
 			handle_keepalive(close, C, Req);		
 		{SocketMode, Sock, {http_request, Method, Path, Version}} ->
 			?LOG_DEBUG("received full headers of a new HTTP packet", []),
+			% change packet type if in ssl mode
+			case SocketMode of
+				ssl -> misultin_socket:setopts(Sock, [{packet, httph}], SocketMode);
+				_ -> ok
+			end,
 			% go to headers
 			headers(C, Req#req{vsn = Version, method = Method, uri = Path, connection = default_connection(Version)}, []);
 		{SocketMode, Sock, {http_error, "\r\n"}} ->
