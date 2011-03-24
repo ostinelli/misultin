@@ -116,8 +116,7 @@ check_websocket({'draft-hixie', 68} = Vsn, Headers) ->
 		_RemainingHeaders ->
 			?LOG_DEBUG("not protocol ~p, remaining headers: ~p", [Vsn, _RemainingHeaders]),
 			false
-	end;
-check_websocket(_Vsn, _Headers) -> false. % not implemented
+	end.
 
 % Function: true | [{RequiredTag, RequiredVal}, ..]
 % Description: Check if headers correspond to headers requirements.

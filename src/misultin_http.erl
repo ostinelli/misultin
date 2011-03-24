@@ -64,7 +64,7 @@
 % Callback from misultin_socket
 handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% add pid reference
-	misultin:http_pid_ref_add(self()),
+	HttpMonRef = misultin:http_pid_ref_add(self()),
 	% build C record
 	C = #c{
 		sock = Sock,
@@ -83,7 +83,7 @@ handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTime
 	% enter loop
 	request(C, Req),
 	% remove pid reference
-	misultin:http_pid_ref_remove(self()).
+	misultin:http_pid_ref_remove(self(), HttpMonRef).
 
 % ============================ /\ API ======================================================================
 

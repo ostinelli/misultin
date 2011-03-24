@@ -39,7 +39,7 @@
 
 % API
 -export([start_link/1, stop/0]).
--export([get_open_connections_count/0, http_pid_ref_add/1, http_pid_ref_remove/1, ws_pid_ref_add/1, ws_pid_ref_remove/1]).
+-export([get_open_connections_count/0, http_pid_ref_add/1, http_pid_ref_remove/2, ws_pid_ref_add/1, ws_pid_ref_remove/1]).
 
 % macros
 -define(SERVER, ?MODULE).
@@ -91,8 +91,8 @@ http_pid_ref_add(HttpPid) ->
 
 % Function -> ok
 % Description: Remove a http pid reference from status
-http_pid_ref_remove(HttpPid) ->
-	gen_server:cast(?SERVER, {remove_http_pid, HttpPid}).
+http_pid_ref_remove(HttpPid, HttpMonRef) ->
+	gen_server:cast(?SERVER, {remove_http_pid, {HttpPid, HttpMonRef}}).
 
 % Function -> ok
 % Description: Adds a new websocket pid reference to status
@@ -246,10 +246,10 @@ handle_cast({add_http_pid, HttpPid}, #state{open_connections_count = OpenConnect
 	{noreply, State#state{open_connections_count = OpenConnectionsCount + 1, http_pid_ref = [HttpPid|HttpPidRef]}};
 
 % remove http pid reference from server
-handle_cast({remove_http_pid, HttpPid}, #state{open_connections_count = OpenConnectionsCount, http_pid_ref = HttpPidRef} = State) ->
+handle_cast({remove_http_pid, {HttpPid, HttpMonRef}}, #state{open_connections_count = OpenConnectionsCount, http_pid_ref = HttpPidRef} = State) ->
 	?LOG_DEBUG("removing http pid reference ~p", [HttpPid]),
 	% remove monitor
-	catch erlang:demonitor(process, HttpPid),	
+	catch erlang:demonitor(HttpMonRef),	
 	% return
 	{noreply, State#state{open_connections_count = OpenConnectionsCount - 1, http_pid_ref = lists:delete(HttpPid, HttpPidRef)}};
 
