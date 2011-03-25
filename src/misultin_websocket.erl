@@ -239,6 +239,9 @@ handle_data(none, [0|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	handle_data([], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 handle_data(none, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	ws_loop(Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data(none, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
+	websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit),
+	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	WsHandleLoopPid ! {browser, lists:reverse(L)},
 	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
