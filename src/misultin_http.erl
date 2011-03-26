@@ -465,7 +465,7 @@ loop_close(LoopPid, AutoExit) ->
 	case AutoExit of
 		true ->
 			% kill handling loop process
-			?LOG_DEBUG("force the killing of the http handling loop",[]),
+			?LOG_DEBUG("ensure the exiting of the http handling loop",[]),
 			exit(LoopPid, kill);
 		false ->
 			% the killing of the http handling loop process is handled in the loop itself -> send event
