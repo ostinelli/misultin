@@ -62,15 +62,9 @@ listener(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, Cust
 			spawn(fun() ->
 				case ssl:ssl_accept(Sock, 60000) of
 					ok ->
-						case misultin:get_open_connections_count() >= MaxConnections of
-							false ->
-								create_socket_pid(Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts);
-							true ->
-								% too many open connections, send error and close
-								?LOG_WARNING("too many open connections, refusing new request",[]),
-								send(Sock, [misultin_utility:get_http_status_code(503), <<"Connection: Close\r\n\r\n">>], SocketMode),
-								close(Sock, SocketMode)
-						end;
+						upgrade_to_ssl(Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections);
+					{ok, NewSock} ->
+						upgrade_to_ssl(NewSock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections);
 					{error, _Reason} ->
 						% could not negotiate a SSL transaction, leave process
 						?LOG_WARNING("could not negotiate a SSL transaction: ~p", [_Reason]),
@@ -107,6 +101,18 @@ listener(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, Cust
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
+
+% upgrade to SSL
+upgrade_to_ssl(Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections) ->
+	case misultin:get_open_connections_count() >= MaxConnections of
+		false ->
+			create_socket_pid(Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+		true ->
+			% too many open connections, send error and close
+			?LOG_WARNING("too many open connections, refusing new request",[]),
+			send(Sock, [misultin_utility:get_http_status_code(503), <<"Connection: Close\r\n\r\n">>], SocketMode),
+			close(Sock, SocketMode)
+	end.
 
 % start socket Pid
 create_socket_pid(Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
