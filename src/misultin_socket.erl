@@ -57,7 +57,12 @@ start_link(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, Cu
 % Description: Starts the socket.
 listener(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
 	case catch accept(ListenSocket, SocketMode) of
-		{ok, {sslsocket, _, _} = Sock} ->
+		{ok, Sock} when SocketMode =:= http ->
+			% received a HTTP socket, check connections
+			manage_open_connection_count(Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections),							
+			% get back to accept loop
+			listener(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
+		{ok, Sock} ->
 			% spawn a ssl_accept process to avoid locking the main listener
 			spawn(fun() ->
 				case ssl:ssl_accept(Sock, 60000) of
@@ -71,11 +76,6 @@ listener(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, Cust
 						catch close(Sock, SocketMode)
 				end
 			end),
-			% get back to accept loop
-			listener(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
-		{ok, Sock} ->
-			% received a HTTP socket, check connections
-			manage_open_connection_count(Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections),							
 			% get back to accept loop
 			listener(ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
 		{error, _Error} ->
