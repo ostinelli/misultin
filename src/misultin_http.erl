@@ -520,7 +520,7 @@ enc_headers([]) ->
 enc_header_val(Val) when is_atom(Val) ->
 	atom_to_list(Val);
 enc_header_val(Val) when is_integer(Val) ->
-	integer_to_list(Val);
+	erlang:integer_to_list(Val);
 enc_header_val(Val) ->
 	Val.
 

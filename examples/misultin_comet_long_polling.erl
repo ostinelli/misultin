@@ -52,7 +52,7 @@ handle('GET', [], Req, Port) ->
 			<script type=\"text/javascript\" src=\"http://code.jquery.com/jquery-1.5.1.min.js\"></script>
 			<script type=\"text/javascript\">
 				function misultinComet(){
-					$.get('http://localhost:", integer_to_list(Port), "/comet', {}, function(response){
+					$.get('http://localhost:", erlang:integer_to_list(Port), "/comet', {}, function(response){
 						toDiv(response);
 						setTimeout('misultinComet()', 1000);
 					});

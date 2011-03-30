@@ -72,12 +72,12 @@ handle('GET', [], Req, Port) ->
 						comet.iframediv = comet.connection.createElement(\"div\");
 						comet.connection.appendChild(comet.iframediv);
 						comet.connection.parentWindow.comet = comet;
-						comet.iframediv.innerHTML = \"<iframe id='comet_iframe' src='http://localhost:", integer_to_list(Port), "/comet'></iframe>\";
+						comet.iframediv.innerHTML = \"<iframe id='comet_iframe' src='http://localhost:", erlang:integer_to_list(Port), "/comet'></iframe>\";
 					} else if (navigator.appVersion.indexOf(\"KHTML\") != -1) {
 						// for KHTML browsers
 						comet.connection = document.createElement('iframe');
 						comet.connection.setAttribute('id',     'comet_iframe');
-						comet.connection.setAttribute('src',    'http://localhost:", integer_to_list(Port), "/comet');
+						comet.connection.setAttribute('src',    'http://localhost:", erlang:integer_to_list(Port), "/comet');
 						with (comet.connection.style) {
 							position   = \"absolute\";
 							left       = top   = \"-100px\";
@@ -96,7 +96,7 @@ handle('GET', [], Req, Port) ->
 							display    = 'none';
 						}
 						comet.iframediv = document.createElement('iframe');
-						comet.iframediv.setAttribute('src', 'http://localhost:", integer_to_list(Port), "/comet');
+						comet.iframediv.setAttribute('src', 'http://localhost:", erlang:integer_to_list(Port), "/comet');
 						comet.connection.appendChild(comet.iframediv);
 						document.body.appendChild(comet.connection);
 					}
@@ -160,7 +160,7 @@ notify(Req) ->
 	% send
 	Req:stream(["
 	<script type=\"text/javascript\">
-		comet.printServerTime(\"Server current time is: ", integer_to_list(Hour), ":", integer_to_list(Minutes), ":", integer_to_list(Seconds), ", will be updated in 5 seconds.", "\");
+		comet.printServerTime(\"Server current time is: ", erlang:integer_to_list(Hour), ":", erlang:integer_to_list(Minutes), ":", erlang:integer_to_list(Seconds), ", will be updated in 5 seconds.", "\");
 	</script>
 	"]),
 	% loop
