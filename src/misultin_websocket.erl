@@ -189,8 +189,8 @@ build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
 	Ikey2 = [D || D <- Key2, $0 =< D, D =< $9],
 	Blank1 = length([D || D <- Key1, D =:= 32]),
 	Blank2 = length([D || D <- Key2, D =:= 32]),
-	Part1 = list_to_integer(Ikey1) div Blank1,
-	Part2 = list_to_integer(Ikey2) div Blank2,
+	Part1 = erlang:list_to_integer(Ikey1) div Blank1,
+	Part2 = erlang:list_to_integer(Ikey2) div Blank2,
 	Ckey = <<Part1:4/big-unsigned-integer-unit:8, Part2:4/big-unsigned-integer-unit:8, Key3/binary>>,
 	erlang:md5(Ckey).
 

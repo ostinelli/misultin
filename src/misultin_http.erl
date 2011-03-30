@@ -275,7 +275,7 @@ method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 % Description: Read the post body according to headers
 read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, post_max_size = PostMaxSize} = C, Req) ->
 	% check if content length has been provided
-	case catch list_to_integer(Req#req.content_length) of
+	case catch erlang:list_to_integer(Req#req.content_length) of
 		{'EXIT', _} ->
 			% no specified content length, or not a valid integer number, check transfer encoding header
 			case misultin_utility:header_get_value('Transfer-Encoding', Req#req.headers) of
@@ -361,7 +361,7 @@ get_chunk_length(HeadLine) ->
 		{'EXIT', _} ->
 			{error, chunked_headline_empty};
 		HeadLenStr ->
-			case catch list_to_integer(HeadLenStr, 16) of
+			case catch erlang:list_to_integer(HeadLenStr, 16) of
 				{'EXIT', _} -> {error, invalid_chunked_headline};
 				Len -> {ok, Len}
 			end
@@ -603,7 +603,7 @@ get_accepted_encodings(AcceptEncodingHeader) ->
 list_to_number(L) ->
 	case catch list_to_float(L) of
 		{'EXIT', _} ->
-			case catch list_to_integer(L) of
+			case catch erlang:list_to_integer(L) of
 				{'EXIT', _} -> not_a_number;
 				Value -> Value
 			end;
