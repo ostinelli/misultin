@@ -446,7 +446,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("normal finishing of custom loop",[]),
 			ok;
 		{'DOWN', _Ref, process, LoopPid, _Reason} ->
-			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
+			?LOG_ERROR("error in custom loop: ~p serving request:~n~p", [_Reason, Req]),
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
 		{tcp_closed, Sock} ->
 			?LOG_DEBUG("client closed socket",[]),
