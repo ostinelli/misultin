@@ -156,7 +156,10 @@ file(FilePath) ->
 file(attachment, FilePath) ->
 	% get filename
 	FileName = filename:basename(FilePath),
-	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}]).
+	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}]);
+% Description: Sends a file to the browser with the given headers.
+file(FilePath, Headers) ->
+	file_send(FilePath, Headers).
 
 % Description: Parse QueryString
 parse_qs() ->
