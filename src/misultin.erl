@@ -76,12 +76,15 @@ start_link(Options) when is_list(Options) ->
 	case get_option({name, ?SERVER, fun is_atom/1, invalid_misultin_process_name}, Options) of
 		{error, Reason} ->
 			% option error
+			?LOG_ERROR("error in name option: ~p", [Reason]),
 			{error, Reason};
 		{name, false} ->
 			% start misultin without name
+			?LOG_DEBUG("starting misultin without a registered name",[]),
 			gen_server:start_link(?MODULE, [Options], []);
 		{name, Value} ->
 			% start misultin with specified name
+			?LOG_DEBUG("starting misultin with registered name ~p", [Value]),
 			gen_server:start_link({local, Value}, ?MODULE, [Options], [])
 	end.
 
