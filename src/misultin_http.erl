@@ -494,18 +494,12 @@ add_output_header('Content-Length', {Headers, Body}) ->
 
 % Description: Add necessary Connection Header
 add_output_header('Connection', {Headers, Req}) ->
-	case Req#req.connection of
+	% echo
+	case misultin_utility:get_key_value('Connection', Headers) of
 		undefined ->
-			% nothing to echo
-			Headers;
-		Connection ->
-			% echo
-			case misultin_utility:get_key_value('Connection', Headers) of
-				undefined ->
-					[{'Connection', connection_str(Connection)}|Headers];
-				_ExistingConnectionHeaderValue ->
-					Headers
-			end
+			[{'Connection', connection_str(Req#req.connection)}|Headers];
+		_ExistingConnectionHeaderValue ->
+			Headers
 	end.
 
 % Helper to Connection string
