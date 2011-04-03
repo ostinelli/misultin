@@ -37,7 +37,7 @@ start(Port) ->
 	misultin:start_link([{port, Port}, {name, false}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % Description: Stop misultin
-% Dontinuing the above example:
+% Continuing the above example:
 % misultin_hello_world_nameless:stop(Pid). 
 stop(ServerPid) ->
 	misultin:stop(ServerPid).
