@@ -34,7 +34,7 @@
 -vsn("0.7-dev").
 
 % API
--export([handle_data/8]).
+-export([handle_data/9]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -42,6 +42,7 @@
 
 % records
 -record(c, {
+	server_ref,
 	sock,
 	socket_mode,
 	port,
@@ -62,11 +63,12 @@
 % ============================ \/ API ======================================================================
 
 % Callback from misultin_socket
-handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
+handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% add pid reference
-	HttpMonRef = misultin:http_pid_ref_add(self()),
+	HttpMonRef = misultin:http_pid_ref_add(ServerRef, self()),
 	% build C record
 	C = #c{
+		server_ref = ServerRef,
 		sock = Sock,
 		socket_mode = SocketMode,
 		port = ListenPort,
@@ -83,7 +85,7 @@ handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTime
 	% enter loop
 	request(C, Req),
 	% remove pid reference
-	misultin:http_pid_ref_remove(self(), HttpMonRef).
+	misultin:http_pid_ref_remove(ServerRef, self(), HttpMonRef).
 
 % ============================ /\ API ======================================================================
 
@@ -177,7 +179,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
