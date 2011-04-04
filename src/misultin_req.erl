@@ -46,7 +46,7 @@
 -export([raw/0]).
 -export([ok/1, ok/2, ok/3, respond/1, respond/2, respond/3, respond/4, raw_headers_respond/1, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4]).
 -export([chunk/1, chunk/2, stream/1, stream/2, stream/3]).
--export([get/1, parse_qs/0, parse_post/0, file/1, file/2, resource/1]).
+-export([get/1, parse_qs/0, parse_post/0, file/1, file/2, file/3, resource/1]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -154,9 +154,15 @@ file(FilePath) ->
 	file_send(FilePath, []).
 % Description: Sends a file for download.	
 file(attachment, FilePath) ->
+	file(attachment, FilePath, []);
+% Description: Sends a file to the browser with the given headers.
+file(FilePath, Headers) ->
+	file_send(FilePath, Headers).
+% Description: Sends a file for download with the given headers.
+file(attachment, FilePath, Headers) ->
 	% get filename
 	FileName = filename:basename(FilePath),
-	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}]).
+	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}|Headers]).
 
 % Description: Parse QueryString
 parse_qs() ->
