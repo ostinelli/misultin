@@ -86,6 +86,7 @@ CHANGELOG
        - added Comet iFrame example
        - added the killing of alive processes on server shutdown
        - the GET uri parameters are now also available on POST requests
+       - added custom headers on file sending to browser [thanks to josevalim]
        - additional minor adjustments
 
 0.6.2: - refactored to considerably improve sending of static files
