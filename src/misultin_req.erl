@@ -162,7 +162,12 @@ file(FilePath, Headers) ->
 file(attachment, FilePath, Headers) ->
 	% get filename
 	FileName = filename:basename(FilePath),
-	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}|Headers]).
+	% add Content-Disposition if needed
+	Headers0 = case misultin_utility:header_get_value('Content-Disposition', Headers) of
+		false -> [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))} | Headers];
+		_ -> Headers
+	end,
+	file_send(FilePath, Headers0).
 
 % Description: Parse QueryString
 parse_qs() ->
