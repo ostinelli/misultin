@@ -40,7 +40,7 @@
 -define(IS_HEX(C), ((C >= $0 andalso C =< $9) orelse
 					(C >= $a andalso C =< $f) orelse
 					(C >= $A andalso C =< $F))).
--define(FILE_READ_BUFFER, 64*1012).
+-define(FILE_READ_BUFFER, 4*1012).
 
 % API
 -export([raw/0]).
