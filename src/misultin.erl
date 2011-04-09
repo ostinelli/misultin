@@ -356,8 +356,10 @@ check_and_convert_string_to_ip(Ip) when is_tuple(Ip) ->
 	case Ip of
 		{Ip0, Ip1, Ip2, Ip3} when Ip0 >= 0, Ip0 =< 255, Ip1 >= 0, Ip1 =< 255, Ip2 >= 0, Ip2 =< 255, Ip3 >= 0, Ip3 =< 255 ->
 			Ip;
-		{Ip0, Ip1, Ip2, Ip3, Ip4, Ip5} when Ip0 >= 0, Ip0 =< 255, Ip1 >= 0, Ip1 =< 255, Ip2 >= 0, Ip2 =< 255, Ip3 >= 0, Ip3 =< 255, Ip4 >= 0, Ip4 =< 255, Ip5 >= 0, Ip5 =< 255 ->
-			Ip;
+        %% Allow valid IPv6 addresses
+        _ when is_tuple(Ip), size(Ip) == 8 ->
+            LIp = [Num || Num <- tuple_to_list(Ip), Num >= 0, Num =< 16#FFFF],
+            length(LIp) == 8 andalso Ip;
 		_ ->
 			false
 	end;
@@ -436,3 +438,11 @@ create_listener_and_acceptor(Port, Options, RecvTimeout, MaxConnections, SocketM
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+ipv6_tuple_test() ->
+    {ok, Tuple} = inet_parse:address("fe80::fc54:ff:feda:4559"),
+    ?assertEqual(Tuple, check_and_convert_string_to_ip(Tuple)).
+
+-endif.
