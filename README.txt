@@ -82,7 +82,8 @@ CHANGELOG
        - added SSL support for websockets [enhancement track #25, thanks to viplifes]
        - Misultin can now be started without a registered name or with a different name, so that multiple
          versions of misultin can be started on a single node
-       - added support for IP address specified in tuple format [thanks to okeuday for suggestion]
+       - added support for IP address specified in tuple format [thanks to okeuday suggestion]
+       - added support to extract plain uri unquoted as a list() [thanks to okeuday]
        - added Comet Long Polling example
        - added Comet iFrame example
        - added the killing of alive processes on server shutdown
