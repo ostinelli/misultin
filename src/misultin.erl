@@ -354,9 +354,9 @@ code_change(_OldVsn, State, _Extra) ->
 % Description: Checks and if necessary converts a string Ip to inet repr.
 check_and_convert_string_to_ip(Ip) when is_tuple(Ip) ->
 	case Ip of
-		{Ip0, Ip1, Ip2, Ip3} when Ip0 >= 0; Ip0 =< 255; Ip1 >= 0; Ip1 =< 255; Ip2 >= 0; Ip2 =< 255; Ip3 >= 0; Ip3 =< 255 ->
+		{Ip0, Ip1, Ip2, Ip3} when Ip0 >= 0, Ip0 =< 255, Ip1 >= 0, Ip1 =< 255, Ip2 >= 0, Ip2 =< 255, Ip3 >= 0, Ip3 =< 255 ->
 			Ip;
-		{Ip0, Ip1, Ip2, Ip3, Ip4, Ip5} when Ip0 >= 0; Ip0 =< 255; Ip1 >= 0; Ip1 =< 255; Ip2 >= 0; Ip2 =< 255; Ip3 >= 0; Ip3 =< 255; Ip4 >= 0; Ip4 =< 255; Ip5 >= 0; Ip5 =< 255 ->
+		{Ip0, Ip1, Ip2, Ip3, Ip4, Ip5} when Ip0 >= 0, Ip0 =< 255, Ip1 >= 0, Ip1 =< 255, Ip2 >= 0, Ip2 =< 255, Ip3 >= 0, Ip3 =< 255, Ip4 >= 0, Ip4 =< 255, Ip5 >= 0, Ip5 =< 255 ->
 			Ip;
 		_ ->
 			false
