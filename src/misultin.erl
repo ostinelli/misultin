@@ -353,11 +353,15 @@ code_change(_OldVsn, State, _Extra) ->
 % Function: -> false | IpTuple
 % Description: Checks and if necessary converts a string Ip to inet repr.
 check_and_convert_string_to_ip(Ip) when is_tuple(Ip) ->
-	case Ip of
-		{Ip0, Ip1, Ip2, Ip3} when Ip0 >= 0, Ip0 =< 255, Ip1 >= 0, Ip1 =< 255, Ip2 >= 0, Ip2 =< 255, Ip3 >= 0, Ip3 =< 255 ->
-			Ip;
-		{Ip0, Ip1, Ip2, Ip3, Ip4, Ip5} when Ip0 >= 0, Ip0 =< 255, Ip1 >= 0, Ip1 =< 255, Ip2 >= 0, Ip2 =< 255, Ip3 >= 0, Ip3 =< 255, Ip4 >= 0, Ip4 =< 255, Ip5 >= 0, Ip5 =< 255 ->
-			Ip;
+	case size(Ip) of
+		4 ->
+			% check for valid ipv4
+			LIp = [Num || Num <- tuple_to_list(Ip), Num >= 0, Num =< 255],
+			length(LIp) =:= 4 andalso Ip;
+		8 ->
+			% check for valid ipv6
+			LIp = [Num || Num <- tuple_to_list(Ip), Num >= 0, Num =< 16#FFFF],
+			length(LIp) =:= 8 andalso Ip;
 		_ ->
 			false
 	end;
