@@ -80,6 +80,9 @@ get(method) ->
 	Req#req.method;
 get(uri) ->
 	Req#req.uri;
+get(str_uri) ->
+    {_UriType, RawUri} = Req#req.uri,
+    unquote(RawUri);
 get(args) ->
 	Req#req.args;
 get(headers) ->

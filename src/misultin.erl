@@ -352,6 +352,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 % Function: -> false | IpTuple
 % Description: Checks and converts a string Ip to inet repr.
+check_and_convert_string_to_ip({_, _, _, _} = Ip) ->
+    Ip;
 check_and_convert_string_to_ip(Ip) ->
 	case inet_parse:address(Ip) of
 		{error, _Reason} ->
@@ -362,6 +364,8 @@ check_and_convert_string_to_ip(Ip) ->
 	
 % Function: -> true | false
 % Description: Checks if all necessary Ssl Options have been specified
+check_ssl_options(false) ->
+    true;
 check_ssl_options(SslOptions) ->
 	Opts = [verify, fail_if_no_peer_cert, verify_fun, depth, certfile, keyfile, password, cacertfile, ciphers, reuse_sessions, reuse_session],
 	F = fun({Name, _Value}) ->
