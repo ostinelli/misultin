@@ -55,6 +55,9 @@
 	ws_loop,
 	ws_autoexit
 }).
+-record(req_options, {
+	comet = false		% if comet =:= true, we will monitor client tcp close
+}).
 
 % includes
 -include("../include/misultin.hrl").
@@ -388,16 +391,22 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	% monitor the loop pid
 	Ref = erlang:monitor(process, LoopPid),
 	% enter loop
-	socket_loop(C, Request, LoopPid),
+	socket_loop(C, Request, LoopPid, #req_options{}),
 	% demonitor
 	catch erlang:demonitor(Ref),
 	% close http loop or send message to LoopPid
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid) ->
-	% set to active in order to receive closed events
-	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
+socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+	% are we trapping client tcp close events?
+	case Comet of
+		true ->
+			% set to active in order to receive closed events
+			misultin_socket:setopts(Sock, [{active, once}], SocketMode);
+		_ ->
+			ok
+	end,
 	% receive
 	receive
 		{stream_head, HttpCode, Headers0} ->
@@ -406,7 +415,11 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{SocketMode, Sock, _HttpData} ->
+			?LOG_ERROR("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
+			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+			misultin_socket:close(Sock, SocketMode);
 		{HttpCode, Headers0, Body} ->
 			% received normal response
 			?LOG_DEBUG("sending normal response", []),
@@ -426,24 +439,27 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{set_option, {comet, true}} ->
+			?LOG_DEBUG("setting option comet to true",[]),
+			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = true});
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
 			misultin_socket:send(Sock, Data, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{stream_error, 404} ->
 			?LOG_ERROR("file not found", []),
 			misultin_socket:send(Sock, build_error_message(404, Req#req.connection), SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{stream_error, _Reason} ->
 			?LOG_ERROR("error sending stream: ~p", [_Reason]),
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{'DOWN', _Ref, process, LoopPid, normal} ->
 			?LOG_DEBUG("normal finishing of custom loop",[]),
 			ok;
@@ -457,9 +473,8 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("client closed ssl socket",[]),
 			ssl_closed;
 		_Else ->
-			?LOG_WARNING("received message from client when client should not send messages since it should wait for a complete reponse: ~p, closing socket", [_Else]),
-			misultin_socket:send(Sock, build_error_message(409, close), SocketMode),
-			misultin_socket:close(Sock, SocketMode)
+			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
+			socket_loop(C, Req, LoopPid, ReqOptions)
 	end.
 	
 % Close socket and custom handling loop dependency

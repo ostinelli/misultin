@@ -45,6 +45,7 @@
 % API
 -export([raw/0]).
 -export([ok/1, ok/2, ok/3, respond/1, respond/2, respond/3, respond/4, raw_headers_respond/1, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4]).
+-export([options/1]).
 -export([chunk/1, chunk/2, stream/1, stream/2, stream/3]).
 -export([get/1, parse_qs/0, parse_post/0, file/1, file/2, file/3, resource/1]).
 
@@ -117,6 +118,18 @@ raw_headers_respond(HttpCode, HeadersStr, Body) ->
 	raw_headers_respond(HttpCode, [], HeadersStr, Body).
 raw_headers_respond(HttpCode, Headers, HeadersStr, Body) ->
 	SocketPid ! {HttpCode, {Headers, HeadersStr}, Body}.
+
+% set advanced options valid for a single request
+options(Options) when is_list(Options) ->
+	% loop options and apply
+	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal) end, Options).
+% set to comet mode
+options_set(comet, true) ->
+	SocketPid ! {set_option, {comet, true}};
+options_set(_OptionTag, _OptionVal)	->
+	% ignore
+	?LOG_DEBUG("ignoring advanced option ~p for request ~p", [{_OptionTag, _OptionVal}, Req]),
+	ignore.
 
 % Description: Chunked Transfer-Encoding.
 chunk(head) ->
