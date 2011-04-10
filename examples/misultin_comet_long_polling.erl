@@ -74,6 +74,8 @@ handle('GET', [], Req, Port) ->
 	
 % handle a GET on /comet
 handle('GET', ["comet"], Req, _Port) ->
+	% set comet true, this will allow trapping client closing the connection
+	Req:options([{comet, true}]),
 	% simulate a long polling with timer
 	timer:sleep(10000),
 	Req:ok([{"Content-Type", "text/plain"}], ["Message received from Long Polling, next message in 10 seconds."]);

@@ -120,6 +120,8 @@ handle('GET', [], Req, Port) ->
 	
 % handle a GET on /comet
 handle('GET', ["comet"], Req, _Port) ->
+	% set comet true, this will allow trapping client closing the connection
+	Req:options([{comet, true}]),
 	% send headers
 	Req:stream(head, [{"Content-Type", "text/html"}, {"Cache-Control", "no-cache, must-revalidate"}, {"Expires", "Mon, 26 Jul 1997 05:00:00 GMT"}]),
 	% start the page
