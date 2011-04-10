@@ -124,8 +124,8 @@ options(Options) when is_list(Options) ->
 	% loop options and apply
 	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal) end, Options).
 % set to comet mode
-options_set(comet, true) ->
-	SocketPid ! {set_option, {comet, true}};
+options_set(comet, OptionVal) when OptionVal =:= true; OptionVal =:= false ->
+	SocketPid ! {set_option, {comet, OptionVal}};
 options_set(_OptionTag, _OptionVal)	->
 	% ignore
 	?LOG_DEBUG("ignoring advanced option ~p for request ~p", [{_OptionTag, _OptionVal}, Req]),

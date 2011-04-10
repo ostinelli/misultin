@@ -440,9 +440,9 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			misultin_socket:send(Sock, Resp, SocketMode),
 			socket_loop(C, Req, LoopPid, ReqOptions);
-		{set_option, {comet, true}} ->
-			?LOG_DEBUG("setting option comet to true",[]),
-			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = true});
+		{set_option, {comet, OptionVal}} ->
+			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
+			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal});
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
 			misultin_socket:send(Sock, Data, SocketMode),
