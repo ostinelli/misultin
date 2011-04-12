@@ -31,8 +31,8 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_req, [Req, SocketPid]).
--vsn("0.7").
+-module(misultin_req).
+-vsn("0.7.1-dev").
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -43,11 +43,11 @@
 -define(FILE_READ_BUFFER, 64*1012).
 
 % API
--export([raw/0]).
--export([ok/1, ok/2, ok/3, respond/1, respond/2, respond/3, respond/4, raw_headers_respond/1, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4]).
--export([options/1]).
--export([chunk/1, chunk/2, stream/1, stream/2, stream/3]).
--export([get/1, parse_qs/0, parse_post/0, file/1, file/2, file/3, resource/1]).
+-export([raw/1]).
+-export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
+-export([options/2]).
+-export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
+-export([get/2, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -57,125 +57,125 @@
 % ============================ \/ API ======================================================================
 
 % Description: Returns raw request content.
-raw() ->
+raw({misultin_req, Req, _SocketPid}) ->
 	Req.
 
 % Description: Get request info.
-get(socket) ->
+get(socket, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket;
-get(socket_mode) ->
+get(socket_mode, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket_mode;
-get(peer_addr) ->
+get(peer_addr, {misultin_req, Req, _SocketPid}) ->
 	Req#req.peer_addr;
-get(peer_port) ->
+get(peer_port, {misultin_req, Req, _SocketPid}) ->
 	Req#req.peer_port;
-get(peer_cert) ->
+get(peer_cert, {misultin_req, Req, _SocketPid}) ->
 	Req#req.peer_cert;
-get(connection) ->
+get(connection, {misultin_req, Req, _SocketPid}) ->
 	Req#req.connection;
-get(content_length) ->
+get(content_length, {misultin_req, Req, _SocketPid}) ->
 	Req#req.content_length;
-get(vsn) ->
+get(vsn, {misultin_req, Req, _SocketPid}) ->
 	Req#req.vsn;
-get(method) ->
+get(method, {misultin_req, Req, _SocketPid}) ->
 	Req#req.method;
-get(uri) ->
+get(uri, {misultin_req, Req, _SocketPid}) ->
 	Req#req.uri;
-get(uri_unquoted) ->
+get(uri_unquoted, {misultin_req, Req, _SocketPid}) ->
 	{_UriType, RawUri} = Req#req.uri,
 	unquote(RawUri);
-get(args) ->
+get(args, {misultin_req, Req, _SocketPid}) ->
 	Req#req.args;
-get(headers) ->
+get(headers, {misultin_req, Req, _SocketPid}) ->
 	Req#req.headers;
-get(body) ->
+get(body, {misultin_req, Req, _SocketPid}) ->
 	Req#req.body.
 
 % Description: Formats a 200 response.
-ok(Template) ->
-	ok([], Template).
-ok(Headers, Template) ->
-	respond(200, Headers, Template).
-ok(Headers, Template, Vars) ->
-	respond(200, Headers, Template, Vars).
+ok(Template, ReqT) ->
+	ok([], Template, ReqT).
+ok(Headers, Template, ReqT) ->
+	respond(200, Headers, Template, ReqT).
+ok(Headers, Template, Vars, ReqT) ->
+	respond(200, Headers, Template, Vars, ReqT).
 
 % Description: Formats a response.
-respond(HttpCode) ->
-	respond(HttpCode, [], []).
-respond(HttpCode, Template) ->
-	respond(HttpCode, [], Template).
-respond(HttpCode, Headers, Template) ->
+respond(HttpCode, ReqT) ->
+	respond(HttpCode, [], [], ReqT).
+respond(HttpCode, Template, ReqT) ->
+	respond(HttpCode, [], Template, ReqT).
+respond(HttpCode, Headers, Template, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! {HttpCode, Headers, Template}.
-respond(HttpCode, Headers, Template, Vars) when is_list(Template) =:= true ->
+respond(HttpCode, Headers, Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =:= true ->
 	SocketPid ! {HttpCode, Headers, io_lib:format(Template, Vars)}.
 	
 % Description: Allow to add already formatted headers, untouched
-raw_headers_respond(Body) ->
-	raw_headers_respond(200, [], [], Body).
-raw_headers_respond(HeadersStr, Body) ->
-	raw_headers_respond(200, [], HeadersStr, Body).
-raw_headers_respond(HttpCode, HeadersStr, Body) ->
-	raw_headers_respond(HttpCode, [], HeadersStr, Body).
-raw_headers_respond(HttpCode, Headers, HeadersStr, Body) ->
+raw_headers_respond(Body, ReqT) ->
+	raw_headers_respond(200, [], [], Body, ReqT).
+raw_headers_respond(HeadersStr, Body, ReqT) ->
+	raw_headers_respond(200, [], HeadersStr, Body, ReqT).
+raw_headers_respond(HttpCode, HeadersStr, Body, ReqT) ->
+	raw_headers_respond(HttpCode, [], HeadersStr, Body, ReqT).
+raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! {HttpCode, {Headers, HeadersStr}, Body}.
 
 % set advanced options valid for a single request
-options(Options) when is_list(Options) ->
+options(Options, ReqT) when is_list(Options) ->
 	% loop options and apply
-	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal) end, Options).
+	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
 % set to comet mode
-options_set(comet, OptionVal) when OptionVal =:= true; OptionVal =:= false ->
+options_set(comet, OptionVal, {misultin_req, _Req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
 	SocketPid ! {set_option, {comet, OptionVal}};
-options_set(_OptionTag, _OptionVal)	->
+options_set(_OptionTag, _OptionVal, {misultin_req, _Req, _SocketPid})	->
 	% ignore
-	?LOG_DEBUG("ignoring advanced option ~p for request ~p", [{_OptionTag, _OptionVal}, Req]),
+	?LOG_DEBUG("ignoring advanced option ~p for request ~p", [{_OptionTag, _OptionVal}, _Req]),
 	ignore.
 
 % Description: Chunked Transfer-Encoding.
-chunk(head) ->
-	chunk(head, []);
-chunk(done) ->
-	stream("0\r\n\r\n");
-chunk(Template) ->
-	stream([erlang:integer_to_list(length(Template), 16), "\r\n", Template, "\r\n"]).
-chunk(head, Headers) ->
+chunk(head, ReqT) ->
+	chunk(head, [], ReqT);
+chunk(done, ReqT) ->
+	stream("0\r\n\r\n", ReqT);
+chunk(Template, ReqT) ->
+	stream([erlang:integer_to_list(length(Template), 16), "\r\n", Template, "\r\n"], ReqT).
+chunk(head, Headers, ReqT) ->
 	% add Transfer-Encoding chunked header if needed
 	Headers0 = case misultin_utility:header_get_value('Transfer-Encoding', Headers) of
 		false -> [{'Transfer-Encoding', "chunked"} | Headers];
 		_ -> Headers
 	end,
-	stream(head, Headers0);
-chunk(Template, Vars) ->
+	stream(head, Headers0, ReqT);
+chunk(Template, Vars, ReqT) ->
 	Data = io_lib:format(Template, Vars),
-	stream([erlang:integer_to_list(length(Data), 16), "\r\n", Data, "\r\n"]).
+	stream([erlang:integer_to_list(length(Data), 16), "\r\n", Data, "\r\n"], ReqT).
 	
 % Description: Stream support.
-stream(close) ->
+stream(close, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! stream_close;
-stream(head) ->
-	stream(head, 200, []);
-stream({error, Reason}) ->
+stream(head, ReqT) ->
+	stream(head, 200, [], ReqT);
+stream({error, Reason}, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! {stream_error, Reason};
-stream(Data) ->
+stream(Data, {misultin_req, _Req, SocketPid}) ->
 	catch SocketPid ! {stream_data, Data}.
-stream(head, Headers) ->
-	stream(head, 200, Headers);
-stream(Template, Vars) when is_list(Template) =:= true ->
+stream(head, Headers, ReqT) ->
+	stream(head, 200, Headers, ReqT);
+stream(Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =:= true ->
 	catch SocketPid ! {stream_data, io_lib:format(Template, Vars)}.
-stream(head, HttpCode, Headers) ->
+stream(head, HttpCode, Headers, {misultin_req, _Req, SocketPid}) ->
 	catch SocketPid ! {stream_head, HttpCode, Headers}.
 	
 % Description: Sends a file to the browser.
-file(FilePath) ->
-	file_send(FilePath, []).
+file(FilePath, ReqT) ->
+	file_send(FilePath, [], ReqT).
 % Description: Sends a file for download.	
-file(attachment, FilePath) ->
-	file(attachment, FilePath, []);
+file(attachment, FilePath, ReqT) ->
+	file(attachment, FilePath, [], ReqT);
 % Description: Sends a file to the browser with the given headers.
-file(FilePath, Headers) ->
-	file_send(FilePath, Headers).
+file(FilePath, Headers, ReqT) ->
+	file_send(FilePath, Headers, ReqT).
 % Description: Sends a file for download with the given headers.
-file(attachment, FilePath, Headers) ->
+file(attachment, FilePath, Headers, ReqT) ->
 	% get filename
 	FileName = filename:basename(FilePath),
 	% add Content-Disposition if needed
@@ -183,14 +183,14 @@ file(attachment, FilePath, Headers) ->
 		false -> [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))} | Headers];
 		_ -> Headers
 	end,
-	file_send(FilePath, Headers0).
+	file_send(FilePath, Headers0, ReqT).
 
 % Description: Parse QueryString
-parse_qs() ->
-	parse_qs(Req#req.args).
+parse_qs({misultin_req, Req, _SocketPid}) ->
+	i_parse_qs(Req#req.args).
 
 % Description: Parse Post
-parse_post() ->
+parse_post({misultin_req, Req, _SocketPid}) ->
 	% get header confirmation
 	case misultin_utility:header_get_value('Content-Type', Req#req.headers) of
 		false ->
@@ -199,14 +199,14 @@ parse_post() ->
 			[Type|_CharSet] = string:tokens(ContentType, ";"),
 			case Type of
 				"application/x-www-form-urlencoded" ->
-					parse_qs(Req#req.body);
+					i_parse_qs(Req#req.body);
 				_Other ->
 					[]
 			end
 	end.
 
 % Description: Sets resource elements for restful services.
-resource(Options) when is_list(Options) ->
+resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 	% clean uri
 	{_UriType, RawUri} = Req#req.uri,
 	Uri = lists:foldl(fun(Option, Acc) -> clean_uri(Option, Acc) end, RawUri, Options),
@@ -220,16 +220,16 @@ resource(Options) when is_list(Options) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % parse querystring & post
-parse_qs(Binary) when is_binary(Binary) ->
-	parse_qs(binary_to_list(Binary));
-parse_qs(String) ->
-	parse_qs(String, []).
-parse_qs([], Acc) ->
+i_parse_qs(Binary) when is_binary(Binary) ->
+	i_parse_qs(binary_to_list(Binary));
+i_parse_qs(String) ->
+	i_parse_qs(String, []).
+i_parse_qs([], Acc) ->
 	lists:reverse(Acc);
-parse_qs(String, Acc) ->
+i_parse_qs(String, Acc) ->
 	{Key, Rest} = parse_qs_key(String),
 	{Value, Rest1} = parse_qs_value(Rest),
-	parse_qs(Rest1, [{Key, Value} | Acc]).
+	i_parse_qs(Rest1, [{Key, Value} | Acc]).
 parse_qs_key(String) ->
 	parse_qs_key(String, []).
 parse_qs_key([], Acc) ->
@@ -286,34 +286,34 @@ clean_uri(_Unavailable, Uri) ->
 	Uri.
 
 % sending of a file
-file_send(FilePath, Headers) ->
+file_send(FilePath, Headers, ReqT) ->
 	% get file size
 	case file:read_file_info(FilePath) of
 		{ok, FileInfo} ->
 			% get filesize
 			FileSize = FileInfo#file_info.size,
 			% do the gradual sending
-			case file_open_and_send(FilePath, FileSize, Headers) of
+			case file_open_and_send(FilePath, FileSize, Headers, ReqT) of
 				{error, Reason} ->
-					stream({error, Reason});
+					stream({error, Reason}, ReqT);
 				ok ->
 					% sending successful
 					ok
 			end;
 		{error, _Reason} ->
 			% file not found or other errors
-			stream({error, 404})
+			stream({error, 404}, ReqT)
 	end.
-file_open_and_send(FilePath, FileSize, Headers) ->
+file_open_and_send(FilePath, FileSize, Headers, ReqT) ->
 	case file:open(FilePath, [read, binary]) of
 		{error, Reason} ->
 			{error, Reason};
 		{ok, IoDevice} ->
 			% send headers
 			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize} | Headers],
-			stream(head, HeadersFull),
+			stream(head, HeadersFull, ReqT),
 			% read portions
-			case file_read_and_send(IoDevice, 0) of 
+			case file_read_and_send(IoDevice, 0, ReqT) of 
 				{error, Reason} ->
 					file:close(IoDevice),
 					{error, Reason};
@@ -322,14 +322,14 @@ file_open_and_send(FilePath, FileSize, Headers) ->
 					ok
 			end
 	end.
-file_read_and_send(IoDevice, Position) ->
+file_read_and_send(IoDevice, Position, ReqT) ->
 	% read buffer
 	case file:pread(IoDevice, Position, ?FILE_READ_BUFFER) of
 		{ok, Data} ->
 			% file read, send
-			stream(Data),
+			stream(Data, ReqT),
 			% loop
-			file_read_and_send(IoDevice, Position + ?FILE_READ_BUFFER);
+			file_read_and_send(IoDevice, Position + ?FILE_READ_BUFFER, ReqT);
 		eof ->
 			% finished
 			ok;

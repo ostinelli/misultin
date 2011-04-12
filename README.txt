@@ -72,6 +72,10 @@ API Documentation is available online on the Misultin's wiki: https://github.com
 CHANGELOG
 ==========================================================================================================
 
+0.7.1-dev:
+       - Misultin can now be used both with parametrized modules and with pure erlang code too [thanks to
+         yrashk]
+
 0.7:   - added max_connections options parameter, which specifies maximum concurrent open connections
          accepted by the server
        - added post_max_size options parameter, which sets the maximum size of POST data

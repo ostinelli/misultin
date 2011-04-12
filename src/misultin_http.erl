@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.7").
+-vsn("0.7.1-dev").
 
 % API
 -export([handle_data/9]).
@@ -384,7 +384,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	Self = self(),
 	LoopPid = spawn(fun() ->
 		% create request
-		Req = misultin_req:new(Request, Self),
+		Req = {misultin_req, Request, Self},
 		% start custom loop
 		Loop(Req)
 	end),

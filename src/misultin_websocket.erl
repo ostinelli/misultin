@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_websocket).
--vsn("0.7").
+-vsn("0.7.1-dev").
 
 % API
 -export([check/2, connect/4]).
@@ -63,7 +63,7 @@ connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode
 	% send handshake back
 	misultin_socket:send(Socket, HandshakeServer, SocketMode),
 	% add data to ws record and spawn controlling process
-	Ws0 = misultin_ws:new(Ws#ws{origin = Origin, host = Host}, self()),
+	Ws0 = {misultin_ws, Ws#ws{origin = Origin, host = Host}, self()},
 	WsHandleLoopPid = spawn(fun() -> WsLoop(Ws0) end),
 	erlang:monitor(process, WsHandleLoopPid),
 	% set opts
