@@ -270,6 +270,10 @@ method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 					misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
 					handle_keepalive(close, C, Req)
 			end;
+		'DELETE' ->
+			?LOG_DEBUG("DELETE request received", []),
+			call_mfa(C, Req),
+			handle_keepalive(close, C, Req);
 		_Other ->
 			?LOG_DEBUG("method not implemented: ~p", [_Other]),
 			misultin_socket:send(C#c.sock, build_error_message(501, Req#req.connection), C#c.socket_mode),
