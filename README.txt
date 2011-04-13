@@ -78,6 +78,7 @@ CHANGELOG
        - added support for HEAD, PUT, DELETE, TRACE and CONNECT methods
        - now websockets are on {active, once} mode to avoid malicious clients overflooding [thanks to
          essen]
+       - ensured that body of request can be read on all methods except TRACE as per http specs
 
 0.7:   - added max_connections options parameter, which specifies maximum concurrent open connections
          accepted by the server
