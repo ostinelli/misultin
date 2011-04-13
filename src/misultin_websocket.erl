@@ -67,7 +67,7 @@ connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode
 	WsHandleLoopPid = spawn(fun() -> WsLoop(Ws0) end),
 	erlang:monitor(process, WsHandleLoopPid),
 	% set opts
-	misultin_socket:setopts(Socket, [{packet, 0}, {active, true}], SocketMode),
+	misultin_socket:setopts(Socket, [{packet, 0}, {active, once}], SocketMode),
 	% add main websocket pid to misultin server reference
 	misultin:ws_pid_ref_add(ServerRef, self()),
 	% start listening for incoming data
@@ -196,7 +196,7 @@ build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
 
 % Main Websocket loop
 ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
-	?LOG_DEBUG("websocket loop", []),
+	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
 		{tcp, Socket, Data} ->
 			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
