@@ -67,7 +67,7 @@ connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode
 	WsHandleLoopPid = spawn(fun() -> WsLoop(Ws0) end),
 	erlang:monitor(process, WsHandleLoopPid),
 	% set opts
-	misultin_socket:setopts(Socket, [{packet, 0}, {active, once}], SocketMode),
+	misultin_socket:setopts(Socket, [{packet, 0}], SocketMode),
 	% add main websocket pid to misultin server reference
 	misultin:ws_pid_ref_add(ServerRef, self()),
 	% start listening for incoming data
