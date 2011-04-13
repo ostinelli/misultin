@@ -75,6 +75,7 @@ CHANGELOG
 0.7.1-dev:
        - Misultin can now be used both with parametrized modules and with pure erlang code too [thanks to
          yrashk, nox and essen]
+       - added support for HEAD, PUT, DELETE, TRACE and CONNECT methods
 
 0.7:   - added max_connections options parameter, which specifies maximum concurrent open connections
          accepted by the server
