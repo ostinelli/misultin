@@ -137,7 +137,7 @@ chunk(head) ->
 chunk(done) ->
 	stream("0\r\n\r\n");
 chunk(Template) ->
-	stream([erlang:integer_to_list(length(Template), 16), "\r\n", Template, "\r\n"]).
+	stream([erlang:integer_to_list(iolist_size(Template), 16), "\r\n", Template, "\r\n"]).
 chunk(head, Headers) ->
 	% add Transfer-Encoding chunked header if needed
 	Headers0 = case misultin_utility:header_get_value('Transfer-Encoding', Headers) of
