@@ -137,7 +137,7 @@ chunk(head, ReqT) ->
 chunk(done, ReqT) ->
 	stream("0\r\n\r\n", ReqT);
 chunk(Template, ReqT) ->
-	stream([erlang:integer_to_list(length(Template), 16), "\r\n", Template, "\r\n"], ReqT).
+	chunk(Template, [], ReqT).
 chunk(head, Headers, ReqT) ->
 	% add Transfer-Encoding chunked header if needed
 	Headers0 = case misultin_utility:header_get_value('Transfer-Encoding', Headers) of
@@ -147,7 +147,7 @@ chunk(head, Headers, ReqT) ->
 	stream(head, Headers0, ReqT);
 chunk(Template, Vars, ReqT) ->
 	Data = io_lib:format(Template, Vars),
-	stream([erlang:integer_to_list(length(Data), 16), "\r\n", Data, "\r\n"], ReqT).
+	stream([erlang:integer_to_list(erlang:iolist_size(Data), 16), "\r\n", Data, "\r\n"], ReqT).
 	
 % Description: Stream support.
 stream(close, {misultin_req, _Req, SocketPid}) ->
