@@ -142,7 +142,7 @@ init([Options]) ->
 		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		% misultin
-		{post_max_size, 4*1012, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
+		{post_max_size, 4*1012*1012, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
 		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
 		{compress, false, fun is_boolean/1, invalid_compress_option},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
