@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2009, Roberto Ostinelli <roberto@ostinelli.net>
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>
 % All rights reserved.
 %
 % BSD License
@@ -42,11 +42,11 @@ stop() ->
 handle_http(Req) ->	
 	% get params depending on method
 	Method = Req:get(method),
-	case Method of
+	Args = case Method of
 		'GET' ->
-			Args = Req:parse_qs();
+			Req:parse_qs();
 		'POST' ->
-			Args = Req:parse_post()
+			Req:parse_post()
 	end,
 	% build an XML with all parameters and values
 	BuildXml = fun({Param, Value}, Acc) ->

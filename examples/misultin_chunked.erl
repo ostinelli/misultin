@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Hello World SSL.
+% MISULTIN - Example: Chunk.
 %
 % >-|-|-(°>
 % 
@@ -27,25 +27,30 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ssl).
+-module(misultin_chunked).
 -export([start/1, stop/0]).
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end},
-		{ssl, [
-			{certfile, "../priv/test_certificate.pem"},
-			{keyfile, "../priv/test_privkey.pem"},
-			{password, "misultin"}
-		]}
-	]).
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
 	misultin:stop().
 
 % callback on request received
-handle_http(Req) ->	
-	% output
-	Req:ok("Hello World SSL.").
+handle_http(Req) ->
+	% send headers
+	Req:chunk(head, [{"Content-Type", "text/html"}]),
+	% send chunk
+	Req:chunk("Sending CHUNK 1<br/>"),
+	timer:sleep(2000),
+	% send chunk
+	Req:chunk("Sending CHUNK 2<br/>"),
+	timer:sleep(2000),
+	% send chunk
+	Req:chunk("Sending CHUNK 3<br/>"),
+	% close
+	Req:chunk(done).
+
 
