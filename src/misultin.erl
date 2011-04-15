@@ -32,14 +32,14 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn("0.7-dev").
+-vsn("0.7").
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % API
--export([start_link/1, stop/0]).
--export([get_open_connections_count/0, http_pid_ref_add/1, http_pid_ref_remove/2, ws_pid_ref_add/1, ws_pid_ref_remove/1]).
+-export([start_link/1, stop/0, stop/1]).
+-export([get_open_connections_count/1, http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2]).
 
 % macros
 -define(SERVER, ?MODULE).
@@ -69,40 +69,56 @@
 
 % ============================ \/ API ======================================================================
 
-% Function: {ok,Pid} | ignore | {error, Error}
+% Function: {ok, Pid} | ignore | {error, Error}
 % Description: Starts the server.
 start_link(Options) when is_list(Options) ->
-	gen_server:start_link({local, ?SERVER}, ?MODULE, [Options], []).
+	% check if name option has been specified, otherwise default to 'misultin' as regname
+	case get_option({name, ?SERVER, fun is_atom/1, invalid_misultin_process_name}, Options) of
+		{error, Reason} ->
+			% option error
+			?LOG_ERROR("error in name option: ~p", [Reason]),
+			{error, Reason};
+		{name, false} ->
+			% start misultin without name
+			?LOG_DEBUG("starting misultin without a registered name",[]),
+			gen_server:start_link(?MODULE, [Options], []);
+		{name, Value} ->
+			% start misultin with specified name
+			?LOG_DEBUG("starting misultin with registered name ~p", [Value]),
+			gen_server:start_link({local, Value}, ?MODULE, [Options], [])
+	end.
 
 % Function: -> ok
 % Description: Manually stops the server.
 stop() ->
-	gen_server:cast(?SERVER, stop).
+	stop(?SERVER).
+stop(ServerRef) ->
+	gen_server:cast(ServerRef, stop).
 
 % Function -> integer()
 % Description: Gets the count of the current open connections
-get_open_connections_count() ->
-	gen_server:call(?SERVER, get_open_connections_count).
+get_open_connections_count(ServerRef) ->
+	gen_server:call(ServerRef, get_open_connections_count).
 
 % Function -> ok
 % Description: Adds a new http pid reference to status
-http_pid_ref_add(HttpPid) ->
-	gen_server:cast(?SERVER, {add_http_pid, HttpPid}).
+http_pid_ref_add(ServerRef, HttpPid) ->
+	gen_server:cast(ServerRef, {add_http_pid, HttpPid}).
 
 % Function -> ok
 % Description: Remove a http pid reference from status
-http_pid_ref_remove(HttpPid, HttpMonRef) ->
-	gen_server:cast(?SERVER, {remove_http_pid, {HttpPid, HttpMonRef}}).
+http_pid_ref_remove(ServerRef, HttpPid, HttpMonRef) ->
+	gen_server:cast(ServerRef, {remove_http_pid, {HttpPid, HttpMonRef}}).
 
 % Function -> ok
 % Description: Adds a new websocket pid reference to status
-ws_pid_ref_add(WsPid) ->
-	gen_server:cast(?SERVER, {add_ws_pid, WsPid}).
+ws_pid_ref_add(ServerRef, WsPid) ->
+	gen_server:cast(ServerRef, {add_ws_pid, WsPid}).
 
 % Function -> ok
 % Description: Remove a websocket pid reference from status
-ws_pid_ref_remove(WsPid) ->
-	gen_server:cast(?SERVER, {remove_ws_pid, WsPid}).
+ws_pid_ref_remove(ServerRef, WsPid) ->
+	gen_server:cast(ServerRef, {remove_ws_pid, WsPid}).
 
 % ============================ /\ API ======================================================================
 
@@ -134,7 +150,7 @@ init([Options]) ->
 		{ws_loop, none, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option}
 	],
-	OptionsVerified = lists:foldl(fun(OptionName, Acc) -> [get_option(OptionName, Options)|Acc] end, [], OptionProps),
+	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
 		undefined ->
 			% ok, no error found in options
@@ -279,7 +295,7 @@ handle_info({'EXIT', Pid, {error, {{accept_failed, {shutdown, _}}}}}, #state{acc
 % -> respawn listening socket and acceptor
 handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, acceptor = Pid, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts} = State) ->
 	?LOG_ERROR("acceptor has died with reason: ~p, respawning", [_Reason]),
-	AcceptorPid = misultin_socket:start_link(ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
+	AcceptorPid = misultin_socket:start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % Http process trapping
@@ -335,7 +351,20 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % Function: -> false | IpTuple
-% Description: Checks and converts a string Ip to inet repr.
+% Description: Checks and if necessary converts a string Ip to inet repr.
+check_and_convert_string_to_ip(Ip) when is_tuple(Ip) ->
+	case size(Ip) of
+		4 ->
+			% check for valid ipv4
+			LIp = [Num || Num <- tuple_to_list(Ip), Num >= 0, Num =< 255],
+			length(LIp) =:= 4 andalso Ip;
+		8 ->
+			% check for valid ipv6
+			LIp = [Num || Num <- tuple_to_list(Ip), Num >= 0, Num =< 16#FFFF],
+			length(LIp) =:= 8 andalso Ip;
+		_ ->
+			false
+	end;
 check_and_convert_string_to_ip(Ip) ->
 	case inet_parse:address(Ip) of
 		{error, _Reason} ->
@@ -403,7 +432,7 @@ create_listener_and_acceptor(Port, Options, RecvTimeout, MaxConnections, SocketM
 		{ok, ListenSocket} ->
 			?LOG_DEBUG("starting acceptor",[]),
 			% create acceptor
-			AcceptorPid = misultin_socket:start_link(ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
+			AcceptorPid = misultin_socket:start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
 			{ok, ListenSocket, AcceptorPid};
 		{error, Reason} ->
 			% error

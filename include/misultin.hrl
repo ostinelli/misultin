@@ -72,7 +72,7 @@
 	peer_addr,					% peer IP | undefined
 	peer_port,					% peer port | undefined
 	peer_cert,					% undefined | the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
-	connection = keep_alive,	% keep_alive | close
+	connection = close,			% keep_alive | close
 	content_length,				% Integer
 	vsn,						% {Maj,Min}
 	method,						% 'GET'|'POST'

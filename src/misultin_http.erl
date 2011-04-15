@@ -31,10 +31,10 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.7-dev").
+-vsn("0.7").
 
 % API
--export([handle_data/8]).
+-export([handle_data/9]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -42,6 +42,7 @@
 
 % records
 -record(c, {
+	server_ref,
 	sock,
 	socket_mode,
 	port,
@@ -54,6 +55,9 @@
 	ws_loop,
 	ws_autoexit
 }).
+-record(req_options, {
+	comet = false		% if comet =:= true, we will monitor client tcp close
+}).
 
 % includes
 -include("../include/misultin.hrl").
@@ -62,11 +66,12 @@
 % ============================ \/ API ======================================================================
 
 % Callback from misultin_socket
-handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
+handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% add pid reference
-	HttpMonRef = misultin:http_pid_ref_add(self()),
+	HttpMonRef = misultin:http_pid_ref_add(ServerRef, self()),
 	% build C record
 	C = #c{
+		server_ref = ServerRef,
 		sock = Sock,
 		socket_mode = SocketMode,
 		port = ListenPort,
@@ -83,7 +88,7 @@ handle_data(Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTime
 	% enter loop
 	request(C, Req),
 	% remove pid reference
-	misultin:http_pid_ref_remove(self(), HttpMonRef).
+	misultin:http_pid_ref_remove(ServerRef, self(), HttpMonRef).
 
 % ============================ /\ API ======================================================================
 
@@ -177,7 +182,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
@@ -275,7 +280,7 @@ method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 % Description: Read the post body according to headers
 read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, post_max_size = PostMaxSize} = C, Req) ->
 	% check if content length has been provided
-	case catch list_to_integer(Req#req.content_length) of
+	case catch erlang:list_to_integer(Req#req.content_length) of
 		{'EXIT', _} ->
 			% no specified content length, or not a valid integer number, check transfer encoding header
 			case misultin_utility:header_get_value('Transfer-Encoding', Req#req.headers) of
@@ -361,7 +366,7 @@ get_chunk_length(HeadLine) ->
 		{'EXIT', _} ->
 			{error, chunked_headline_empty};
 		HeadLenStr ->
-			case catch list_to_integer(HeadLenStr, 16) of
+			case catch erlang:list_to_integer(HeadLenStr, 16) of
 				{'EXIT', _} -> {error, invalid_chunked_headline};
 				Len -> {ok, Len}
 			end
@@ -386,16 +391,22 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	% monitor the loop pid
 	Ref = erlang:monitor(process, LoopPid),
 	% enter loop
-	socket_loop(C, Request, LoopPid),
+	socket_loop(C, Request, LoopPid, #req_options{}),
 	% demonitor
 	catch erlang:demonitor(Ref),
 	% close http loop or send message to LoopPid
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid) ->
-	% set to active in order to receive closed events
-	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
+socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+	% are we trapping client tcp close events?
+	case Comet of
+		true ->
+			% set to active in order to receive closed events
+			misultin_socket:setopts(Sock, [{active, once}], SocketMode);
+		_ ->
+			ok
+	end,
 	% receive
 	receive
 		{stream_head, HttpCode, Headers0} ->
@@ -404,7 +415,11 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{SocketMode, Sock, _HttpData} ->
+			?LOG_ERROR("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
+			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+			misultin_socket:close(Sock, SocketMode);
 		{HttpCode, Headers0, Body} ->
 			% received normal response
 			?LOG_DEBUG("sending normal response", []),
@@ -424,24 +439,27 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{set_option, {comet, OptionVal}} ->
+			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
+			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal});
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
 			misultin_socket:send(Sock, Data, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{stream_error, 404} ->
 			?LOG_ERROR("file not found", []),
 			misultin_socket:send(Sock, build_error_message(404, Req#req.connection), SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{stream_error, _Reason} ->
 			?LOG_ERROR("error sending stream: ~p", [_Reason]),
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid);
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{'DOWN', _Ref, process, LoopPid, normal} ->
 			?LOG_DEBUG("normal finishing of custom loop",[]),
 			ok;
@@ -455,9 +473,8 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("client closed ssl socket",[]),
 			ssl_closed;
 		_Else ->
-			?LOG_WARNING("received message from client when client should not send messages since it should wait for a complete reponse: ~p, closing socket", [_Else]),
-			misultin_socket:send(Sock, build_error_message(409, close), SocketMode),
-			misultin_socket:close(Sock, SocketMode)
+			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
+			socket_loop(C, Req, LoopPid, ReqOptions)
 	end.
 	
 % Close socket and custom handling loop dependency
@@ -465,7 +482,7 @@ loop_close(LoopPid, AutoExit) ->
 	case AutoExit of
 		true ->
 			% kill handling loop process
-			?LOG_DEBUG("force the killing of the http handling loop",[]),
+			?LOG_DEBUG("ensure the exiting of the http handling loop",[]),
 			exit(LoopPid, kill);
 		false ->
 			% the killing of the http handling loop process is handled in the loop itself -> send event
@@ -492,18 +509,12 @@ add_output_header('Content-Length', {Headers, Body}) ->
 
 % Description: Add necessary Connection Header
 add_output_header('Connection', {Headers, Req}) ->
-	case Req#req.connection of
+	% echo
+	case misultin_utility:get_key_value('Connection', Headers) of
 		undefined ->
-			% nothing to echo
-			Headers;
-		Connection ->
-			% echo
-			case misultin_utility:get_key_value('Connection', Headers) of
-				undefined ->
-					[{'Connection', connection_str(Connection)}|Headers];
-				_ExistingConnectionHeaderValue ->
-					Headers
-			end
+			[{'Connection', connection_str(Req#req.connection)}|Headers];
+		_ExistingConnectionHeaderValue ->
+			Headers
 	end.
 
 % Helper to Connection string
@@ -520,7 +531,7 @@ enc_headers([]) ->
 enc_header_val(Val) when is_atom(Val) ->
 	atom_to_list(Val);
 enc_header_val(Val) when is_integer(Val) ->
-	integer_to_list(Val);
+	erlang:integer_to_list(Val);
 enc_header_val(Val) ->
 	Val.
 
@@ -603,7 +614,7 @@ get_accepted_encodings(AcceptEncodingHeader) ->
 list_to_number(L) ->
 	case catch list_to_float(L) of
 		{'EXIT', _} ->
-			case catch list_to_integer(L) of
+			case catch erlang:list_to_integer(L) of
 				{'EXIT', _} -> not_a_number;
 				Value -> Value
 			end;

@@ -13,17 +13,23 @@ INSTALL INSTRUCTIONS
 Run the appropriate script:
 
     * OSX | Linux users:  make
-    * Windows users: make.bat. Note that Erlang bin directory (by default, C:\Program Files\erl5.7.2\bin\) must be in your path for the script to work.
+    * Windows users: make.bat. Note that Erlang bin directory (by default, C:\Program Files\erl5.7.2\bin\)
+      must be in your path for the script to work.
 
-This script will compile the .erl files in the Misultin src directory and save the compiled files into the ebin directory.
+This script will compile the .erl files in the Misultin src directory and save the compiled files into the
+ebin directory.
 
 2. (Optional) Copy Misultin files
 
-This optional step will allow Misultin to be called from modules running from any directory on your file system.
+This optional step will allow Misultin to be called from modules running from any directory on your file
+system.
 
-Locate the directory where Erlang is installed on your system. Under OSX and Linux, it should be something similar to /usr/local/lib/erlang/ or /usr/lib/erlang/. Under Windows, Erlang is installed by default in something similar to C:\Program Files\erl5.7.2\ (version changes may apply).
+Locate the directory where Erlang is installed on your system. Under OSX and Linux, it should be something
+similar to /usr/local/lib/erlang/ or /usr/lib/erlang/. Under Windows, Erlang is installed by default in
+something similar to C:\Program Files\erl5.7.2\ (version changes may apply).
 
-Browse into the lib directory under this Erlang root and copy the root misultin-0.x directory into this directory. You should now have Misultin under something similar to:
+Browse into the lib directory under this Erlang root and copy the root misultin-0.x directory into this
+directory. You should now have Misultin under something similar to:
 
     * OSX | Linux users: /usr/local/lib/erlang/lib/misultin-0.x/
     * Windows users: C:\Program Files\erl5.7.2\lib\misultin-0.x\ 
@@ -32,7 +38,9 @@ Browse into the lib directory under this Erlang root and copy the root misultin-
 
 If you did proceed with step 2, CD to the Misultin examples directory and start an Erlang shell.
 
-If you did not proceed with step 2, copy the file misultin_hello_world.erl from the Misultin examples directory to the directory where the .beam files compiled in step 1 are located, then CD to this directory and start an Erlang shell.
+If you did not proceed with step 2, copy the file misultin_hello_world.erl from the Misultin examples
+directory to the directory where the .beam files compiled in step 1 are located, then CD to this
+directory and start an Erlang shell.
 
 In the shell, compile and run misultin_hello_world by issuing:
 
@@ -41,7 +49,8 @@ In the shell, compile and run misultin_hello_world by issuing:
 (one@rob.loc)2>misultin_hello_world:start(8080).
 {ok,<0.50.0>}
 
-Open your favourite browser and point it to http://localhost:8080/, you should read "Hello World." printed on your page.
+Open your favourite browser and point it to http://localhost:8080/, you should read "Hello World."
+printed on your page.
 
 You may now stop the misultin_hello_world HTTP server:
 
@@ -71,10 +80,15 @@ CHANGELOG
          suggestion]
        - added trapping of client closing a browser in Comet applications [thanks to yrashk]
        - added SSL support for websockets [enhancement track #25, thanks to viplifes]
+       - Misultin can now be started without a registered name or with a different name, so that multiple
+         versions of misultin can be started on a single node
+       - added support for IP address specified in tuple format [thanks to okeuday suggestion]
+       - added support to extract plain uri unquoted as a list() [thanks to okeuday]
        - added Comet Long Polling example
        - added Comet iFrame example
        - added the killing of alive processes on server shutdown
        - the GET uri parameters are now also available on POST requests
+       - added custom headers on file sending to browser [thanks to josevalim]
        - additional minor adjustments
 
 0.6.2: - refactored to considerably improve sending of static files

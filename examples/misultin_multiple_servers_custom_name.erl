@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Comet - Long Polling Method
+% MISULTIN - Example: Hello World with two custom name registered misultin servers.
 %
 % >-|-|-(°>
 % 
@@ -27,59 +27,21 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_comet_long_polling).
--export([start/1, stop/0]).
+-module(misultin_multiple_servers_custom_name).
+-export([start/2, stop/0]).
 
-% start misultin http server
-start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req, Port) end}]).
+% Description: Start misultin http servers
+start(Port1, Port2) ->
+	% start misultin1
+	misultin:start_link([{port, Port1}, {name, misultin1}, {loop, fun(Req) -> handle_http(Req, misultin1) end}]),
+	% start misultin2
+	misultin:start_link([{port, Port2}, {name, misultin2}, {loop, fun(Req) -> handle_http(Req, misultin2) end}]).
 
-% stop misultin
+% Description: Stop misultin servers
 stop() ->
-	misultin:stop().
+	misultin:stop(misultin1),
+	misultin:stop(misultin2).
 
-handle_http(Req, Port) ->
-	% dispatch to rest
-	handle(Req:get(method), Req:resource([lowercase, urldecode]), Req, Port).
-	
-% handle a GET on /
-handle('GET', [], Req, Port) ->
-	% output
-	Req:ok([{"Content-Type", "text/html"}],
-	["
-	<html>
-		<head>
-			<script type=\"text/javascript\" src=\"http://code.jquery.com/jquery-1.5.1.min.js\"></script>
-			<script type=\"text/javascript\">
-				function misultinComet(){
-					$.get('http://localhost:", erlang:integer_to_list(Port), "/comet', {}, function(response){
-						toDiv(response);
-						setTimeout('misultinComet()', 1000);
-					});
-				}
-				function toDiv(content){
-					$('#content').append(content + '<br>');
-				}
-				$(document).ready(function() {
-					misultinComet();
-				});
-			</script>
-		</head>
-		<body>
-			Long Polling example, please wait 10 seconds for incoming data.<br><br>
-			<div id=\"content\"></div>
-		</body>
-	</html>	
-	"]);
-	
-% handle a GET on /comet
-handle('GET', ["comet"], Req, _Port) ->
-	% set comet true, this will allow trapping client closing the connection
-	Req:options([{comet, true}]),
-	% simulate a long polling with timer
-	timer:sleep(10000),
-	Req:ok([{"Content-Type", "text/plain"}], ["Message received from Long Polling, next message in 10 seconds."]);
-
-% handle the 404 page not found
-handle(_, _, Req, _Port) ->
-	Req:ok([{"Content-Type", "text/plain"}], "Page not found.").
+% callback on request received
+handle_http(Req, RegName) ->	
+	Req:ok(["Hello World from ", atom_to_list(RegName)]).

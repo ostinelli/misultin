@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req, [Req, SocketPid]).
--vsn("0.7-dev").
+-vsn("0.7").
 
 % macros
 -define(PERCENT, 37).  % $\%
@@ -45,8 +45,9 @@
 % API
 -export([raw/0]).
 -export([ok/1, ok/2, ok/3, respond/1, respond/2, respond/3, respond/4, raw_headers_respond/1, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4]).
+-export([options/1]).
 -export([chunk/1, chunk/2, stream/1, stream/2, stream/3]).
--export([get/1, parse_qs/0, parse_post/0, file/1, file/2, resource/1]).
+-export([get/1, parse_qs/0, parse_post/0, file/1, file/2, file/3, resource/1]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -80,6 +81,9 @@ get(method) ->
 	Req#req.method;
 get(uri) ->
 	Req#req.uri;
+get(uri_unquoted) ->
+	{_UriType, RawUri} = Req#req.uri,
+	unquote(RawUri);
 get(args) ->
 	Req#req.args;
 get(headers) ->
@@ -115,13 +119,25 @@ raw_headers_respond(HttpCode, HeadersStr, Body) ->
 raw_headers_respond(HttpCode, Headers, HeadersStr, Body) ->
 	SocketPid ! {HttpCode, {Headers, HeadersStr}, Body}.
 
+% set advanced options valid for a single request
+options(Options) when is_list(Options) ->
+	% loop options and apply
+	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal) end, Options).
+% set to comet mode
+options_set(comet, OptionVal) when OptionVal =:= true; OptionVal =:= false ->
+	SocketPid ! {set_option, {comet, OptionVal}};
+options_set(_OptionTag, _OptionVal)	->
+	% ignore
+	?LOG_DEBUG("ignoring advanced option ~p for request ~p", [{_OptionTag, _OptionVal}, Req]),
+	ignore.
+
 % Description: Chunked Transfer-Encoding.
 chunk(head) ->
 	chunk(head, []);
 chunk(done) ->
 	stream("0\r\n\r\n");
 chunk(Template) ->
-	stream([integer_to_list(length(Template), 16), "\r\n", Template, "\r\n"]).
+	stream([erlang:integer_to_list(length(Template), 16), "\r\n", Template, "\r\n"]).
 chunk(head, Headers) ->
 	% add Transfer-Encoding chunked header if needed
 	Headers0 = case misultin_utility:header_get_value('Transfer-Encoding', Headers) of
@@ -131,7 +147,7 @@ chunk(head, Headers) ->
 	stream(head, Headers0);
 chunk(Template, Vars) ->
 	Data = io_lib:format(Template, Vars),
-	stream([integer_to_list(length(Data), 16), "\r\n", Data, "\r\n"]).
+	stream([erlang:integer_to_list(length(Data), 16), "\r\n", Data, "\r\n"]).
 	
 % Description: Stream support.
 stream(close) ->
@@ -154,9 +170,20 @@ file(FilePath) ->
 	file_send(FilePath, []).
 % Description: Sends a file for download.	
 file(attachment, FilePath) ->
+	file(attachment, FilePath, []);
+% Description: Sends a file to the browser with the given headers.
+file(FilePath, Headers) ->
+	file_send(FilePath, Headers).
+% Description: Sends a file for download with the given headers.
+file(attachment, FilePath, Headers) ->
 	% get filename
 	FileName = filename:basename(FilePath),
-	file_send(FilePath, [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))}]).
+	% add Content-Disposition if needed
+	Headers0 = case misultin_utility:header_get_value('Content-Disposition', Headers) of
+		false -> [{'Content-Disposition', lists:flatten(io_lib:format("attachment; filename=~s", [FileName]))} | Headers];
+		_ -> Headers
+	end,
+	file_send(FilePath, Headers0).
 
 % Description: Parse QueryString
 parse_qs() ->

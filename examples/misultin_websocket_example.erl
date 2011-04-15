@@ -53,7 +53,7 @@ handle_http(Req, Port) ->
 				function ready(){
 					if (\"WebSocket\" in window) {
 						// browser supports websockets
-						var ws = new WebSocket(\"ws://localhost:", integer_to_list(Port) ,"/service\");
+						var ws = new WebSocket(\"ws://localhost:", erlang:integer_to_list(Port) ,"/service\");
 						ws.onopen = function() {
 							// websocket is connected
 							addStatus(\"websocket connected!\");
