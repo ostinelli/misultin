@@ -34,10 +34,10 @@
 -vsn("0.7.1-dev").
 
 % API
--export([start_link/7]).
+-export([acceptor_start_link/7]).
 
 % callbacks
--export([listener/7]).
+-export([acceptor/7]).
 
 % internal
 -export([listen/3, setopts/3, recv/4, send/3, close/2]).
@@ -50,18 +50,18 @@
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
-start_link(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
-	proc_lib:spawn_link(?MODULE, listener, [ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts]).
+acceptor_start_link(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
+	proc_lib:spawn_link(?MODULE, acceptor, [ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts]).
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
-listener(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
+acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
 	case catch accept(ListenSocket, SocketMode) of
 		{ok, Sock} when SocketMode =:= http ->
 			% received a HTTP socket, check connections
 			manage_open_connection_count(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections),							
 			% get back to accept loop
-			listener(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
+			acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
 		{ok, Sock} ->
 			% spawn a ssl_accept process to avoid locking the main listener
 			spawn(fun() ->
@@ -77,11 +77,11 @@ listener(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, Socke
 				end
 			end),
 			% get back to accept loop
-			listener(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
+			acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
 		{error, _Error} ->
 			?LOG_WARNING("accept failed with error: ~p", [_Error]),
 			% get back to accept loop
-			listener(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
+			acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
 		{'EXIT', Error} ->
 			?LOG_ERROR("accept exited with error: ~p, quitting process", [Error]),
 			exit({error, {accept_failed, Error}})

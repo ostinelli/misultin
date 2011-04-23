@@ -295,7 +295,7 @@ handle_info({'EXIT', Pid, {error, {{accept_failed, {shutdown, _}}}}}, #state{acc
 % -> respawn listening socket and acceptor
 handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, acceptor = Pid, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts} = State) ->
 	?LOG_ERROR("acceptor has died with reason: ~p, respawning", [_Reason]),
-	AcceptorPid = misultin_socket:start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
+	AcceptorPid = misultin_socket:acceptor_start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
 	{noreply, State#state{acceptor = AcceptorPid}};
 
 % Http process trapping
@@ -432,7 +432,7 @@ create_listener_and_acceptor(Port, Options, RecvTimeout, MaxConnections, SocketM
 		{ok, ListenSocket} ->
 			?LOG_DEBUG("starting acceptor",[]),
 			% create acceptor
-			AcceptorPid = misultin_socket:start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
+			AcceptorPid = misultin_socket:acceptor_start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
 			{ok, ListenSocket, AcceptorPid};
 		{error, Reason} ->
 			% error
