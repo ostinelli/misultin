@@ -324,7 +324,7 @@ handle_info(_Info, State) ->
 % the gen_server terminates with Reason. The return value is ignored.
 % ----------------------------------------------------------------------------------------------------------
 terminate(_Reason, #state{listen_socket = ListenSocket, socket_mode = SocketMode, acceptor = AcceptorPid, http_pid_ref = HttpPidRef, ws_pid_ref = WsPidRef}) ->
-	?LOG_INFO("shutting down server with Pid ~p", [self()]),
+	?LOG_INFO("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
 	% kill acceptor
 	exit(AcceptorPid, kill),
 	% send a shutdown message to all websockets, if any
