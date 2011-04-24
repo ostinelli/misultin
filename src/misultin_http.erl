@@ -428,7 +428,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -498,14 +498,6 @@ socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, co
 		{'EXIT', LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
-		{'EXIT', ServerRef, Reason} ->
-			ErrorCode = case Reason of 
-				normal -> 503;	% service unavailable, server shutting down
-				_ -> 500		% internal server error, server crashed
-			end,
-			?LOG_DEBUG("server is shutting down with reason ~p, sending ~p message and exiting http process ~p", [Reason, ErrorCode, self()]),
-			misultin_socket:send(Sock, build_error_message(ErrorCode, Req#req.connection), SocketMode),
-			misultin_socket:close(Sock, SocketMode);
 		{SocketMode, Sock, _HttpData} ->
 			?LOG_ERROR("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
 			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),

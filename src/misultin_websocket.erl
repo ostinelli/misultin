@@ -223,10 +223,6 @@ ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 			end,
 			% close websocket and custom controlling loop
 			websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		{'EXIT', ServerRef, Reason} ->
-			?LOG_DEBUG("server is shutting down with reason ~p, exiting websocket process ~p", [Reason, self()]),
-			% close websocket and custom controlling loop
-			websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{send, Data} ->
 			?LOG_DEBUG("sending data to websocket: ~p", [Data]),
 			misultin_socket:send(Socket, [0, Data, 255], SocketMode),
