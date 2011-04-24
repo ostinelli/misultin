@@ -409,25 +409,26 @@ handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req)
 
 % Description: Main dispatcher
 call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
-	% spawn custom loop
+	% spawn_link custom loop
 	Self = self(),
-	LoopPid = spawn(fun() ->
+	LoopPid = spawn_link(fun() ->
 		% create request
 		Req = {misultin_req, Request, Self},
 		% start custom loop
 		Loop(Req)
 	end),
-	% monitor the loop pid
-	Ref = erlang:monitor(process, LoopPid),
+	% trap exit
+	process_flag(trap_exit, true),
 	% enter loop
 	socket_loop(C, Request, LoopPid, #req_options{}),
-	% demonitor
-	catch erlang:demonitor(Ref),
+	% unlink
+	process_flag(trap_exit, false),
+	erlang:unlink(LoopPid),
 	% close http loop or send message to LoopPid
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -438,18 +439,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 	end,
 	% receive
 	receive
-		{stream_head, HttpCode, Headers0} ->
-			?LOG_DEBUG("sending stream head", []),
-			Headers = add_output_header('Connection', {Headers0, Req}),
-			Enc_headers = enc_headers(Headers),
-			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
-			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{SocketMode, Sock, _HttpData} ->
-			?LOG_ERROR("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
-			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
-			misultin_socket:close(Sock, SocketMode);
-		{HttpCode, Headers0, Body} ->
+		{response, HttpCode, Headers0, Body} ->
 			% received normal response
 			?LOG_DEBUG("sending normal response", []),
 			% build binary body & compress if necessary
@@ -472,6 +462,13 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
 			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal});
+		{stream_head, HttpCode, Headers0} ->
+			?LOG_DEBUG("sending stream head", []),
+			Headers = add_output_header('Connection', {Headers0, Req}),
+			Enc_headers = enc_headers(Headers),
+			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
+			misultin_socket:send(Sock, Resp, SocketMode),
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
 			misultin_socket:send(Sock, Data, SocketMode),
@@ -489,18 +486,30 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
 			socket_loop(C, Req, LoopPid, ReqOptions);
-		{'DOWN', _Ref, process, LoopPid, normal} ->
-			?LOG_DEBUG("normal finishing of custom loop",[]),
-			ok;
-		{'DOWN', _Ref, process, LoopPid, _Reason} ->
-			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
-			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
 		{tcp_closed, Sock} ->
 			?LOG_DEBUG("client closed socket",[]),
 			tcp_closed;
 		{ssl_closed, Sock} ->
 			?LOG_DEBUG("client closed ssl socket",[]),
 			ssl_closed;
+		{'EXIT', LoopPid, normal} ->
+			?LOG_DEBUG("normal finishing of custom loop",[]),
+			ok;
+		{'EXIT', LoopPid, _Reason} ->
+			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
+			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
+		{'EXIT', ServerRef, Reason} ->
+			ErrorCode = case Reason of 
+				normal -> 503;	% service unavailable, server shutting down
+				_ -> 500		% internal server error, server crashed
+			end,
+			?LOG_DEBUG("server is shutting down with reason ~p, sending ~p message and exiting http process ~p", [Reason, ErrorCode, self()]),
+			misultin_socket:send(Sock, build_error_message(ErrorCode, Req#req.connection), SocketMode),
+			misultin_socket:close(Sock, SocketMode);
+		{SocketMode, Sock, _HttpData} ->
+			?LOG_ERROR("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
+			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+			misultin_socket:close(Sock, SocketMode);
 		_Else ->
 			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
 			socket_loop(C, Req, LoopPid, ReqOptions)

@@ -105,9 +105,9 @@ respond(HttpCode, ReqT) ->
 respond(HttpCode, Template, ReqT) ->
 	respond(HttpCode, [], Template, ReqT).
 respond(HttpCode, Headers, Template, {misultin_req, _Req, SocketPid}) ->
-	SocketPid ! {HttpCode, Headers, Template}.
+	SocketPid ! {response, HttpCode, Headers, Template}.
 respond(HttpCode, Headers, Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =:= true ->
-	SocketPid ! {HttpCode, Headers, io_lib:format(Template, Vars)}.
+	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
 	
 % Description: Allow to add already formatted headers, untouched
 raw_headers_respond(Body, ReqT) ->
@@ -117,7 +117,7 @@ raw_headers_respond(HeadersStr, Body, ReqT) ->
 raw_headers_respond(HttpCode, HeadersStr, Body, ReqT) ->
 	raw_headers_respond(HttpCode, [], HeadersStr, Body, ReqT).
 raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, _Req, SocketPid}) ->
-	SocketPid ! {HttpCode, {Headers, HeadersStr}, Body}.
+	SocketPid ! {response, HttpCode, {Headers, HeadersStr}, Body}.
 
 % set advanced options valid for a single request
 options(Options, ReqT) when is_list(Options) ->
