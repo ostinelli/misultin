@@ -411,14 +411,15 @@ handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req)
 call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	% spawn_link custom loop
 	Self = self(),
+	% trap exit
+	process_flag(trap_exit, true),
+	% spawn
 	LoopPid = spawn_link(fun() ->
 		% create request
 		Req = {misultin_req, Request, Self},
 		% start custom loop
 		Loop(Req)
 	end),
-	% trap exit
-	process_flag(trap_exit, true),
 	% enter loop
 	socket_loop(C, Request, LoopPid, #req_options{}),
 	% unlink
@@ -499,7 +500,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
 		{SocketMode, Sock, _HttpData} ->
-			?LOG_ERROR("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
+			?LOG_WARNING("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
 			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
 			misultin_socket:close(Sock, SocketMode);
 		_Else ->
