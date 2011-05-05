@@ -51,6 +51,7 @@
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
 acceptor_start_link(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
+	?LOG_DEBUG("starting new acceptor",[]),
 	proc_lib:spawn_link(?MODULE, acceptor, [ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts]).
 
 % Function: {ok,Pid} | ignore | {error, Error}
@@ -58,24 +59,42 @@ acceptor_start_link(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnect
 acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
 	case catch accept(ListenSocket, SocketMode) of
 		{ok, Sock} when SocketMode =:= http ->
-			% received a HTTP socket, check connections
-			manage_open_connection_count(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections),							
+			?LOG_DEBUG("received a new http request, spawning a controlling process",[]),
+			Pid = spawn(fun() ->
+				activate_controller_process(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections)
+			end),
+			% set controlling process
+			case controlling_process(Sock, Pid, SocketMode) of
+				ok ->
+					Pid ! set;
+				{error, _Reason} ->
+					?LOG_ERROR("could not set controlling process: ~p, closing socket", [_Reason]),
+					catch close(Sock, SocketMode)
+			end,					
 			% get back to accept loop
 			acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
 		{ok, Sock} ->
-			% spawn a ssl_accept process to avoid locking the main listener
-			spawn(fun() ->
+			?LOG_DEBUG("received a new https request, spawning a controlling process",[]),
+			Pid = spawn(fun() ->
 				case ssl:ssl_accept(Sock, 60000) of
 					ok ->
-						manage_open_connection_count(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections);
+						activate_controller_process(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections);
 					{ok, NewSock} ->
-						manage_open_connection_count(ServerRef, NewSock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections);
+						activate_controller_process(ServerRef, NewSock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections);
 					{error, _Reason} ->
 						% could not negotiate a SSL transaction, leave process
 						?LOG_WARNING("could not negotiate a SSL transaction: ~p", [_Reason]),
 						catch close(Sock, SocketMode)
 				end
 			end),
+			% set controlling process
+			case controlling_process(Sock, Pid, SocketMode) of
+				ok ->
+					Pid ! set;
+				{error, _Reason} ->
+					?LOG_ERROR("could not set controlling process: ~p, closing socket", [_Reason]),
+					catch close(Sock, SocketMode)
+			end,
 			% get back to accept loop
 			acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts);
 		{error, _Error} ->
@@ -92,46 +111,34 @@ acceptor(ServerRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, Socke
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% upgrade to SSL
-manage_open_connection_count(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections) ->
-	case misultin:get_open_connections_count(ServerRef) >= MaxConnections of
-		false ->
-			create_socket_pid(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts);
-		true ->
-			% too many open connections, send error and close [spawn to avoid locking]
-			spawn(fun() ->
-				?LOG_WARNING("too many open connections, refusing new request",[]),
-				send(Sock, [misultin_utility:get_http_status_code(503), <<"Connection: Close\r\n\r\n">>], SocketMode),
-				close(Sock, SocketMode)
-			end)
+% activate the controller pid
+activate_controller_process(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections) ->
+	receive
+		set ->
+			?LOG_DEBUG("activated controlling process ~p", [self()]),
+			open_connections_switch(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections)
+	after 60000 ->
+		?LOG_ERROR("timeout waiting for set in controlling process, closing socket", []),
+		catch close(Sock, SocketMode)
 	end.
 
-% start socket Pid
-create_socket_pid(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
-	?LOG_DEBUG("accepted an incoming TCP connection in ~p mode on socket ~p, spawning controlling process", [SocketMode, Sock]),
-	Pid = spawn(fun() ->
-		receive
-			set ->
-				?LOG_DEBUG("activated controlling process ~p", [self()]),
-				% get peer address and port
-				{PeerAddr, PeerPort} = peername(Sock, SocketMode),
-				% get peer certificate, if any
-				PeerCert = peercert(Sock, SocketMode),
-				% jump to external callback
-				?LOG_DEBUG("jump to connection logic", []),
-				misultin_http:handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts)
-		after 60000 ->
-			?LOG_ERROR("timeout waiting for set in controlling process, closing socket", []),
-			catch close(Sock, SocketMode)
-		end
-	end),
-	% set controlling process
-	case controlling_process(Sock, Pid, SocketMode) of
-		ok ->
-			Pid ! set;
-		{error, _Reason} ->
-			?LOG_ERROR("could not set controlling process: ~p, closing socket", [_Reason]),
-			catch close(Sock, SocketMode)
+% manage open connection
+open_connections_switch(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections) ->
+	case misultin:get_open_connections_count(ServerRef) >= MaxConnections of
+		false ->
+			?LOG_DEBUG("get basic info from socket ~p", [Sock]),
+			% get peer address and port
+			{PeerAddr, PeerPort} = peername(Sock, SocketMode),
+			% get peer certificate, if any
+			PeerCert = peercert(Sock, SocketMode),
+			% jump to external callback
+			?LOG_DEBUG("jump to connection logic", []),
+			misultin_http:handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts);
+		true ->
+			% too many open connections, send error and close [spawn to avoid locking]
+			?LOG_WARNING("too many open connections, refusing new request",[]),
+			send(Sock, [misultin_utility:get_http_status_code(503), <<"Connection: Close\r\n\r\n">>], SocketMode),
+			close(Sock, SocketMode)
 	end.
 
 % socket listen
