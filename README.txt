@@ -74,6 +74,7 @@ CHANGELOG
 
 0.7.1-dev:
        - considerably improved stability under heavy load
+       - misultin now accepts incoming connections with a pool of acceptors instead of a single one
        - Misultin can now be used both with parametrized modules and with pure erlang code too [thanks to
          yrashk, nox and essen]
        - added support for HEAD, PUT, DELETE, TRACE and CONNECT methods
