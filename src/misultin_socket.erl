@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn("0.7.1-dev").
+-vsn("0.7.1").
 
 % API
 -export([acceptor_start_link/7]).
