@@ -72,6 +72,17 @@ API Documentation is available online on the Misultin's wiki: https://github.com
 CHANGELOG
 ==========================================================================================================
 
+0.7.1:
+       - considerably improved stability under heavy load
+       - misultin now accepts incoming connections with a pool of acceptors instead of a single one
+       - Misultin can now be used both with parametrized modules and with pure erlang code too [thanks to
+         yrashk, nox and essen]
+       - added support for HEAD, PUT, DELETE, TRACE and CONNECT methods
+       - now websockets are on {active, once} mode to avoid malicious clients overflooding [thanks to
+         essen]
+       - ensured that body of request can be read on all methods except TRACE as per http specs
+       - added support for iolist() in chunked resposes [thanks to RJ]
+
 0.7:   - added max_connections options parameter, which specifies maximum concurrent open connections
          accepted by the server
        - added post_max_size options parameter, which sets the maximum size of POST data

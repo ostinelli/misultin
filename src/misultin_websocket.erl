@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_websocket).
--vsn("0.7").
+-vsn("0.7.1").
 
 % API
 -export([check/2, connect/4]).
@@ -62,16 +62,20 @@ connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode
 	HandshakeServer = handshake(Vsn, Req, Headers, {Path, Origin, Host}),
 	% send handshake back
 	misultin_socket:send(Socket, HandshakeServer, SocketMode),
-	% add data to ws record and spawn controlling process
-	Ws0 = misultin_ws:new(Ws#ws{origin = Origin, host = Host}, self()),
-	WsHandleLoopPid = spawn(fun() -> WsLoop(Ws0) end),
-	erlang:monitor(process, WsHandleLoopPid),
+	% add data to ws record and spawn_link controlling process
+	Ws0 = {misultin_ws, Ws#ws{origin = Origin, host = Host}, self()},
+	WsHandleLoopPid = spawn_link(fun() -> WsLoop(Ws0) end),
+	% trap exit
+	process_flag(trap_exit, true),
 	% set opts
-	misultin_socket:setopts(Socket, [{packet, 0}, {active, true}], SocketMode),
+	misultin_socket:setopts(Socket, [{packet, 0}], SocketMode),
 	% add main websocket pid to misultin server reference
 	misultin:ws_pid_ref_add(ServerRef, self()),
 	% start listening for incoming data
-	ws_loop(ServerRef, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit).	
+	ws_loop(ServerRef, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit),
+	% unlink
+	process_flag(trap_exit, false),
+	erlang:unlink(WsHandleLoopPid).
 	
 % ============================ /\ API ======================================================================
 
@@ -196,7 +200,7 @@ build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
 
 % Main Websocket loop
 ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
-	?LOG_DEBUG("websocket loop", []),
+	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
 		{tcp, Socket, Data} ->
 			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
@@ -210,15 +214,13 @@ ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 			?LOG_DEBUG("ssl tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
 			websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		{'DOWN', Ref, process, WsHandleLoopPid, Reason} ->
+		{'EXIT', WsHandleLoopPid, Reason} ->
 			case Reason of
 				normal ->
 					?LOG_DEBUG("linked websocket controlling loop stopped.", []);
 				_ ->
 					?LOG_ERROR("linked websocket controlling loop crashed with reason: ~p", [Reason])
 			end,
-			% demonitor
-			erlang:demonitor(Ref),
 			% close websocket and custom controlling loop
 			websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{send, Data} ->

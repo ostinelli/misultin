@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn("0.7").
+-vsn("0.7.1").
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -53,7 +53,8 @@
 	socket_mode,
 	port,
 	options,
-	acceptor,
+	acceptors = [],
+	acceptors_poolsize,
 	recv_timeout,
 	max_connections = 1024,			% maximum allowed simultaneous connections
 	open_connections_count = 0,
@@ -138,11 +139,12 @@ init([Options]) ->
 		{ip, {0, 0, 0, 0}, fun check_and_convert_string_to_ip/1, invalid_ip},
 		{port, 80, fun is_integer/1, port_not_integer},
 		{backlog, 128, fun is_integer/1, backlog_not_integer},
+		{acceptors_poolsize, 10, fun is_integer/1, invalid_acceptors_poolsize_option},
 		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer},
 		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		% misultin
-		{post_max_size, 4*1012, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
+		{post_max_size, 4*1012*1012, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
 		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
 		{compress, false, fun is_boolean/1, invalid_compress_option},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
@@ -158,6 +160,7 @@ init([Options]) ->
 			Ip = proplists:get_value(ip, OptionsVerified),
 			Port = proplists:get_value(port, OptionsVerified),
 			Backlog = proplists:get_value(backlog, OptionsVerified),
+			AcceptorsPoolsize = proplists:get_value(acceptors_poolsize, OptionsVerified),
 			RecvTimeout = proplists:get_value(recv_timeout, OptionsVerified),
 			MaxConnections = proplists:get_value(max_connections, OptionsVerified),
 			SslOptions0 = proplists:get_value(ssl, OptionsVerified),
@@ -212,10 +215,10 @@ init([Options]) ->
 					% build custom_opts
 					CustomOpts = #custom_opts{post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
 					% create listening socket and acceptor
-					case create_listener_and_acceptor(Port, OptionsTcp, RecvTimeout, MaxConnections, SocketMode, CustomOpts) of
-						{ok, ListenSocket, AcceptorPid} ->
-							?LOG_DEBUG("listening socket and acceptor succesfully started",[]),
-							{ok, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, options = OptionsTcp, acceptor = AcceptorPid, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts}};
+					case create_listener_and_acceptors(Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts) of
+						{ok, ListenSocket, AcceptorPids} ->
+							?LOG_DEBUG("listening socket and acceptors succesfully started",[]),
+							{ok, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, options = OptionsTcp, acceptors = AcceptorPids, acceptors_poolsize = AcceptorsPoolsize, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts}};
 						{error, Reason} ->
 							?LOG_ERROR("error starting listener socket: ~p", [Reason]),
 							{stop, Reason}
@@ -289,14 +292,20 @@ handle_cast(_Msg, State) ->
 % Description: Handling all non call/cast messages.
 % ----------------------------------------------------------------------------------------------------------
 
-% Acceptor died
+% EXIT signal received: possibly one acceptor has died
 % -> shutdown in progress, ignore
-handle_info({'EXIT', Pid, {error, {{accept_failed, {shutdown, _}}}}}, #state{acceptor = Pid} = State) -> {noreply, State};
-% -> respawn listening socket and acceptor
-handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, acceptor = Pid, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts} = State) ->
-	?LOG_ERROR("acceptor has died with reason: ~p, respawning", [_Reason]),
-	AcceptorPid = misultin_socket:start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
-	{noreply, State#state{acceptor = AcceptorPid}};
+handle_info({'EXIT', _Pid, {error, {{accept_failed, {shutdown, _}}}}}, State) -> {noreply, State};
+% -> respawn acceptor
+handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, acceptors = AcceptorPids, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts} = State) ->
+	case lists:member(Pid, AcceptorPids) of
+		true ->
+			?LOG_ERROR("the acceptor ~p has died with reason: ~p, respawning", [Pid, _Reason]),
+			AcceptorPid = misultin_socket:acceptor_start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
+			{noreply, State#state{acceptors = [AcceptorPid|lists:delete(Pid, AcceptorPids)]}};
+		false ->
+			?LOG_WARNING("received info on a process ~p crash which is not an acceptor process, with reason: ~p, ignoring", [Pid, _Reason]),
+			{noreply, State}
+	end;
 
 % Http process trapping
 handle_info({'DOWN', _Ref, process, _HttpPid, normal}, State) -> {noreply, State};	% normal exiting of an http process
@@ -323,10 +332,11 @@ handle_info(_Info, State) ->
 % Description: This function is called by a gen_server when it is about to terminate. When it returns,
 % the gen_server terminates with Reason. The return value is ignored.
 % ----------------------------------------------------------------------------------------------------------
-terminate(_Reason, #state{listen_socket = ListenSocket, socket_mode = SocketMode, acceptor = AcceptorPid, http_pid_ref = HttpPidRef, ws_pid_ref = WsPidRef}) ->
-	?LOG_INFO("shutting down server with Pid ~p", [self()]),
-	% kill acceptor
-	exit(AcceptorPid, kill),
+terminate(_Reason, #state{listen_socket = ListenSocket, socket_mode = SocketMode, acceptors = AcceptorPids, http_pid_ref = HttpPidRef, ws_pid_ref = WsPidRef}) ->
+	?LOG_INFO("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
+	% kill acceptors
+	?LOG_DEBUG("sending kill signal to acceptors: ~p", [AcceptorPids]),
+	lists:foreach(fun(AcceptorPid) -> exit(AcceptorPid, kill) end, AcceptorPids),
 	% send a shutdown message to all websockets, if any
 	?LOG_DEBUG("sending shutdown message to websockets: ~p", [WsPidRef]),
 	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsPidRef),
@@ -424,16 +434,19 @@ start_application(Application) ->
 			ok
 	end.
 
-% Function: -> {ok, ListenSocket, AcceptorPid} | {error, Error}
+% Function: -> {ok, ListenSocket, [AcceptorPid,...]} | {error, Error}
 % Description: Create listening socket
-create_listener_and_acceptor(Port, Options, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
+create_listener_and_acceptors(Port, Options, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
 	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, Options, Port]),
 	case misultin_socket:listen(Port, Options, SocketMode) of
 		{ok, ListenSocket} ->
-			?LOG_DEBUG("starting acceptor",[]),
-			% create acceptor
-			AcceptorPid = misultin_socket:start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
-			{ok, ListenSocket, AcceptorPid};
+			?LOG_DEBUG("starting acceptors",[]),
+			% create acceptors
+			AcceptorPids = [
+				misultin_socket:acceptor_start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts)
+				|| _K <- lists:seq(1, AcceptorsPoolsize)
+			],
+			{ok, ListenSocket, AcceptorPids};
 		{error, Reason} ->
 			% error
 			{error, Reason}

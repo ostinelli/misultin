@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.7").
+-vsn("0.7.1").
 
 % API
 -export([handle_data/9]).
@@ -238,63 +238,91 @@ get_uri_and_args(Req) ->
 	end.
 
 % dispatch operations according to defined method
-method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
-	case Req#req.method of
-		'GET' ->
-			?LOG_DEBUG("GET request received",[]),
-			call_mfa(C, Req),
-			handle_keepalive(Req#req.connection, C, Req);
-		'POST' ->
-			?LOG_DEBUG("POST request received", []),
-			% read post body
-			case read_post_body(C, Req) of
-				{ok, Bin} ->
-					?LOG_DEBUG("body read, proceed to handle the request",[]),
-					Req0 = Req#req{body = Bin},
-					call_mfa(C, Req0),
-					handle_keepalive(Req#req.connection, C, Req0);
-				{error, timeout} ->
-					?LOG_WARNING("request timeout, sending error", []),
-					misultin_socket:send(Sock, build_error_message(408, Req#req.connection), SocketMode),
-					handle_keepalive(close, C, Req);
-				{error, unsupported} ->	
-					?LOG_DEBUG("no specified content length, or not a valid integer number: ~p", [Req#req.content_length]),
-					misultin_socket:send(Sock, build_error_message(411, Req#req.connection), SocketMode),
-					handle_keepalive(Req#req.connection, C, Req);
-				{error, post_max_size} ->	
-					?LOG_WARNING("post request entity too large", []),				
-					misultin_socket:send(Sock, build_error_message(413, close), SocketMode),
-					handle_keepalive(close, C, Req);
-				{error, Reason} ->
-					?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [Reason]),
-					misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
-					handle_keepalive(close, C, Req)
-			end;
-		_Other ->
-			?LOG_DEBUG("method not implemented: ~p", [_Other]),
-			misultin_socket:send(C#c.sock, build_error_message(501, Req#req.connection), C#c.socket_mode),
-			handle_keepalive(Req#req.connection, C, Req)
+method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:= 'POST'; Method =:= 'HEAD'; Method =:= 'PUT'; Method =:= 'DELETE'; Method =:= 'CONNECT' ->
+	?LOG_DEBUG("~p request received", [Method]),
+	% read body & dispatch
+	read_body_dispatch(C, Req);
+method_dispatch(C, #req{method = Method} = Req) when Method =:= 'TRACE' ->
+	?LOG_DEBUG("~p request received", [Method]),
+	% an entity-body is explicitly forbidden in TRACE requests <http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.8>
+	call_mfa(C, Req),
+	handle_keepalive(Req#req.connection, C, Req);
+method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, #req{method = _Method, connection = Connection} = Req) ->
+	?LOG_DEBUG("method not implemented: ~p", [_Method]),
+	misultin_socket:send(Sock, build_error_message(501, Connection), SocketMode),
+	handle_keepalive(Connection, C, Req).
+
+% read body and dispatch to mfa if ok	
+read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
+	% read post body
+	case read_post_body(C, Req) of
+		{ok, Bin} ->
+			?LOG_DEBUG("body read, proceed to handle the request",[]),
+			Req0 = Req#req{body = Bin},
+			call_mfa(C, Req0),
+			handle_keepalive(Req#req.connection, C, Req0);
+		{error, timeout} ->
+			?LOG_WARNING("request timeout, sending error", []),
+			misultin_socket:send(Sock, build_error_message(408, Req#req.connection), SocketMode),
+			handle_keepalive(close, C, Req);
+		{error, no_valid_content_specs} ->	
+			?LOG_DEBUG("no valid content length specified or not a chunked request",[]),
+			misultin_socket:send(Sock, build_error_message(411, Req#req.connection), SocketMode),
+			handle_keepalive(Req#req.connection, C, Req);			
+		{error, post_max_size} ->	
+			?LOG_WARNING("post request entity too large", []),				
+			misultin_socket:send(Sock, build_error_message(413, close), SocketMode),
+			handle_keepalive(close, C, Req);
+		{error, Reason} ->
+			?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [Reason]),
+			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+			handle_keepalive(close, C, Req)
 	end.
 
 % Function -> {ok, Bin} | {error, Reason}
 % Description: Read the post body according to headers
-read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, post_max_size = PostMaxSize} = C, Req) ->
-	% check if content length has been provided
-	case catch erlang:list_to_integer(Req#req.content_length) of
-		{'EXIT', _} ->
-			% no specified content length, or not a valid integer number, check transfer encoding header
-			case misultin_utility:header_get_value('Transfer-Encoding', Req#req.headers) of
-				"chunked" ->
-					?LOG_DEBUG("chunked content being sent by the client, parsing POST content and looping for additional chunks",[]),
-					read_post_body_chunk(C);
-				_ ->
-					{error, unsupported}
+read_post_body(C, #req{method = Method} = Req) when Method =:= 'POST'; Method =:= 'PUT' ->
+	% on PUT and POST require content length or transfer encoding headers
+	read_post_body(C, Req, {error, no_valid_content_specs});
+read_post_body(C, Req) ->
+	% on other requests just set body to <<>> in case of error
+	read_post_body(C, Req, {ok, <<>>}).
+read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOutput) ->
+	case ContentLength of
+		undefined ->
+			% no specified content length, check transfer encoding header
+			case misultin_utility:get_key_value('Transfer-Encoding', Req#req.headers) of
+				undefined ->
+					NoContentNoChunkOutput;
+				TE ->
+					case string:to_lower(TE) of
+						"chunked" ->
+							?LOG_DEBUG("chunked content being sent by the client, parsing body content and looping for additional chunks",[]),
+							read_post_body_chunk(C);
+					_ ->
+						NoContentNoChunkOutput
+				end
 			end;
+		StrLen ->
+			case catch erlang:list_to_integer(StrLen) of
+				{'EXIT', _} ->
+					?LOG_DEBUG("no valid content length: ~p", [StrLen]),
+					{error, no_valid_content_specs};
+				Len ->
+					i_read_post_body(C, Req, Len)
+			end
+	end.
+
+% Function -> {ok, Bin} | {error, Reason}
+% Description: Read body
+i_read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, post_max_size = PostMaxSize}, _Req, Len) ->
+	% check if content length has been provided
+	case Len of
 		0 ->
 			?LOG_DEBUG("zero content-lenght specified, skipping parsing body of request", []),
 			{ok, <<>>};
 		Len when Len =< PostMaxSize ->
-			?LOG_DEBUG("content length has been specified, parsing POST content in body of request", []),
+			?LOG_DEBUG("content length has been specified, parsing content in body of request", []),
 			misultin_socket:setopts(Sock, [{packet, raw}, {active, false}], SocketMode),
 			case misultin_socket:recv(Sock, Len, RecvTimeout, SocketMode) of
 				{ok, Bin} ->
@@ -308,8 +336,9 @@ read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTime
 			?LOG_DEBUG("content length specified of ~p bytes exceed limit of ~p bytes", [_Len, PostMaxSize]),
 			{error, post_max_size}
 	end.
-	
-% read body chunks
+
+% Function -> {ok, Bin} | {error, Reason}
+% Description: Read body chunks
 read_post_body_chunk(C) ->
 	read_post_body_chunk_headline(C, <<>>).
 read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, Acc) when size(Acc) > PostMaxSize ->
@@ -380,20 +409,22 @@ handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req)
 
 % Description: Main dispatcher
 call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
-	% spawn custom loop
+	% spawn_link custom loop
 	Self = self(),
-	LoopPid = spawn(fun() ->
+	% trap exit
+	process_flag(trap_exit, true),
+	% spawn
+	LoopPid = spawn_link(fun() ->
 		% create request
-		Req = misultin_req:new(Request, Self),
+		Req = {misultin_req, Request, Self},
 		% start custom loop
 		Loop(Req)
 	end),
-	% monitor the loop pid
-	Ref = erlang:monitor(process, LoopPid),
 	% enter loop
 	socket_loop(C, Request, LoopPid, #req_options{}),
-	% demonitor
-	catch erlang:demonitor(Ref),
+	% unlink
+	process_flag(trap_exit, false),
+	erlang:unlink(LoopPid),
 	% close http loop or send message to LoopPid
 	loop_close(LoopPid, AutoExit).
 
@@ -409,18 +440,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 	end,
 	% receive
 	receive
-		{stream_head, HttpCode, Headers0} ->
-			?LOG_DEBUG("sending stream head", []),
-			Headers = add_output_header('Connection', {Headers0, Req}),
-			Enc_headers = enc_headers(Headers),
-			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
-			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{SocketMode, Sock, _HttpData} ->
-			?LOG_ERROR("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
-			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
-			misultin_socket:close(Sock, SocketMode);
-		{HttpCode, Headers0, Body} ->
+		{response, HttpCode, Headers0, Body} ->
 			% received normal response
 			?LOG_DEBUG("sending normal response", []),
 			% build binary body & compress if necessary
@@ -443,6 +463,13 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
 			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal});
+		{stream_head, HttpCode, Headers0} ->
+			?LOG_DEBUG("sending stream head", []),
+			Headers = add_output_header('Connection', {Headers0, Req}),
+			Enc_headers = enc_headers(Headers),
+			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
+			misultin_socket:send(Sock, Resp, SocketMode),
+			socket_loop(C, Req, LoopPid, ReqOptions);
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
 			misultin_socket:send(Sock, Data, SocketMode),
@@ -460,18 +487,22 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
 			socket_loop(C, Req, LoopPid, ReqOptions);
-		{'DOWN', _Ref, process, LoopPid, normal} ->
-			?LOG_DEBUG("normal finishing of custom loop",[]),
-			ok;
-		{'DOWN', _Ref, process, LoopPid, _Reason} ->
-			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
-			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
 		{tcp_closed, Sock} ->
 			?LOG_DEBUG("client closed socket",[]),
 			tcp_closed;
 		{ssl_closed, Sock} ->
 			?LOG_DEBUG("client closed ssl socket",[]),
 			ssl_closed;
+		{'EXIT', LoopPid, normal} ->
+			?LOG_DEBUG("normal finishing of custom loop",[]),
+			ok;
+		{'EXIT', LoopPid, _Reason} ->
+			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
+			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
+		{SocketMode, Sock, _HttpData} ->
+			?LOG_WARNING("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
+			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+			misultin_socket:close(Sock, SocketMode);
 		_Else ->
 			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
 			socket_loop(C, Req, LoopPid, ReqOptions)

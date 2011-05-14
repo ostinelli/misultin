@@ -27,11 +27,11 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ws, [Ws, SocketPid]).
--vsn("0.7").
+-module(misultin_ws).
+-vsn("0.7.1").
 
 % API
--export([raw/0, get/1, send/1]).
+-export([raw/1, get/2, send/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -40,33 +40,33 @@
 % ============================ \/ API ======================================================================
 
 % Description: Returns raw websocket content.
-raw() ->
+raw({misultin_ws, Ws, _SocketPid}) ->
 	Ws.
 
 % Description: Get websocket info.
-get(socket) ->
+get(socket, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.socket;
-get(socket_mode) ->
+get(socket_mode, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#req.socket_mode;
-get(peer_addr) ->
+get(peer_addr, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.peer_addr;
-get(peer_port) ->
+get(peer_port, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.peer_port;
-get(peer_cert) ->
+get(peer_cert, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.peer_cert;
-get(vsn) ->
+get(vsn, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.vsn;
-get(origin) ->
+get(origin, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.origin;
-get(host) ->
+get(host, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.host;
-get(path) ->
+get(path, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.path;
-get(headers) ->
+get(headers, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.headers.
 
 % send data
-send(Data) ->
+send(Data, {misultin_ws, _Ws, SocketPid}) ->
 	SocketPid ! {send, Data}.
 		
 % ============================ /\ API ======================================================================
