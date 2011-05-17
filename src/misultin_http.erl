@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.7.1").
+-vsn("dev-sup-0.8").
 
 % API
 -export([handle_data/9]).
@@ -68,7 +68,7 @@
 % Callback from misultin_socket
 handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% add pid reference
-	HttpMonRef = misultin:http_pid_ref_add(ServerRef, self()),
+	HttpMonRef = misultin_server:http_pid_ref_add(ServerRef, self()),
 	% build C record
 	C = #c{
 		server_ref = ServerRef,
@@ -88,7 +88,7 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 	% enter loop
 	request(C, Req),
 	% remove pid reference
-	misultin:http_pid_ref_remove(ServerRef, self(), HttpMonRef).
+	misultin_server:http_pid_ref_remove(ServerRef, self(), HttpMonRef).
 
 % ============================ /\ API ======================================================================
 

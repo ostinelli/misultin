@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req).
--vsn("0.7.1").
+-vsn("dev-sup-0.8").
 
 % macros
 -define(PERCENT, 37).  % $\%

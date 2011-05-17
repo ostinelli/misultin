@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_socket).
--vsn("0.7.1").
+-vsn("dev-sup-0.8").
 
 % API
 -export([acceptor_start_link/7]).
@@ -124,7 +124,7 @@ activate_controller_process(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode
 
 % manage open connection
 open_connections_switch(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts, MaxConnections) ->
-	case misultin:get_open_connections_count(ServerRef) >= MaxConnections of
+	case misultin_server:get_open_connections_count(ServerRef) >= MaxConnections of
 		false ->
 			?LOG_DEBUG("get basic info from socket ~p", [Sock]),
 			% get peer address and port
