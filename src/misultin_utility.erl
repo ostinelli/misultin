@@ -322,7 +322,7 @@ get_content_type(FileName) ->
 	end.
 
 % faster than proplists:get_value
-get_key_value(Key, List)->
+get_key_value(Key, List) ->
 	case lists:keyfind(Key, 1, List) of
 		false-> undefined;
 		{_K, Value}-> Value
