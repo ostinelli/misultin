@@ -47,11 +47,11 @@
 
 % Description: Starts the acceptor.
 start_link(MainSupRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
-	?LOG_DEBUG("starting new acceptor",[]),
 	Pid = proc_lib:spawn_link(?MODULE, init, [MainSupRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts]),
 	{ok, Pid}.
 	
 init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
+	?LOG_DEBUG("starting new acceptor with pid ~p", [self()]),
 	% get pid of misultin server
 	Childrens = supervisor:which_children(MainSupRef),
 	case lists:keyfind(server, 1, Childrens) of

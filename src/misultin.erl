@@ -78,7 +78,7 @@ stop(undefined) ->
 stop(SupName) when is_atom(SupName) ->
 	stop(whereis(SupName));
 stop(SupPid) when is_pid(SupPid) ->
-	exit(SupPid, shutdown).
+	exit(SupPid, normal).
 
 % ============================ /\ API ======================================================================
 
