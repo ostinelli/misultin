@@ -34,12 +34,12 @@ start_link(Options) ->
 % Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
 % Description: Starts the supervisor
 % ----------------------------------------------------------------------------------------------------------
-init([[MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]]) ->
+init([[MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]]) ->
 	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, OptionsTcp, Port]),
 	case misultin_socket:listen(Port, OptionsTcp, SocketMode) of
 		{ok, ListenSocket} ->
 			Acceptors = [
-				{{acceptor, N}, {misultin_acceptor, start_link, [MainSupRef, ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts]},
+				{{acceptor, N}, {misultin_acceptor, start_link, [MainSupRef, ListenSocket, Port, RecvTimeout, SocketMode, CustomOpts]},
 				permanent, brutal_kill, worker, dynamic}
 				|| N <- lists:seq(1, AcceptorsPoolsize)
 			],

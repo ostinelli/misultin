@@ -173,9 +173,9 @@ init([Options]) ->
 					% build custom_opts
 					CustomOpts = #custom_opts{post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
 					% define misultin_server supervisor specs
-					ServerSpec = {server, {misultin_server, start_link, [[Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]]}, permanent, 10000, worker, [misultin_server]},
+					ServerSpec = {server, {misultin_server, start_link, [[Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]]}, permanent, 60000, worker, [misultin_server]},
 					% define acceptors supervisor specs
-					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [[self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
+					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [[self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% spawn
 					{ok, {{one_for_all, 5, 30}, [ServerSpec, AcceptorSupSpec]}};
 				Error ->
