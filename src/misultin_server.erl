@@ -198,7 +198,7 @@ handle_info(_Info, State) ->
 % ----------------------------------------------------------------------------------------------------------
 terminate(_Reason, _State) ->
 	?LOG_INFO("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
-	% building lists from ets tables
+	% build pid lists from ets tables
 	HttpPidList = [X || {X, _} <- ets:tab2list(?TABLE_PIDS_HTTP)],
 	WsPidList = [X || {X, _} <- ets:tab2list(?TABLE_PIDS_WS)],
 	% delete ETS tables
@@ -208,10 +208,9 @@ terminate(_Reason, _State) ->
 	% send a shutdown message to all websockets, if any
 	?LOG_DEBUG("sending shutdown message to ~p websockets", [length(WsPidList)]),
 	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsPidList),
-	% force exit of all http processes, if not websockets
-	HttpPidRefNoWs = lists:subtract(HttpPidList, WsPidList),
-	?LOG_DEBUG("forcing exit of ~p http processes", [length(HttpPidRefNoWs)]),
-	lists:foreach(fun(HttpPid) -> exit(HttpPid, kill) end, HttpPidRefNoWs),
+	% force exit of all http processes
+	?LOG_DEBUG("sending shutdown message to ~p http processes", [length(HttpPidList)]),
+	lists:foreach(fun(HttpPid) -> catch HttpPid ! shutdown end, HttpPidList),
 	terminated.
 
 % ----------------------------------------------------------------------------------------------------------
