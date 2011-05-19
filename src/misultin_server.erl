@@ -201,16 +201,17 @@ terminate(_Reason, _State) ->
 	% build pid lists from ets tables
 	HttpPidList = [X || {X, _} <- ets:tab2list(?TABLE_PIDS_HTTP)],
 	WsPidList = [X || {X, _} <- ets:tab2list(?TABLE_PIDS_WS)],
+	% send a shutdown message to all websockets, if any
+	?LOG_DEBUG("sending shutdown message to ~p websockets", [length(WsPidList)]),
+	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsPidList),
+	% fsend a shutdown message to all http processes
+	HttpPidRefNoWs = lists:subtract(HttpPidList, WsPidList),
+	?LOG_DEBUG("sending shutdown message to ~p http processes", [length(HttpPidRefNoWs)]),
+	lists:foreach(fun(HttpPid) -> catch HttpPid ! shutdown end, HttpPidRefNoWs),
 	% delete ETS tables
 	?LOG_INFO("removing ets tables",[]),
 	ets:delete(?TABLE_PIDS_HTTP),
 	ets:delete(?TABLE_PIDS_WS),
-	% send a shutdown message to all websockets, if any
-	?LOG_DEBUG("sending shutdown message to ~p websockets", [length(WsPidList)]),
-	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsPidList),
-	% force exit of all http processes
-	?LOG_DEBUG("sending shutdown message to ~p http processes", [length(HttpPidList)]),
-	lists:foreach(fun(HttpPid) -> catch HttpPid ! shutdown end, HttpPidList),
 	terminated.
 
 % ----------------------------------------------------------------------------------------------------------
