@@ -69,7 +69,7 @@
 % Function: {ok, Pid} | ignore | {error, Error}
 % Description: Starts the server.
 start_link(Options) when is_list(Options) ->
-	gen_server:start_link(?MODULE, [Options], []).
+	gen_server:start_link(?MODULE, Options, []).
 
 % Function -> {ok, HttpMonRef} | {error, Reason}
 % Description: Accepts the connection if the connection count is not over quota, and add monitor
@@ -100,7 +100,7 @@ ws_pid_ref_remove(ServerRef, WsPid) ->
 % Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
 % Description: Initiates the server.
 % ----------------------------------------------------------------------------------------------------------
-init([[Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]]) ->
+init([Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]) ->
 	process_flag(trap_exit, true),
 	?LOG_INFO("starting misultin server with pid: ~p", [self()]),
 	% create ets tables to save open connections and websockets

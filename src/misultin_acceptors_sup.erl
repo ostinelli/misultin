@@ -49,7 +49,7 @@
 % Description: Starts the supervisor
 % ----------------------------------------------------------------------------------------------------------
 start_link(Options) ->
-	supervisor:start_link(?MODULE, [Options]).
+	supervisor:start_link(?MODULE, Options).
 	
 % ============================ /\ API ======================================================================
 
@@ -60,7 +60,7 @@ start_link(Options) ->
 % Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
 % Description: Starts the supervisor
 % ----------------------------------------------------------------------------------------------------------
-init([[MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]]) ->
+init([MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]) ->
 	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, OptionsTcp, Port]),
 	case misultin_socket:listen(Port, OptionsTcp, SocketMode) of
 		{ok, ListenSocket} ->
