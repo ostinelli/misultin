@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Main
+% MISULTIN - Main Supervisor
 %
 % >-|-|-(°>
 % 
@@ -31,38 +31,25 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin).
+<<<<<<< HEAD
 -behaviour(gen_server).
 -vsn("0.7.2-dev").
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+=======
+-behaviour(supervisor).
+-vsn("dev-sup-0.8").
+>>>>>>> dev-sup-0.8
 
 % API
 -export([start_link/1, stop/0, stop/1]).
--export([get_open_connections_count/1, http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2]).
+
+% supervisor callbacks
+-export([init/1]).
 
 % macros
 -define(SERVER, ?MODULE).
--define(APPLICATION_START_RETRYAFTER, 1000).	% ms to check that a required application has been started
--define(APPLICATION_START_RETRYCOUNT, 10).		% retry count to check that a required application has been started
-
-% records
--record(state, {
-	% tcp
-	listen_socket,
-	socket_mode,
-	port,
-	options,
-	acceptors = [],
-	acceptors_poolsize,
-	recv_timeout,
-	max_connections = 1024,			% maximum allowed simultaneous connections
-	open_connections_count = 0,
-	http_pid_ref = [],
-	ws_pid_ref = [],
-	% misultin
-	custom_opts
-}).
 
 % includes
 -include("../include/misultin.hrl").
@@ -81,58 +68,37 @@ start_link(Options) when is_list(Options) ->
 			{error, Reason};
 		{name, false} ->
 			% start misultin without name
-			?LOG_DEBUG("starting misultin without a registered name",[]),
-			gen_server:start_link(?MODULE, [Options], []);
+			?LOG_DEBUG("starting misultin supervisor without a registered name",[]),
+			supervisor:start_link(?MODULE, [Options]);
 		{name, Value} ->
 			% start misultin with specified name
 			?LOG_DEBUG("starting misultin with registered name ~p", [Value]),
-			gen_server:start_link({local, Value}, ?MODULE, [Options], [])
+			Options0 = lists:keyreplace(name, 1, Options, {name, Value}),
+			supervisor:start_link({local, Value}, ?MODULE, [Options0])
 	end.
 
 % Function: -> ok
 % Description: Manually stops the server.
 stop() ->
 	stop(?SERVER).
-stop(ServerRef) ->
-	gen_server:cast(ServerRef, stop).
-
-% Function -> integer()
-% Description: Gets the count of the current open connections
-get_open_connections_count(ServerRef) ->
-	gen_server:call(ServerRef, get_open_connections_count).
-
-% Function -> ok
-% Description: Adds a new http pid reference to status
-http_pid_ref_add(ServerRef, HttpPid) ->
-	gen_server:cast(ServerRef, {add_http_pid, HttpPid}).
-
-% Function -> ok
-% Description: Remove a http pid reference from status
-http_pid_ref_remove(ServerRef, HttpPid, HttpMonRef) ->
-	gen_server:cast(ServerRef, {remove_http_pid, {HttpPid, HttpMonRef}}).
-
-% Function -> ok
-% Description: Adds a new websocket pid reference to status
-ws_pid_ref_add(ServerRef, WsPid) ->
-	gen_server:cast(ServerRef, {add_ws_pid, WsPid}).
-
-% Function -> ok
-% Description: Remove a websocket pid reference from status
-ws_pid_ref_remove(ServerRef, WsPid) ->
-	gen_server:cast(ServerRef, {remove_ws_pid, WsPid}).
+stop(undefined) ->
+	ok;
+stop(SupName) when is_atom(SupName) ->
+	stop(whereis(SupName));
+stop(SupPid) when is_pid(SupPid) ->
+	exit(SupPid, normal).
 
 % ============================ /\ API ======================================================================
 
 
-% ============================ \/ GEN_SERVER CALLBACKS =====================================================
+% ============================ \/ SUPERVISOR CALLBACKS =====================================================
 
 % ----------------------------------------------------------------------------------------------------------
-% Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
-% Description: Initiates the server.
-% ----------------------------------------------------------------------------------------------------------
+% Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
+% Description: Starts the supervisor
+% ----------------------------------------------------------------------------------------------------------å
 init([Options]) ->
-	process_flag(trap_exit, true),
-	?LOG_INFO("starting with Pid: ~p", [self()]),
+	?LOG_INFO("starting supervisor with pid: ~p", [self()]),
 	% test and get options
 	OptionProps = [
 		% socket
@@ -214,23 +180,21 @@ init([Options]) ->
 					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
 					% build custom_opts
 					CustomOpts = #custom_opts{post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
-					% create listening socket and acceptor
-					case create_listener_and_acceptors(Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts) of
-						{ok, ListenSocket, AcceptorPids} ->
-							?LOG_DEBUG("listening socket and acceptors succesfully started",[]),
-							{ok, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, options = OptionsTcp, acceptors = AcceptorPids, acceptors_poolsize = AcceptorsPoolsize, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts}};
-						{error, Reason} ->
-							?LOG_ERROR("error starting listener socket: ~p", [Reason]),
-							{stop, Reason}
-					end;
+					% define misultin_server supervisor specs
+					ServerSpec = {server, {misultin_server, start_link, [[Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]]}, permanent, 60000, worker, [misultin_server]},
+					% define acceptors supervisor specs
+					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [[self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
+					% spawn
+					{ok, {{one_for_all, 5, 30}, [ServerSpec, AcceptorSupSpec]}};
 				Error ->
-					{stop, Error}
+					{error, Error}
 			end;
 		Reason ->
 			% error found in options
-			{stop, Reason}
+			{error, Reason}
 	end.
 
+<<<<<<< HEAD
 % ----------------------------------------------------------------------------------------------------------
 % Function: handle_call(Request, From, State) -> {reply, Reply, State} | {reply, Reply, State, Timeout} |
 %									   {noreply, State} | {noreply, State, Timeout} |
@@ -356,6 +320,9 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 % ============================ /\ GEN_SERVER CALLBACKS =====================================================
+=======
+% ============================ /\ SUPERVISOR CALLBACKS =====================================================
+>>>>>>> dev-sup-0.8
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
@@ -432,24 +399,6 @@ start_application(Application) ->
 		_ ->
 			?LOG_DEBUG("application ~p is already running, skip", [Application]),
 			ok
-	end.
-
-% Function: -> {ok, ListenSocket, [AcceptorPid,...]} | {error, Error}
-% Description: Create listening socket
-create_listener_and_acceptors(Port, Options, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
-	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, Options, Port]),
-	case misultin_socket:listen(Port, Options, SocketMode) of
-		{ok, ListenSocket} ->
-			?LOG_DEBUG("starting acceptors",[]),
-			% create acceptors
-			AcceptorPids = [
-				misultin_socket:acceptor_start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts)
-				|| _K <- lists:seq(1, AcceptorsPoolsize)
-			],
-			{ok, ListenSocket, AcceptorPids};
-		{error, Reason} ->
-			% error
-			{error, Reason}
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

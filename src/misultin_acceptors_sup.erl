@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Socket
+% MISULTIN - Acceptors Supervisor
 %
 % >-|-|-(°>
 % 
@@ -30,91 +30,52 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_socket).
--vsn("0.7.2-dev").
+-module(misultin_acceptors_sup).
+-behaviour(supervisor).
 
 % API
--export([listen/3, accept/2, controlling_process/3, peername/2, peercert/2, setopts/3, recv/4, send/3, close/2]).
+-export([start_link/1]).
+
+% supervisor callbacks
+-export([init/1]).
 
 % includes
 -include("../include/misultin.hrl").
 
-
 % ============================ \/ API ======================================================================
 
-% socket listen
-listen(Port, Options, http) -> gen_tcp:listen(Port, Options);
-listen(Port, Options, ssl) -> ssl:listen(Port, Options).
-
-% socket accept
-accept(ListenSocket, http) -> gen_tcp:accept(ListenSocket);
-accept(ListenSocket, ssl) ->
-	try ssl:transport_accept(ListenSocket)
-	catch
-		error:{badmatch, {error, Reason}} ->
-			{error, Reason}
-	end.					
-
-% socket controlling process
-controlling_process(Sock, Pid, http) -> gen_tcp:controlling_process(Sock, Pid);
-controlling_process(Sock, Pid, ssl) -> ssl:controlling_process(Sock, Pid).
-
-% Function: -> {PeerAddr, PeerPort} | PeerAddr = list() | undefined | PeerPort = integer() | undefined
-% Description: Get socket peername
-peername(Sock, http) -> peername(Sock, fun inet:peername/1);
-peername(Sock, ssl) -> peername(Sock, fun ssl:peername/1);
-peername(Sock, F) ->
-	case F(Sock) of
-		{ok, {Addr, Port}} ->
-			{Addr, Port};
-		{error, _Reason} ->
-			{undefined, undefined}
-	end.
-
-% Function: -> Certificate | undefined
-% Description: Get socket certificate
-peercert(_Sock, http) -> undefined;
-peercert(Sock, ssl) ->
-	case ssl:peercert(Sock) of
-		{ok, Cert} -> Cert;
-		{error, _Reason} -> undefined
-	end.
-
-% socket set options
-setopts(Sock, Options, http) -> inet:setopts(Sock, Options);
-setopts(Sock, Options, ssl) -> ssl:setopts(Sock, Options).
-
-% socket receive
-recv(Sock, Len, RecvTimeout, http) -> gen_tcp:recv(Sock, Len, RecvTimeout);
-recv(Sock, Len, RecvTimeout, ssl) -> ssl:recv(Sock, Len, RecvTimeout).
-
-% socket send
-send(Sock, Data, http) -> send(Sock, Data, fun gen_tcp:send/2);
-send(Sock, Data, ssl) -> send(Sock, Data, fun ssl:send/2);
-send(Sock, Data, F) -> 
-	?LOG_DEBUG("sending data: ~p", [Data]),
-	case F(Sock, Data) of
-		ok ->
-			ok;
-		{error, _Reason} ->
-			?LOG_ERROR("error sending data: ~p", [_Reason]),
-			exit(normal)
-	end.
-
-% TCP close
-close(Sock, http) -> close(Sock, fun gen_tcp:close/1);
-close(Sock, ssl) -> close(Sock, fun ssl:close/1);
-close(Sock, F) ->
-	?LOG_DEBUG("closing socket", []),
-	case catch F(Sock) of
-		ok ->
-			ok;
-		_Else ->
-			?LOG_WARNING("could not close socket: ~p", [_Else]),
-			exit(normal)
-	end.
-
+% ----------------------------------------------------------------------------------------------------------
+% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+% Description: Starts the supervisor
+% ----------------------------------------------------------------------------------------------------------
+start_link(Options) ->
+	supervisor:start_link(?MODULE, Options).
+	
 % ============================ /\ API ======================================================================
+
+
+% ============================ \/ SUPERVISOR CALLBACKS =====================================================
+
+% ----------------------------------------------------------------------------------------------------------
+% Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
+% Description: Starts the supervisor
+% ----------------------------------------------------------------------------------------------------------
+init([MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]) ->
+	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, OptionsTcp, Port]),
+	case misultin_socket:listen(Port, OptionsTcp, SocketMode) of
+		{ok, ListenSocket} ->
+			Acceptors = [
+				{{acceptor, N}, {misultin_acceptor, start_link, [MainSupRef, ListenSocket, Port, RecvTimeout, SocketMode, CustomOpts]},
+				permanent, brutal_kill, worker, dynamic}
+				|| N <- lists:seq(1, AcceptorsPoolsize)
+			],
+			{ok, {{one_for_one, 5, 10}, Acceptors}};
+		{error, Reason} ->
+			% error
+			{error, Reason}
+	end.
+
+% ============================ /\ SUPERVISOR CALLBACKS =====================================================
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================

@@ -1,8 +1,11 @@
-{application, misultin,
+{application, misultin_app_example,
 [
-	{description, "Lightweight HTTP(s) and Websockets Server Library"},
-	{vsn, "dev-sup-0.8"},
+	{description, "Misultin Application Example"},
+	{vsn, "0.1"},
 	{modules, [
+		misultin_app_example,
+		misultin_app_example_sup,
+		misultin_app_example_server,
 		misultin,
 		misultin_acceptor,
 		misultin_acceptors_sup,
@@ -15,6 +18,7 @@
 		misultin_ws
 	]},
 	{registered, []},
+	{mod, {misultin_app_example, []}},
 	{env, []},
 	{applications, [kernel, stdlib]}
 ]}.
