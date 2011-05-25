@@ -145,8 +145,11 @@ chunk(head, Headers, ReqT) ->
 		_ -> Headers
 	end,
 	stream(head, Headers0, ReqT);
+chunk(Template, [], ReqT) ->
+	chunk_send(Template, ReqT);
 chunk(Template, Vars, ReqT) ->
-	Data = io_lib:format(Template, Vars),
+	chunk_send(io_lib:format(Template, Vars), ReqT).
+chunk_send(Data, ReqT) ->	
 	stream([erlang:integer_to_list(erlang:iolist_size(Data), 16), "\r\n", Data, "\r\n"], ReqT).
 	
 % Description: Stream support.
