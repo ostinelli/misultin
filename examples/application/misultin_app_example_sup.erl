@@ -1,13 +1,11 @@
 % ==========================================================================================================
-% MISULTIN - Acceptors Supervisor
+% MISULTIN - Example: Application based on Misultin - MAIN APPLICATION SUPERVISOR
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>, Example taken from
+%                     <http://www.zeitoun.net/articles/comet_and_php/start>
 % All rights reserved.
-%
-% Code portions from Sean Hinde have been originally taken under BSD license from Trapexit at the address:
-% <http://www.trapexit.org/A_fast_web_server_demonstrating_some_undocumented_Erlang_features>
 %
 % BSD License
 % 
@@ -15,11 +13,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%	 following disclaimer.
+%    following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
+%    the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%	 products derived from this software without specific prior written permission.
+%    products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -30,7 +28,7 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_acceptors_sup).
+-module(misultin_app_example_sup).
 -behaviour(supervisor).
 
 % API
@@ -38,9 +36,6 @@
 
 % supervisor callbacks
 -export([init/1]).
-
-% includes
--include("../include/misultin.hrl").
 
 % ============================ \/ API ======================================================================
 
@@ -60,20 +55,19 @@ start_link(Options) ->
 % Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
 % Description: Starts the supervisor
 % ----------------------------------------------------------------------------------------------------------
-init([[MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]]) ->
-	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, OptionsTcp, Port]),
-	case misultin_socket:listen(Port, OptionsTcp, SocketMode) of
-		{ok, ListenSocket} ->
-			Acceptors = [
-				{{acceptor, N}, {misultin_acceptor, start_link, [MainSupRef, ListenSocket, Port, RecvTimeout, SocketMode, CustomOpts]},
-				permanent, brutal_kill, worker, dynamic}
-				|| N <- lists:seq(1, AcceptorsPoolsize)
-			],
-			{ok, {{one_for_one, 5, 10}, Acceptors}};
-		{error, Reason} ->
-			% error
-			{error, Reason}
-	end.
+init([Options]) ->
+	% misultin specs
+	MisultinSpecs = {misultin,
+		{misultin, start_link, [Options]},
+		permanent, infinity, supervisor, [misultin]
+	},	
+	% application gen server specs
+	ServerSpecs = {misultin_app_example_server,
+		{misultin_app_example_server, start_link, []},
+		permanent, 60000, worker, [misultin_app_example_server]
+	},
+	% spawn
+	{ok, {{one_for_all, 5, 30}, [MisultinSpecs, ServerSpecs]}}.
 
 % ============================ /\ SUPERVISOR CALLBACKS =====================================================
 
