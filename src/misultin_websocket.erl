@@ -247,6 +247,8 @@ handle_data(none, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, Serv
 handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	WsHandleLoopPid ! {browser, lists:reverse(L)},
 	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
+handle_data(L, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit);
 handle_data(L, [H|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
 handle_data([], L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
