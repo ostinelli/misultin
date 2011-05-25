@@ -250,9 +250,7 @@ handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerR
 handle_data(L, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit);
 handle_data(L, [H|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data([], L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit).
+	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef).
 
 % Close socket and custom handling loop dependency
 websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
