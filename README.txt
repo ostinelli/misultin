@@ -71,12 +71,15 @@ API Documentation is available online on the Misultin's wiki: https://github.com
 
 CHANGELOG
 ==========================================================================================================
-0.7.2-dev: - solved bug on large data being sent over via websockets [thanks to omarkj]
+0.8-dev:
+       - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
+         compliant
+       - added an example on how to properly embed misultin in your application
+       - solved bug on large data being sent over via websockets [thanks to omarkj]
        - corrected binary sending bug in websockets which would fail binaries on io_lib format [thanks to
          normanb]
 
-0.7.1:
-       - considerably improved stability under heavy load
+0.7.1: - considerably improved stability under heavy load
        - misultin now accepts incoming connections with a pool of acceptors instead of a single one
        - Misultin can now be used both with parametrized modules and with pure erlang code too [thanks to
          yrashk, nox and essen]
