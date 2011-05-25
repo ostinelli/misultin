@@ -46,7 +46,6 @@
 % Description: Starts the application
 % ----------------------------------------------------------------------------------------------------------
 start(_Type, _StartArgs) ->
-	io:format("OK"),
 	% start main application supervisor
 	Options = [
 		{port, 8080},
