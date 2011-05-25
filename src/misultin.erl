@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(gen_server).
--vsn("0.7.1").
+-vsn("0.7.2-dev").
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -319,7 +319,7 @@ handle_info({'DOWN', _Ref, process, HttpPid, _Reason}, #state{open_connections_c
 			State
 	end,
 	% no checking done to improve performance
-	?LOG_DEBUG("open references are: ~p, count is now ~p, trying to remove from websocket open references", [State0#state.http_pid_ref, State0#state.open_connections_count]),
+	?LOG_DEBUG("open references are: ~p, count is now ~p, removing from websocket open references", [State0#state.http_pid_ref, State0#state.open_connections_count]),
 	{noreply, State0#state{ws_pid_ref = lists:delete(HttpPid, WsPidRef)}};
 
 % handle_info generic fallback (ignore)
