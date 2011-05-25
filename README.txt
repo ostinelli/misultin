@@ -72,7 +72,8 @@ API Documentation is available online on the Misultin's wiki: https://github.com
 CHANGELOG
 ==========================================================================================================
 0.7.2-dev: - solved bug on large data being sent over via websockets [thanks to omarkj]
-       - 
+       - corrected binary sending bug in websockets which would fail binaries on io_lib format [thanks to
+         normanb]
 
 0.7.1:
        - considerably improved stability under heavy load
