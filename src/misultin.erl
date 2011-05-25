@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin).
 -behaviour(supervisor).
--vsn("dev-sup-0.8").
+-vsn("0.8-dev").
 
 % API
 -export([start_link/1, stop/0, stop/1]).

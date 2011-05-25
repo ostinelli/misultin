@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.7.2-dev").
+-vsn("0.8-dev").
 
 % API
 -export([handle_data/9]).

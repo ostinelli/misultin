@@ -1,7 +1,7 @@
 {application, misultin,
 [
 	{description, "Lightweight HTTP(s) and Websockets Server Library"},
-	{vsn, "dev-sup-0.8"},
+	{vsn, "0.8-dev"},
 	{modules, [
 		misultin,
 		misultin_acceptor,
