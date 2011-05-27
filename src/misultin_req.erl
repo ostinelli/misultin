@@ -37,11 +37,12 @@
 -define(FILE_READ_BUFFER, 64*1012).
 
 % API
--export([raw/1]).
--export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
+-export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5]).
+-export([raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
--export([get/2, get_cookies/1, get_cookie_value/3, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
+-export([raw/1, get/2, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
+-export([parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -120,6 +121,16 @@ get_cookies({misultin_req, #req{headers = Headers}, _SocketPid}) ->
 % Description: Get the value of a single cookie
 get_cookie_value(CookieTag, Cookies, _ReqT) ->
 	misultin_utility:get_key_value(CookieTag, Cookies).
+	
+% set cookie
+set_cookie(Key, Value, _ReqT) ->
+	set_cookie(Key, Value, []).
+set_cookie(Key, Value, Options, _ReqT) ->
+	misultin_cookies:set_cookie(Key, Value, Options).
+	
+% delete cookie
+delete_cookie(Key, _ReqT) ->
+	misultin_cookies:delete_cookie(Key).
 
 % Description: Formats a 200 response.
 ok(Template, ReqT) ->
