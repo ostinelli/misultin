@@ -3,8 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>,
-%					  Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
 % All rights reserved.
 %
 % Code portions from Bob Ippolito have been originally taken under MIT license from MOCHIWEB:
@@ -35,11 +34,6 @@
 -vsn("0.8-dev").
 
 % macros
--define(PERCENT, 37).  % $\%
--define(FULLSTOP, 46). % $\.
--define(IS_HEX(C), ((C >= $0 andalso C =< $9) orelse
-					(C >= $a andalso C =< $f) orelse
-					(C >= $A andalso C =< $F))).
 -define(FILE_READ_BUFFER, 64*1012).
 
 % API
@@ -47,7 +41,7 @@
 -export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
--export([get/2, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
+-export([get/2, get_cookies/1, get_cookie_value/3, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -101,13 +95,31 @@ get(uri, {misultin_req, Req, _SocketPid}) ->
 	Req#req.uri;
 get(uri_unquoted, {misultin_req, Req, _SocketPid}) ->
 	{_UriType, RawUri} = Req#req.uri,
-	unquote(RawUri);
+	misultin_utility:unquote(RawUri);
 get(args, {misultin_req, Req, _SocketPid}) ->
 	Req#req.args;
 get(headers, {misultin_req, Req, _SocketPid}) ->
 	Req#req.headers;
 get(body, {misultin_req, Req, _SocketPid}) ->
 	Req#req.body.
+
+% Function -> [Cookie, ...]
+%  Cookie = [{Tag, Value}]
+% Description: Get all cookies.
+get_cookies({misultin_req, #req{headers = Headers}, _SocketPid}) ->
+	case misultin_utility:get_key_value('Cookie', Headers) of
+		undefined -> [];
+		CookieContent ->
+			F = fun({Tag, Val}, Acc) ->
+				[{misultin_utility:unquote(Tag), misultin_utility:unquote(Val)}|Acc]
+			end,
+			lists:foldl(F, [], misultin_cookies:parse_cookie(CookieContent))
+	end.
+
+% Function -> CookieValue | undefined
+% Description: Get the value of a single cookie
+get_cookie_value(CookieTag, Cookies, _ReqT) ->
+	misultin_utility:get_key_value(CookieTag, Cookies).
 
 % Description: Formats a 200 response.
 ok(Template, ReqT) ->
@@ -208,7 +220,7 @@ file(attachment, FilePath, Headers, ReqT) ->
 
 % Description: Parse QueryString
 parse_qs({misultin_req, Req, _SocketPid}) ->
-	i_parse_qs(Req#req.args).
+	misultin_utility:parse_qs(Req#req.args).
 
 % Description: Parse Post
 parse_post({misultin_req, Req, _SocketPid}) ->
@@ -220,7 +232,7 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 			[Type|_CharSet] = string:tokens(ContentType, ";"),
 			case Type of
 				"application/x-www-form-urlencoded" ->
-					i_parse_qs(Req#req.body);
+					misultin_utility:parse_qs(Req#req.body);
 				_Other ->
 					[]
 			end
@@ -240,68 +252,11 @@ resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% parse querystring & post
-i_parse_qs(Binary) when is_binary(Binary) ->
-	i_parse_qs(binary_to_list(Binary));
-i_parse_qs(String) ->
-	i_parse_qs(String, []).
-i_parse_qs([], Acc) ->
-	lists:reverse(Acc);
-i_parse_qs(String, Acc) ->
-	{Key, Rest} = parse_qs_key(String),
-	{Value, Rest1} = parse_qs_value(Rest),
-	i_parse_qs(Rest1, [{Key, Value} | Acc]).
-parse_qs_key(String) ->
-	parse_qs_key(String, []).
-parse_qs_key([], Acc) ->
-	{qs_revdecode(Acc), ""};
-parse_qs_key([$= | Rest], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_key(Rest=[$; | _], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_key(Rest=[$& | _], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_key([C | Rest], Acc) ->
-	parse_qs_key(Rest, [C | Acc]).
-parse_qs_value(String) ->
-	parse_qs_value(String, []).
-parse_qs_value([], Acc) ->
-	{qs_revdecode(Acc), ""};
-parse_qs_value([$; | Rest], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_value([$& | Rest], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_value([C | Rest], Acc) ->
-	parse_qs_value(Rest, [C | Acc]).
-
-% revdecode
-qs_revdecode(S) ->
-	qs_revdecode(S, []).
-qs_revdecode([], Acc) ->
-	Acc;
-qs_revdecode([$+ | Rest], Acc) ->
-	qs_revdecode(Rest, [$\s | Acc]);
-qs_revdecode([Lo, Hi, ?PERCENT | Rest], Acc) when ?IS_HEX(Lo), ?IS_HEX(Hi) ->
-	qs_revdecode(Rest, [(unhexdigit(Lo) bor (unhexdigit(Hi) bsl 4)) | Acc]);
-qs_revdecode([C | Rest], Acc) ->
-	qs_revdecode(Rest, [C | Acc]).
-
-% unexdigit
-unhexdigit(C) when C >= $0, C =< $9 -> C - $0;
-unhexdigit(C) when C >= $a, C =< $f -> C - $a + 10;
-unhexdigit(C) when C >= $A, C =< $F -> C - $A + 10.
-
-% unquote
-unquote(Binary) when is_binary(Binary) ->
-	unquote(binary_to_list(Binary));
-unquote(String) ->
-	qs_revdecode(lists:reverse(String)).
-
 % Description: Clean URI.
 clean_uri(lowercase, Uri) ->
 	string:to_lower(Uri);
 clean_uri(urldecode, Uri) ->
-	unquote(Uri);	
+	misultin_utility:unquote(Uri);	
 % ignore unexisting option
 clean_uri(_Unavailable, Uri) ->
 	Uri.

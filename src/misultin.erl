@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
 % All rights reserved.
 %
 % Code portions from Sean Hinde have been originally taken under BSD license from Trapexit at the address:
