@@ -134,11 +134,12 @@ activate_controller_process(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode
 open_connections_switch(ServerRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
 		{ok, HttpMonRef} ->
-			?LOG_DEBUG("get basic info from socket ~p", [Sock]),
 			% get peer address and port
 			{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
+			?LOG_DEBUG("remote peer is ~p", [{PeerAddr, PeerPort}]),
 			% get peer certificate, if any
 			PeerCert = misultin_socket:peercert(Sock, SocketMode),
+			?LOG_DEBUG("remote peer certificate is ~p", [PeerCert]),
 			% jump to external callback
 			?LOG_DEBUG("jump to connection logic", []),
 			misultin_http:handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts),

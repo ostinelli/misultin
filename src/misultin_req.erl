@@ -65,8 +65,26 @@ get(socket, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket;
 get(socket_mode, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket_mode;
-get(peer_addr, {misultin_req, Req, _SocketPid}) ->
-	Req#req.peer_addr;
+get(peer_addr, {misultin_req, #req{headers = Headers} = Req, _SocketPid}) ->
+	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
+		undefined ->
+			case misultin_utility:get_key_value("X-Forwarded-For", Headers) of
+				undefined -> undefined;
+				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
+			end;
+		Host0 -> Host0
+	end,
+	case Host of
+		undefined ->
+			Req#req.peer_addr;
+		_ -> 
+			case inet_parse:address(Host) of
+				{error, _Reason} ->
+					Req#req.peer_addr;
+				{ok, IpTuple} ->
+					IpTuple
+			end
+	end;
 get(peer_port, {misultin_req, Req, _SocketPid}) ->
 	Req#req.peer_port;
 get(peer_cert, {misultin_req, Req, _SocketPid}) ->
