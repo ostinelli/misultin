@@ -425,7 +425,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -444,12 +444,10 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			% are there any raw headers?
 			Enc_headers = case Headers0 of
 				{HeadersList, HeadersStr} ->
-					Headers1 = add_output_header('Content-Length', {HeadersList, BodyBinary}),
-					Headers = add_output_header('Connection', {Headers1, Req}),
+					Headers = add_headers(HeadersList, BodyBinary, Req, ServerRef),
 					[HeadersStr|enc_headers(lists:flatten([CompressHeaders|Headers]))];
 				_ ->
-					Headers1 = add_output_header('Content-Length', {Headers0, BodyBinary}),
-					Headers = add_output_header('Connection', {Headers1, Req}),
+					Headers = add_headers(Headers0, BodyBinary, Req, ServerRef),
 					enc_headers(lists:flatten([CompressHeaders|Headers]))
 			end,
 			% build and send response
@@ -503,7 +501,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
 			socket_loop(C, Req, LoopPid, ReqOptions)
 	end.
-	
+
 % Close socket and custom handling loop dependency
 loop_close(LoopPid, AutoExit) ->
 	case AutoExit of
@@ -525,12 +523,20 @@ convert_to_binary(Body) when is_binary(Body) ->
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
+
+% add necessary headers
+add_headers(OriginalHeaders, BodyBinary, Req, ServerRef) ->
+	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
+	Headers1 = add_output_header('Connection', {Headers0, Req}),
+	Headers2 = add_output_header('Server', Headers1),
+	add_output_header('Date', {Headers2, ServerRef}).
+
 % Description: Add necessary Content-Length Header
 add_output_header('Content-Length', {Headers, Body}) ->
 	case misultin_utility:get_key_value('Content-Length', Headers) of
 		undefined ->
 			[{'Content-Length', size(Body)}|Headers];
-		_ExistingContentLength ->
+		_ ->
 			Headers
 	end;
 
@@ -540,7 +546,27 @@ add_output_header('Connection', {Headers, Req}) ->
 	case misultin_utility:get_key_value('Connection', Headers) of
 		undefined ->
 			[{'Connection', connection_str(Req#req.connection)}|Headers];
-		_ExistingConnectionHeaderValue ->
+		_ ->
+			Headers
+	end;
+
+% Description: Add necessary Server header
+add_output_header('Server', Headers) ->
+	case misultin_utility:get_key_value('Server', Headers) of
+		undefined ->
+			[{'Server', "misultin/0.8-dev"}|Headers];
+		_ ->
+			Headers
+	end;
+
+% Description: Add necessary Date header
+add_output_header('Date', {Headers, ServerRef}) ->
+	case misultin_utility:get_key_value('Date', Headers) of
+		undefined ->
+			% get header from gen_server
+			RfcDate = misultin_server:get_rfc_date(ServerRef),
+			[{'Date', RfcDate}|Headers];
+		_ ->
 			Headers
 	end.
 

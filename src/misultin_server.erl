@@ -39,18 +39,19 @@
 
 % API
 -export([start_link/1]).
--export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2]).
+-export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1]).
 
 % macros
 -define(TABLE_PIDS_HTTP, pids_http).	% ETS table name which holds the http processes' pids
 -define(TABLE_PIDS_WS, pids_ws).		% ETS table name which holds the ws processes' pids
-
+-define(DATE_UPDATE_INTERVAL, 1000).	% update interval in ms for RFC time [used in Date headers]
 
 % records
 -record(state, {
 	% misultin
 	max_connections,				% maximum allowed simultaneous connections
-	open_connections_count = 0		% open connection
+	open_connections_count = 0,		% current number of open connections
+	rfc_date						% current RFC date
 }).
 
 % includes
@@ -83,6 +84,12 @@ ws_pid_ref_add(ServerRef, WsPid) ->
 % Description: Remove a websocket pid reference from status
 ws_pid_ref_remove(ServerRef, WsPid) ->
 	gen_server:cast(ServerRef, {remove_ws_pid, WsPid}).
+	
+% Function -> list()
+% Description: Retrieve computed RFC date
+get_rfc_date(ServerRef) ->
+	gen_server:call(ServerRef, get_rfc_date).
+	
 
 % ============================ /\ API ======================================================================
 
@@ -99,6 +106,8 @@ init([MaxConnections]) ->
 	% create ets tables to save open connections and websockets
 	ets:new(?TABLE_PIDS_HTTP, [named_table, set, public]),
 	ets:new(?TABLE_PIDS_WS, [named_table, set, public]),
+	% start date build timer
+	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), compute_rfc_date),
 	% create listening socket and acceptor
 	{ok, #state{max_connections = MaxConnections}}.
 
@@ -124,8 +133,13 @@ handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConn
 			{reply, {ok, HttpMonRef}, State#state{open_connections_count = OpenConnectionsCount + 1}}
 	end;
 
+% retrieve computed RFC date
+handle_call(get_rfc_date, _From, #state{rfc_date = RfcDate} = State) ->
+	{reply, RfcDate, State};
+
 % handle_call generic fallback
 handle_call(_Request, _From, State) ->
+	?LOG_WARNING("received unknown call message: ~p", [_Request]),
 	{reply, undefined, State}.
 
 % ----------------------------------------------------------------------------------------------------------
@@ -165,6 +179,19 @@ handle_cast(_Msg, State) ->
 % Description: Handling all non call/cast messages.
 % ----------------------------------------------------------------------------------------------------------
 
+% compute RFC date
+handle_info(compute_rfc_date, State) ->
+	% avoid locking gen server
+	Self = self(),
+	spawn(fun() ->
+		Self ! {computed_rfc_date, httpd_util:rfc1123_date()},
+		% start date build timer
+		erlang:send_after(?DATE_UPDATE_INTERVAL, Self, compute_rfc_date)
+	end),
+	{noreply, State};
+handle_info({computed_rfc_date, RfcDate}, State) ->
+	{noreply, State#state{rfc_date = RfcDate}};
+	
 % Http process trapping
 handle_info({'DOWN', _Ref, process, _HttpPid, normal}, State) -> {noreply, State};	% normal exiting of an http process
 handle_info({'DOWN', _Ref, process, HttpPid, _Reason}, #state{open_connections_count = OpenConnectionsCount} = State) ->
