@@ -74,8 +74,9 @@ CHANGELOG
 0.8-dev:
        - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
          compliant
-       - added an example on how to properly embed misultin in your application
+       - added Cookie support
        - added Date and Server headers
+       - added an example on how to properly embed misultin in your application
        - Req:get(peer_addr) now properly extracts peer information from headers "X-Real-Ip" or
          "X-Forwarded-For" if these are available [thanks to Max Lapshin]
        - solved bug on large data being sent over via websockets [thanks to omarkj]
