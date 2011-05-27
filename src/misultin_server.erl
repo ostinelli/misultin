@@ -48,16 +48,9 @@
 
 % records
 -record(state, {
-	% tcp
-	socket_mode,
-	port,
-	options,
-	acceptors_poolsize,
-	recv_timeout,
-	max_connections = 1024,			% maximum allowed simultaneous connections
-	open_connections_count = 0,
 	% misultin
-	custom_opts
+	max_connections,				% maximum allowed simultaneous connections
+	open_connections_count = 0		% open connection
 }).
 
 % includes
@@ -100,14 +93,14 @@ ws_pid_ref_remove(ServerRef, WsPid) ->
 % Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
 % Description: Initiates the server.
 % ----------------------------------------------------------------------------------------------------------
-init([Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]) ->
+init([MaxConnections]) ->
 	process_flag(trap_exit, true),
 	?LOG_INFO("starting misultin server with pid: ~p", [self()]),
 	% create ets tables to save open connections and websockets
 	ets:new(?TABLE_PIDS_HTTP, [named_table, set, public]),
 	ets:new(?TABLE_PIDS_WS, [named_table, set, public]),
 	% create listening socket and acceptor
-	{ok, #state{socket_mode = SocketMode, port = Port, options = OptionsTcp, acceptors_poolsize = AcceptorsPoolsize, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts}}.
+	{ok, #state{max_connections = MaxConnections}}.
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: handle_call(Request, From, State) -> {reply, Reply, State} | {reply, Reply, State, Timeout} |

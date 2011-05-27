@@ -130,7 +130,7 @@ init([Options]) ->
 			AutoExit = proplists:get_value(autoexit, OptionsVerified),
 			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
-			% ipv6 support
+			% ip address
 			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			% set additional options according to socket mode if necessary
 			Continue = case SslOptions0 of
@@ -173,7 +173,7 @@ init([Options]) ->
 					% build custom_opts
 					CustomOpts = #custom_opts{post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
 					% define misultin_server supervisor specs
-					ServerSpec = {server, {misultin_server, start_link, [[Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts]]}, permanent, 60000, worker, [misultin_server]},
+					ServerSpec = {server, {misultin_server, start_link, [[MaxConnections]]}, permanent, 60000, worker, [misultin_server]},
 					% define acceptors supervisor specs
 					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [[self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% spawn
