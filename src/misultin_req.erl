@@ -229,10 +229,14 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 		false ->
 			[];
 		ContentType ->
-			[Type|_CharSet] = string:tokens(ContentType, ";"),
+			[Type|Modificator] = string:tokens(ContentType, ";"),
 			case Type of
 				"application/x-www-form-urlencoded" ->
 					misultin_utility:parse_qs(Req#req.body);
+				"multipart/form-data" ->
+					[Modificator0] = Modificator,
+					"boundary=" ++ Boundary = string:strip(Modificator0),
+					parse_multipart_form_data(Req#req.body, list_to_binary(Boundary));
 				_Other ->
 					[]
 			end
@@ -311,6 +315,29 @@ file_read_and_send(IoDevice, Position, ReqT) ->
 			ok;
 		{error, Reason} ->
 			{error, Reason}
+	end.
+
+% parse multipart data
+parse_multipart_form_data(Body, Boundary) ->
+	[<<>> | Parts] = re:split(Body, <<"--", Boundary/binary>>),
+	F = fun
+		(<<"--\r\n">>, Data) -> Data;
+		(Part, Data) ->
+			case re:run(Part, "Content-Disposition:\\s*form-data;\\s*name=\"([^\"]+)\"(.*)\r\n\r\n(.+)\r\n$", [{capture, all_but_first, binary}, ungreedy, dotall]) of
+				{match, [Key, Attributes, Value]} ->
+					[{binary_to_list(Key), parse_attributes(Attributes), Value}|Data];
+				_ ->
+					?LOG_WARNING("Unknown part: ~p~n", [Part]),
+					[]
+			end
+	end,
+	lists:foldl(F, [], Parts).
+parse_attributes(Attributes) ->
+	case re:run(Attributes, "([^\"=;\s]+)=\"([^\"]+)\"", [{capture, all_but_first, list}, ungreedy, dotall, global]) of
+		{match, Match} ->
+			lists:reverse(lists:foldl(fun(X, Acc) -> [list_to_tuple(X)|Acc] end, [], Match));
+		_ ->
+			[]
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

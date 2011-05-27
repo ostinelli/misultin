@@ -502,15 +502,10 @@ int_ceil(X) ->
 		Pos when Pos > 0 -> T + 1;
 		_ -> T
 	end.
-
-
-%% Internal API
-
 int_pow(X, N, R) when N < 2 ->
 	R * X;
 int_pow(X, N, R) ->
 	int_pow(X * X, N bsr 1, case N band 1 of 1 -> R * X; 0 -> R end).
-
 insert_decimal(0, S) ->
 	"0." ++ S;
 insert_decimal(Place, S) when Place > 0 ->
@@ -531,7 +526,6 @@ insert_decimal(Place, S) when Place > -6 ->
 	"0." ++ lists:duplicate(abs(Place), $0) ++ S;
 insert_decimal(Place, S) ->
 	insert_decimal_exp(Place, S).
-
 insert_decimal_exp(Place, S) ->
 	[C | S0] = S,
 	S1 = case S0 of
@@ -543,7 +537,6 @@ insert_decimal_exp(Place, S) ->
 		false -> "e+"
 	end,
 	[C] ++ "." ++ S1 ++ Exp ++ integer_to_list(abs(Place - 1)).
-
 digits1(Float, Exp, Frac) ->
 	Round = ((Frac band 1) =:= 0),
 	case Exp >= 0 of
@@ -567,7 +560,6 @@ digits1(Float, Exp, Frac) ->
 						  Round, Round, Float)
 			end
 	end.
-
 scale(R, S, MPlus, MMinus, LowOk, HighOk, Float) ->
 	Est = int_ceil(math:log10(abs(Float)) - 1.0e-10),
 	%% Note that the scheme implementation uses a 326 element look-up table
@@ -580,7 +572,6 @@ scale(R, S, MPlus, MMinus, LowOk, HighOk, Float) ->
 			Scale = int_pow(10, -Est),
 			fixup(R * Scale, S, MPlus * Scale, MMinus * Scale, Est, LowOk, HighOk)
 	end.
-
 fixup(R, S, MPlus, MMinus, K, LowOk, HighOk) ->
 	TooLow = case HighOk of
 		true -> (R + MPlus) >= S;
@@ -592,7 +583,6 @@ fixup(R, S, MPlus, MMinus, K, LowOk, HighOk) ->
 		false ->
 			[K | generate(R * 10, S, MPlus * 10, MMinus * 10, LowOk, HighOk)]
 	end.
-
 generate(R0, S, MPlus, MMinus, LowOk, HighOk) ->
 	D = R0 div S,
 	R = R0 rem S,
@@ -625,16 +615,13 @@ generate(R0, S, MPlus, MMinus, LowOk, HighOk) ->
 					end
 			end
 	end.
-
 unpack(Float) ->
 	<<Sign:1, Exp:11, Frac:52>> = <<Float:64/float>>,
 	{Sign, Exp, Frac}.
-
 transform_digits(Place, [0 | Rest]) ->
 	transform_digits(Place, Rest);
 transform_digits(Place, Digits) ->
 	{Place, [$0 + D || D <- Digits]}.
-
 frexp_int(F) ->
 	case unpack(F) of
 		{_Sign, 0, Frac} ->
