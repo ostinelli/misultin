@@ -75,6 +75,7 @@ CHANGELOG
        - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
          compliant
        - added Cookie support
+       - added preliminary multipart/form-data and a file upload example
        - added Date and Server headers
        - added an example on how to properly embed misultin in your application
        - Req:get(peer_addr) now properly extracts peer information from headers "X-Real-Ip" or
