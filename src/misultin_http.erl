@@ -601,6 +601,8 @@ enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
 	[atom_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([{Tag, Val}|T]) when is_list(Tag) ->
 	[Tag, ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
+enc_headers([{Tag, Val}|T]) when is_binary(Tag) ->
+	enc_headers([{binary_to_list(Tag), Val}|T]);
 enc_headers([]) ->
 	[].
 enc_header_val(Val) when is_atom(Val) ->
