@@ -77,6 +77,10 @@ CHANGELOG
        - added Cookie support
        - added preliminary support multipart/form-data and a file upload example [thanks to Max Lapshin]
        - added Date and Server headers
+       - added {binary, true} option so that data is treated as binary instead of list, this is mainly to
+         reduce memory usage on applications which handle many concurrent open connections [following
+         many discussions, but also thanks to cstar]
+       - added support for headers being specified as binaries [thanks to akaspin]
        - added an example on how to properly embed misultin in your application
        - Req:get(peer_addr) now properly extracts peer information from headers "X-Real-Ip" or
          "X-Forwarded-For" if these are available [thanks to Max Lapshin]
