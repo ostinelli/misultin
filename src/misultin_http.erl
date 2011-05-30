@@ -420,7 +420,7 @@ get_chunk_length(HeadLine) ->
 handle_keepalive(close, #c{sock = Sock, socket_mode = SocketMode}, _Req) ->
 	catch misultin_socket:close(Sock, SocketMode);
 handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
-	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
+        request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert, binary_mode = Req#req.binary_mode}).
 
 % Description: Main dispatcher
 call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
