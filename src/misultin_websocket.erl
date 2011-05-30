@@ -239,15 +239,9 @@ ws_loop(ServerRef, BinaryMode, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAu
 			end,
 			% close websocket and custom controlling loop
 			websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-		{send, Data} when BinaryMode =:= false ->
-			% list mode
+		{send, Data} ->
 			?LOG_DEBUG("sending data to websocket: ~p", [Data]),
 			misultin_socket:send(Socket, [0, Data, 255], SocketMode),
-			ws_loop(ServerRef, BinaryMode, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit);
-		{send, Data} ->
-			% binary mode
-			?LOG_DEBUG("sending binary data to websocket: ~p", [Data]),
-			misultin_socket:send(Socket, erlang:iolist_to_binary([0, Data, 255]), SocketMode),
 			ws_loop(ServerRef, BinaryMode, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit);
 		shutdown ->
 			?LOG_DEBUG("shutdown request received, closing websocket with pid ~p", [self()]),
