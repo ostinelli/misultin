@@ -257,15 +257,25 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 	% clean uri
 	{_UriType, RawUri} = Req#req.uri,
-	Uri = lists:foldl(fun(Option, Acc) -> clean_uri(Option, Acc) end, RawUri, Options),
-	% split
-	string:tokens(Uri, "/").
+	case is_binary(RawUri) of
+		false ->
+			i_resource(Options, RawUri);
+		true ->
+			% convert to binary
+			lists:map(fun(S) -> list_to_binary(S) end, i_resource(Options, binary_to_list(RawUri)))
+	end.
 
 % ============================ /\ API ======================================================================
 
 
-
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
+
+% split
+i_resource(Options, RawUri) ->
+	% clean
+	Uri = lists:foldl(fun(Option, Acc) -> clean_uri(Option, Acc) end, RawUri, Options),
+	% split
+	string:tokens(Uri, "/").
 
 % Description: Clean URI.
 clean_uri(lowercase, Uri) ->

@@ -102,6 +102,7 @@ init([Options]) ->
 		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		% misultin
+		{binary, false, fun is_boolean/1, invalid_binary_option},
 		{post_max_size, 4*1012*1012, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
 		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
 		{compress, false, fun is_boolean/1, invalid_compress_option},
@@ -123,6 +124,7 @@ init([Options]) ->
 			MaxConnections = proplists:get_value(max_connections, OptionsVerified),
 			SslOptions0 = proplists:get_value(ssl, OptionsVerified),
 			% misultin options
+			BinaryMode = proplists:get_value(binary, OptionsVerified),
 			PostMaxSize = proplists:get_value(post_max_size, OptionsVerified),
 			GetUrlMaxSize = proplists:get_value(get_url_max_size, OptionsVerified),
 			Compress = proplists:get_value(compress, OptionsVerified),
@@ -171,7 +173,7 @@ init([Options]) ->
 					% set options
 					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
 					% build custom_opts
-					CustomOpts = #custom_opts{post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
+					CustomOpts = #custom_opts{binary_mode = BinaryMode, post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [[MaxConnections]]}, permanent, 60000, worker, [misultin_server]},
 					% define acceptors supervisor specs

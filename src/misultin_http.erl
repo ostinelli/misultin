@@ -47,6 +47,8 @@
 	socket_mode,
 	port,
 	recv_timeout,
+	packet_type,
+	packet_type_ssl,
 	post_max_size,
 	get_url_max_size,
 	compress,
@@ -67,6 +69,7 @@
 
 % Callback from misultin_socket
 handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
+	BinaryMode = CustomOpts#custom_opts.binary_mode,
 	% build C record
 	C = #c{
 		server_ref = ServerRef,
@@ -74,6 +77,14 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 		socket_mode = SocketMode,
 		port = ListenPort,
 		recv_timeout = RecvTimeout,
+		packet_type = case BinaryMode of
+			true -> http_bin;
+			false -> http
+		end,
+		packet_type_ssl = case BinaryMode of
+			true -> httph_bin;
+			false -> httph
+		end,
 		post_max_size = CustomOpts#custom_opts.post_max_size,
 		get_url_max_size = CustomOpts#custom_opts.get_url_max_size,
 		compress = CustomOpts#custom_opts.compress,
@@ -82,7 +93,8 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 		ws_loop = CustomOpts#custom_opts.ws_loop,
 		ws_autoexit = CustomOpts#custom_opts.ws_autoexit
 	},
-	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
+	% build Req record
+	Req = #req{socket = Sock, socket_mode = SocketMode, binary_mode = BinaryMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
 	request(C, Req).
 
@@ -92,8 +104,8 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
-request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
-	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
+request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, packet_type = PacketType, get_url_max_size = GetUrlMaxSize} = C, Req) ->
+	misultin_socket:setopts(Sock, [{active, once}, {packet, PacketType}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_request, _Method, {_, Uri} = _Path, _Version}} when length(Uri) > GetUrlMaxSize ->
 			?LOG_WARNING("get url request uri of ~p exceed maximum length of ~p", [length(Uri), GetUrlMaxSize]),				
@@ -103,7 +115,7 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 			?LOG_DEBUG("received full headers of a new HTTP packet", []),
 			% change packet type if in ssl mode
 			case SocketMode of
-				ssl -> misultin_socket:setopts(Sock, [{packet, httph}], SocketMode);
+				ssl -> misultin_socket:setopts(Sock, [{packet, C#c.packet_type_ssl}], SocketMode);
 				_ -> ok
 			end,
 			% go to headers
@@ -137,7 +149,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode} = C, Req, _H, ?MAX_HEADERS_COU
 	?LOG_DEBUG("too many headers sent, bad request",[]),
 	misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
 	handle_keepalive(close, C, Req);
-headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
+headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{binary_mode = BinaryMode} = Req, H, HeaderCount) ->
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_header, _, 'Content-Length', _, Val} = _Head} ->
@@ -162,7 +174,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			% check if it's a websocket request
 			CheckWs = case WsLoop of
 				none -> false;
-				_Function -> misultin_websocket:check(Path, Headers)
+				_Function -> misultin_websocket:check(Path, Headers, BinaryMode)
 			end,
 			case CheckWs of
 				false ->
@@ -178,7 +190,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, binary_mode = BinaryMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
@@ -200,19 +212,26 @@ default_connection(_) -> close.
 % Shall we keep the connection alive? Default case for HTTP/1.1 is yes, default for HTTP/1.0 is no.
 keep_alive({1,1}, "close")		-> close;
 keep_alive({1,1}, "Close")		-> close;
+keep_alive({1,1}, <<"close">>)	-> close;
+keep_alive({1,1}, <<"Close">>)	-> close;
 % string:to_upper is used only as last resort.
-keep_alive({1,1}, Head) ->
+keep_alive({1,1}, Head) when is_list(Head) ->
 	case string:to_upper(Head) of
 		"CLOSE" -> close;
 		_		-> keep_alive
 	end;
-keep_alive({1,0}, "Keep-Alive") -> keep_alive;
-keep_alive({1,0}, Head) ->
+keep_alive({1,0}, "keep-alive")		-> keep_alive;
+keep_alive({1,0}, "Keep-Alive")		-> keep_alive;
+keep_alive({1,0}, <<"keep-alive">>)	-> keep_alive;
+keep_alive({1,0}, <<"Keep-Alive">>)	-> keep_alive;
+keep_alive({1,0}, Head) when is_list(Head) ->
 	case string:to_upper(Head) of
 		"KEEP-ALIVE"	-> keep_alive;
 		_				-> close
 	end;
 keep_alive({0,9}, _)	-> close;
+keep_alive(Vsn, Head) when is_binary(Head) ->
+	keep_alive(Vsn, binary_to_list(Head));
 keep_alive(_Vsn, _KA)	-> close.
 
 % Function -> Req | {error, HttpErrorNum}
@@ -220,10 +239,10 @@ keep_alive(_Vsn, _KA)	-> close.
 get_uri_and_args(Req) ->
 	case Req#req.uri of
 		{abs_path, Path} ->
-			{F, Args} = split_at_q_mark(Path, []),
+			{F, Args} = split_at_q_mark(Path),
 			Req#req{args = Args, uri = {abs_path, F}};
 		{absoluteURI, http, _Host, _, Path} ->
-			{F, Args} = split_at_q_mark(Path, []),
+			{F, Args} = split_at_q_mark(Path),
 			Req#req{args = Args, uri = {absoluteURI, F}};
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
 			{error, 501};
@@ -490,6 +509,9 @@ socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, co
 		{'EXIT', LoopPid, normal} ->
 			?LOG_DEBUG("normal finishing of custom loop",[]),
 			ok;
+		shutdown ->
+			?LOG_DEBUG("received shutdown message from server, closing",[]),
+			shutdown;
 		{'EXIT', LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
@@ -589,12 +611,22 @@ enc_header_val(Val) ->
 	Val.
 
 % Split the path at the ?
+split_at_q_mark(S) when is_binary(S) ->
+	split_at_q_mark_bin(S, <<>>);
+split_at_q_mark(S) ->
+	split_at_q_mark(S, []).
 split_at_q_mark([$?|T], Acc) ->
 	{lists:reverse(Acc), T};
 split_at_q_mark([H|T], Acc) ->
 	split_at_q_mark(T, [H|Acc]);
 split_at_q_mark([], Acc) ->
 	{lists:reverse(Acc), []}.
+split_at_q_mark_bin(<<$?, T/binary>>, Acc) ->
+	{Acc, T};
+split_at_q_mark_bin(<<H, T/binary>>, Acc) ->
+	split_at_q_mark_bin(T, <<Acc/binary, H/integer>>);
+split_at_q_mark_bin(<<>>, Acc) ->
+	{Acc, <<>>}.
 
 % Function: -> {EncodingHeader, binary()}
 % Description: Compress body depending on Request Headers and misultin supported encodings.
@@ -642,6 +674,8 @@ set_encoding(AcceptEncodingHeader) ->
 
 % Function: -> [{Encoding, Q},...]
 % Description: Get accepted encodings and quality, sorted by quality.
+get_accepted_encodings(AcceptEncodingHeader) when is_binary(AcceptEncodingHeader) ->
+	get_accepted_encodings(binary_to_list(AcceptEncodingHeader));
 get_accepted_encodings(AcceptEncodingHeader) ->
 	% take away empty spaces
 	Header = lists:filter(fun(E) -> case E of $\s -> false; _ -> true end end, AcceptEncodingHeader),
