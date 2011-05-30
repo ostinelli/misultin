@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.7.1").
+-vsn("0.8-dev").
 
 % API
 -export([handle_data/9]).
@@ -47,6 +47,8 @@
 	socket_mode,
 	port,
 	recv_timeout,
+	packet_type,
+	packet_type_ssl,
 	post_max_size,
 	get_url_max_size,
 	compress,
@@ -67,8 +69,7 @@
 
 % Callback from misultin_socket
 handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
-	% add pid reference
-	HttpMonRef = misultin:http_pid_ref_add(ServerRef, self()),
+	BinaryMode = CustomOpts#custom_opts.binary_mode,
 	% build C record
 	C = #c{
 		server_ref = ServerRef,
@@ -76,6 +77,14 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 		socket_mode = SocketMode,
 		port = ListenPort,
 		recv_timeout = RecvTimeout,
+		packet_type = case BinaryMode of
+			true -> http_bin;
+			false -> http
+		end,
+		packet_type_ssl = case BinaryMode of
+			true -> httph_bin;
+			false -> httph
+		end,
 		post_max_size = CustomOpts#custom_opts.post_max_size,
 		get_url_max_size = CustomOpts#custom_opts.get_url_max_size,
 		compress = CustomOpts#custom_opts.compress,
@@ -84,11 +93,10 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 		ws_loop = CustomOpts#custom_opts.ws_loop,
 		ws_autoexit = CustomOpts#custom_opts.ws_autoexit
 	},
-	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
+	% build Req record
+	Req = #req{socket = Sock, socket_mode = SocketMode, binary_mode = BinaryMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
-	request(C, Req),
-	% remove pid reference
-	misultin:http_pid_ref_remove(ServerRef, self(), HttpMonRef).
+	request(C, Req).
 
 % ============================ /\ API ======================================================================
 
@@ -96,8 +104,8 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
-request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
-	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
+request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, packet_type = PacketType, get_url_max_size = GetUrlMaxSize} = C, Req) ->
+	misultin_socket:setopts(Sock, [{active, once}, {packet, PacketType}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_request, _Method, {_, Uri} = _Path, _Version}} when length(Uri) > GetUrlMaxSize ->
 			?LOG_WARNING("get url request uri of ~p exceed maximum length of ~p", [length(Uri), GetUrlMaxSize]),				
@@ -107,7 +115,7 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 			?LOG_DEBUG("received full headers of a new HTTP packet", []),
 			% change packet type if in ssl mode
 			case SocketMode of
-				ssl -> misultin_socket:setopts(Sock, [{packet, httph}], SocketMode);
+				ssl -> misultin_socket:setopts(Sock, [{packet, C#c.packet_type_ssl}], SocketMode);
 				_ -> ok
 			end,
 			% go to headers
@@ -141,7 +149,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode} = C, Req, _H, ?MAX_HEADERS_COU
 	?LOG_DEBUG("too many headers sent, bad request",[]),
 	misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
 	handle_keepalive(close, C, Req);
-headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
+headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{binary_mode = BinaryMode} = Req, H, HeaderCount) ->
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_header, _, 'Content-Length', _, Val} = _Head} ->
@@ -166,7 +174,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			% check if it's a websocket request
 			CheckWs = case WsLoop of
 				none -> false;
-				_Function -> misultin_websocket:check(Path, Headers)
+				_Function -> misultin_websocket:check(Path, Headers, BinaryMode)
 			end,
 			case CheckWs of
 				false ->
@@ -182,7 +190,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, binary_mode = BinaryMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
@@ -204,19 +212,26 @@ default_connection(_) -> close.
 % Shall we keep the connection alive? Default case for HTTP/1.1 is yes, default for HTTP/1.0 is no.
 keep_alive({1,1}, "close")		-> close;
 keep_alive({1,1}, "Close")		-> close;
+keep_alive({1,1}, <<"close">>)	-> close;
+keep_alive({1,1}, <<"Close">>)	-> close;
 % string:to_upper is used only as last resort.
-keep_alive({1,1}, Head) ->
+keep_alive({1,1}, Head) when is_list(Head) ->
 	case string:to_upper(Head) of
 		"CLOSE" -> close;
 		_		-> keep_alive
 	end;
-keep_alive({1,0}, "Keep-Alive") -> keep_alive;
-keep_alive({1,0}, Head) ->
+keep_alive({1,0}, "keep-alive")		-> keep_alive;
+keep_alive({1,0}, "Keep-Alive")		-> keep_alive;
+keep_alive({1,0}, <<"keep-alive">>)	-> keep_alive;
+keep_alive({1,0}, <<"Keep-Alive">>)	-> keep_alive;
+keep_alive({1,0}, Head) when is_list(Head) ->
 	case string:to_upper(Head) of
 		"KEEP-ALIVE"	-> keep_alive;
 		_				-> close
 	end;
 keep_alive({0,9}, _)	-> close;
+keep_alive(Vsn, Head) when is_binary(Head) ->
+	keep_alive(Vsn, binary_to_list(Head));
 keep_alive(_Vsn, _KA)	-> close.
 
 % Function -> Req | {error, HttpErrorNum}
@@ -224,10 +239,10 @@ keep_alive(_Vsn, _KA)	-> close.
 get_uri_and_args(Req) ->
 	case Req#req.uri of
 		{abs_path, Path} ->
-			{F, Args} = split_at_q_mark(Path, []),
+			{F, Args} = split_at_q_mark(Path),
 			Req#req{args = Args, uri = {abs_path, F}};
 		{absoluteURI, http, _Host, _, Path} ->
-			{F, Args} = split_at_q_mark(Path, []),
+			{F, Args} = split_at_q_mark(Path),
 			Req#req{args = Args, uri = {absoluteURI, F}};
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
 			{error, 501};
@@ -429,7 +444,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -448,12 +463,10 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			% are there any raw headers?
 			Enc_headers = case Headers0 of
 				{HeadersList, HeadersStr} ->
-					Headers1 = add_output_header('Content-Length', {HeadersList, BodyBinary}),
-					Headers = add_output_header('Connection', {Headers1, Req}),
+					Headers = add_headers(HeadersList, BodyBinary, Req, ServerRef),
 					[HeadersStr|enc_headers(lists:flatten([CompressHeaders|Headers]))];
 				_ ->
-					Headers1 = add_output_header('Content-Length', {Headers0, BodyBinary}),
-					Headers = add_output_header('Connection', {Headers1, Req}),
+					Headers = add_headers(Headers0, BodyBinary, Req, ServerRef),
 					enc_headers(lists:flatten([CompressHeaders|Headers]))
 			end,
 			% build and send response
@@ -496,6 +509,9 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 		{'EXIT', LoopPid, normal} ->
 			?LOG_DEBUG("normal finishing of custom loop",[]),
 			ok;
+		shutdown ->
+			?LOG_DEBUG("received shutdown message from server, closing",[]),
+			shutdown;
 		{'EXIT', LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
 			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
@@ -507,7 +523,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
 			socket_loop(C, Req, LoopPid, ReqOptions)
 	end.
-	
+
 % Close socket and custom handling loop dependency
 loop_close(LoopPid, AutoExit) ->
 	case AutoExit of
@@ -529,12 +545,20 @@ convert_to_binary(Body) when is_binary(Body) ->
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
+
+% add necessary headers
+add_headers(OriginalHeaders, BodyBinary, Req, ServerRef) ->
+	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
+	Headers1 = add_output_header('Connection', {Headers0, Req}),
+	Headers2 = add_output_header('Server', Headers1),
+	add_output_header('Date', {Headers2, ServerRef}).
+
 % Description: Add necessary Content-Length Header
 add_output_header('Content-Length', {Headers, Body}) ->
 	case misultin_utility:get_key_value('Content-Length', Headers) of
 		undefined ->
 			[{'Content-Length', size(Body)}|Headers];
-		_ExistingContentLength ->
+		_ ->
 			Headers
 	end;
 
@@ -544,7 +568,27 @@ add_output_header('Connection', {Headers, Req}) ->
 	case misultin_utility:get_key_value('Connection', Headers) of
 		undefined ->
 			[{'Connection', connection_str(Req#req.connection)}|Headers];
-		_ExistingConnectionHeaderValue ->
+		_ ->
+			Headers
+	end;
+
+% Description: Add necessary Server header
+add_output_header('Server', Headers) ->
+	case misultin_utility:get_key_value('Server', Headers) of
+		undefined ->
+			[{'Server', "misultin/0.8-dev"}|Headers];
+		_ ->
+			Headers
+	end;
+
+% Description: Add necessary Date header
+add_output_header('Date', {Headers, ServerRef}) ->
+	case misultin_utility:get_key_value('Date', Headers) of
+		undefined ->
+			% get header from gen_server
+			RfcDate = misultin_server:get_rfc_date(ServerRef),
+			[{'Date', RfcDate}|Headers];
+		_ ->
 			Headers
 	end.
 
@@ -557,6 +601,8 @@ enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
 	[atom_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([{Tag, Val}|T]) when is_list(Tag) ->
 	[Tag, ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
+enc_headers([{Tag, Val}|T]) when is_binary(Tag) ->
+	enc_headers([{binary_to_list(Tag), Val}|T]);
 enc_headers([]) ->
 	[].
 enc_header_val(Val) when is_atom(Val) ->
@@ -567,12 +613,22 @@ enc_header_val(Val) ->
 	Val.
 
 % Split the path at the ?
+split_at_q_mark(S) when is_binary(S) ->
+	split_at_q_mark_bin(S, <<>>);
+split_at_q_mark(S) ->
+	split_at_q_mark(S, []).
 split_at_q_mark([$?|T], Acc) ->
 	{lists:reverse(Acc), T};
 split_at_q_mark([H|T], Acc) ->
 	split_at_q_mark(T, [H|Acc]);
 split_at_q_mark([], Acc) ->
 	{lists:reverse(Acc), []}.
+split_at_q_mark_bin(<<$?, T/binary>>, Acc) ->
+	{Acc, T};
+split_at_q_mark_bin(<<H, T/binary>>, Acc) ->
+	split_at_q_mark_bin(T, <<Acc/binary, H/integer>>);
+split_at_q_mark_bin(<<>>, Acc) ->
+	{Acc, <<>>}.
 
 % Function: -> {EncodingHeader, binary()}
 % Description: Compress body depending on Request Headers and misultin supported encodings.
@@ -620,6 +676,8 @@ set_encoding(AcceptEncodingHeader) ->
 
 % Function: -> [{Encoding, Q},...]
 % Description: Get accepted encodings and quality, sorted by quality.
+get_accepted_encodings(AcceptEncodingHeader) when is_binary(AcceptEncodingHeader) ->
+	get_accepted_encodings(binary_to_list(AcceptEncodingHeader));
 get_accepted_encodings(AcceptEncodingHeader) ->
 	% take away empty spaces
 	Header = lists:filter(fun(E) -> case E of $\s -> false; _ -> true end end, AcceptEncodingHeader),

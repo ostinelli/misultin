@@ -55,6 +55,7 @@
 
 % misultin server Options
 -record(custom_opts, {
+	binary_mode,				% binary mode: true | false
 	post_max_size,				% maximum post size in bytes, defaults to 4 MB
 	get_url_max_size,			% maximum GET url size in bytes, defaults to 2000
 	compress,					% send compressed output if supported by browser
@@ -69,6 +70,7 @@
 -record(req, {
 	socket,						% the socket handling the request
 	socket_mode,				% http | ssl
+	binary_mode,				% binary mode: true | false
 	peer_addr,					% peer IP | undefined
 	peer_port,					% peer port | undefined
 	peer_cert,					% undefined | the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
@@ -86,6 +88,7 @@
 -record(ws, {
 	socket,						% the socket handling the request
 	socket_mode,				% http | ssl
+	binary_mode,				% binary mode: true | false
 	ws_autoexit,				% websocket process is automatically killed: true | false
 	peer_addr,					% peer IP | undefined
 	peer_port,					% peer port | undefined

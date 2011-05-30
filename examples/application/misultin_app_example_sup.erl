@@ -1,9 +1,10 @@
 % ==========================================================================================================
-% MISULTIN - Websocket Request
+% MISULTIN - Example: Application based on Misultin - MAIN APPLICATION SUPERVISOR
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>, Example taken from
+%                     <http://www.zeitoun.net/articles/comet_and_php/start>
 % All rights reserved.
 %
 % BSD License
@@ -12,11 +13,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%	 following disclaimer.
+%    following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
+%    the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%	 products derived from this software without specific prior written permission.
+%    products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -27,50 +28,48 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ws).
--vsn("0.8-dev").
+-module(misultin_app_example_sup).
+-behaviour(supervisor).
 
 % API
--export([raw/1, get/2, send/2]).
+-export([start_link/1]).
 
-% includes
--include("../include/misultin.hrl").
-
+% supervisor callbacks
+-export([init/1]).
 
 % ============================ \/ API ======================================================================
 
-% Description: Returns raw websocket content.
-raw({misultin_ws, Ws, _SocketPid}) ->
-	Ws.
-
-% Description: Get websocket info.
-get(socket, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.socket;
-get(socket_mode, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#req.socket_mode;
-get(peer_addr, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.peer_addr;
-get(peer_port, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.peer_port;
-get(peer_cert, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.peer_cert;
-get(vsn, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.vsn;
-get(origin, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.origin;
-get(host, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.host;
-get(path, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.path;
-get(headers, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.headers.
-
-% send data
-send(Data, {misultin_ws, _Ws, SocketPid}) ->
-	SocketPid ! {send, Data}.
-		
+% ----------------------------------------------------------------------------------------------------------
+% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+% Description: Starts the supervisor
+% ----------------------------------------------------------------------------------------------------------
+start_link(Options) ->
+	supervisor:start_link(?MODULE, [Options]).
+	
 % ============================ /\ API ======================================================================
 
+
+% ============================ \/ SUPERVISOR CALLBACKS =====================================================
+
+% ----------------------------------------------------------------------------------------------------------
+% Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
+% Description: Starts the supervisor
+% ----------------------------------------------------------------------------------------------------------
+init([Options]) ->
+	% misultin specs
+	MisultinSpecs = {misultin,
+		{misultin, start_link, [Options]},
+		permanent, infinity, supervisor, [misultin]
+	},	
+	% application gen server specs
+	ServerSpecs = {misultin_app_example_server,
+		{misultin_app_example_server, start_link, []},
+		permanent, 60000, worker, [misultin_app_example_server]
+	},
+	% spawn
+	{ok, {{one_for_all, 5, 30}, [MisultinSpecs, ServerSpecs]}}.
+
+% ============================ /\ SUPERVISOR CALLBACKS =====================================================
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================

@@ -3,8 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>,
-%					  Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
 % All rights reserved.
 %
 % Code portions from Bob Ippolito have been originally taken under MIT license from MOCHIWEB:
@@ -32,22 +31,18 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req).
--vsn("0.7.1").
+-vsn("0.8-dev").
 
 % macros
--define(PERCENT, 37).  % $\%
--define(FULLSTOP, 46). % $\.
--define(IS_HEX(C), ((C >= $0 andalso C =< $9) orelse
-					(C >= $a andalso C =< $f) orelse
-					(C >= $A andalso C =< $F))).
 -define(FILE_READ_BUFFER, 64*1012).
 
 % API
--export([raw/1]).
--export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5, raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
+-export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5]).
+-export([raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
--export([get/2, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
+-export([raw/1, get/2, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
+-export([parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -65,8 +60,26 @@ get(socket, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket;
 get(socket_mode, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket_mode;
-get(peer_addr, {misultin_req, Req, _SocketPid}) ->
-	Req#req.peer_addr;
+get(peer_addr, {misultin_req, #req{headers = Headers} = Req, _SocketPid}) ->
+	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
+		undefined ->
+			case misultin_utility:get_key_value("X-Forwarded-For", Headers) of
+				undefined -> undefined;
+				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
+			end;
+		Host0 -> Host0
+	end,
+	case Host of
+		undefined ->
+			Req#req.peer_addr;
+		_ -> 
+			case inet_parse:address(Host) of
+				{error, _Reason} ->
+					Req#req.peer_addr;
+				{ok, IpTuple} ->
+					IpTuple
+			end
+	end;
 get(peer_port, {misultin_req, Req, _SocketPid}) ->
 	Req#req.peer_port;
 get(peer_cert, {misultin_req, Req, _SocketPid}) ->
@@ -83,13 +96,41 @@ get(uri, {misultin_req, Req, _SocketPid}) ->
 	Req#req.uri;
 get(uri_unquoted, {misultin_req, Req, _SocketPid}) ->
 	{_UriType, RawUri} = Req#req.uri,
-	unquote(RawUri);
+	misultin_utility:unquote(RawUri);
 get(args, {misultin_req, Req, _SocketPid}) ->
 	Req#req.args;
 get(headers, {misultin_req, Req, _SocketPid}) ->
 	Req#req.headers;
 get(body, {misultin_req, Req, _SocketPid}) ->
 	Req#req.body.
+
+% Function -> [Cookie, ...]
+%  Cookie = [{Tag, Value}]
+% Description: Get all cookies.
+get_cookies({misultin_req, #req{headers = Headers}, _SocketPid}) ->
+	case misultin_utility:get_key_value('Cookie', Headers) of
+		undefined -> [];
+		CookieContent ->
+			F = fun({Tag, Val}, Acc) ->
+				[{misultin_utility:unquote(Tag), misultin_utility:unquote(Val)}|Acc]
+			end,
+			lists:foldl(F, [], misultin_cookies:parse_cookie(CookieContent))
+	end.
+
+% Function -> CookieValue | undefined
+% Description: Get the value of a single cookie
+get_cookie_value(CookieTag, Cookies, _ReqT) ->
+	misultin_utility:get_key_value(CookieTag, Cookies).
+	
+% set cookie
+set_cookie(Key, Value, _ReqT) ->
+	set_cookie(Key, Value, []).
+set_cookie(Key, Value, Options, _ReqT) ->
+	misultin_cookies:set_cookie(Key, Value, Options).
+	
+% delete cookie
+delete_cookie(Key, _ReqT) ->
+	misultin_cookies:delete_cookie(Key).
 
 % Description: Formats a 200 response.
 ok(Template, ReqT) ->
@@ -145,8 +186,11 @@ chunk(head, Headers, ReqT) ->
 		_ -> Headers
 	end,
 	stream(head, Headers0, ReqT);
+chunk(Template, [], ReqT) ->
+	chunk_send(Template, ReqT);
 chunk(Template, Vars, ReqT) ->
-	Data = io_lib:format(Template, Vars),
+	chunk_send(io_lib:format(Template, Vars), ReqT).
+chunk_send(Data, ReqT) ->	
 	stream([erlang:integer_to_list(erlang:iolist_size(Data), 16), "\r\n", Data, "\r\n"], ReqT).
 	
 % Description: Stream support.
@@ -187,7 +231,7 @@ file(attachment, FilePath, Headers, ReqT) ->
 
 % Description: Parse QueryString
 parse_qs({misultin_req, Req, _SocketPid}) ->
-	i_parse_qs(Req#req.args).
+	misultin_utility:parse_qs(Req#req.args).
 
 % Description: Parse Post
 parse_post({misultin_req, Req, _SocketPid}) ->
@@ -196,10 +240,14 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 		false ->
 			[];
 		ContentType ->
-			[Type|_CharSet] = string:tokens(ContentType, ";"),
+			[Type|Modificator] = string:tokens(ContentType, ";"),
 			case Type of
 				"application/x-www-form-urlencoded" ->
-					i_parse_qs(Req#req.body);
+					misultin_utility:parse_qs(Req#req.body);
+				"multipart/form-data" ->
+					[Modificator0] = Modificator,
+					"boundary=" ++ Boundary = string:strip(Modificator0),
+					parse_multipart_form_data(Req#req.body, list_to_binary(Boundary));
 				_Other ->
 					[]
 			end
@@ -209,78 +257,31 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 	% clean uri
 	{_UriType, RawUri} = Req#req.uri,
-	Uri = lists:foldl(fun(Option, Acc) -> clean_uri(Option, Acc) end, RawUri, Options),
-	% split
-	string:tokens(Uri, "/").
+	case is_binary(RawUri) of
+		false ->
+			i_resource(Options, RawUri);
+		true ->
+			% convert to binary
+			lists:map(fun(S) -> list_to_binary(S) end, i_resource(Options, binary_to_list(RawUri)))
+	end.
 
 % ============================ /\ API ======================================================================
 
 
-
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% parse querystring & post
-i_parse_qs(Binary) when is_binary(Binary) ->
-	i_parse_qs(binary_to_list(Binary));
-i_parse_qs(String) ->
-	i_parse_qs(String, []).
-i_parse_qs([], Acc) ->
-	lists:reverse(Acc);
-i_parse_qs(String, Acc) ->
-	{Key, Rest} = parse_qs_key(String),
-	{Value, Rest1} = parse_qs_value(Rest),
-	i_parse_qs(Rest1, [{Key, Value} | Acc]).
-parse_qs_key(String) ->
-	parse_qs_key(String, []).
-parse_qs_key([], Acc) ->
-	{qs_revdecode(Acc), ""};
-parse_qs_key([$= | Rest], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_key(Rest=[$; | _], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_key(Rest=[$& | _], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_key([C | Rest], Acc) ->
-	parse_qs_key(Rest, [C | Acc]).
-parse_qs_value(String) ->
-	parse_qs_value(String, []).
-parse_qs_value([], Acc) ->
-	{qs_revdecode(Acc), ""};
-parse_qs_value([$; | Rest], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_value([$& | Rest], Acc) ->
-	{qs_revdecode(Acc), Rest};
-parse_qs_value([C | Rest], Acc) ->
-	parse_qs_value(Rest, [C | Acc]).
-
-% revdecode
-qs_revdecode(S) ->
-	qs_revdecode(S, []).
-qs_revdecode([], Acc) ->
-	Acc;
-qs_revdecode([$+ | Rest], Acc) ->
-	qs_revdecode(Rest, [$\s | Acc]);
-qs_revdecode([Lo, Hi, ?PERCENT | Rest], Acc) when ?IS_HEX(Lo), ?IS_HEX(Hi) ->
-	qs_revdecode(Rest, [(unhexdigit(Lo) bor (unhexdigit(Hi) bsl 4)) | Acc]);
-qs_revdecode([C | Rest], Acc) ->
-	qs_revdecode(Rest, [C | Acc]).
-
-% unexdigit
-unhexdigit(C) when C >= $0, C =< $9 -> C - $0;
-unhexdigit(C) when C >= $a, C =< $f -> C - $a + 10;
-unhexdigit(C) when C >= $A, C =< $F -> C - $A + 10.
-
-% unquote
-unquote(Binary) when is_binary(Binary) ->
-	unquote(binary_to_list(Binary));
-unquote(String) ->
-	qs_revdecode(lists:reverse(String)).
+% split
+i_resource(Options, RawUri) ->
+	% clean
+	Uri = lists:foldl(fun(Option, Acc) -> clean_uri(Option, Acc) end, RawUri, Options),
+	% split
+	string:tokens(Uri, "/").
 
 % Description: Clean URI.
 clean_uri(lowercase, Uri) ->
 	string:to_lower(Uri);
 clean_uri(urldecode, Uri) ->
-	unquote(Uri);	
+	misultin_utility:unquote(Uri);	
 % ignore unexisting option
 clean_uri(_Unavailable, Uri) ->
 	Uri.
@@ -335,6 +336,29 @@ file_read_and_send(IoDevice, Position, ReqT) ->
 			ok;
 		{error, Reason} ->
 			{error, Reason}
+	end.
+
+% parse multipart data
+parse_multipart_form_data(Body, Boundary) ->
+	[<<>> | Parts] = re:split(Body, <<"--", Boundary/binary>>),
+	F = fun
+		(<<"--\r\n">>, Data) -> Data;
+		(Part, Data) ->
+			case re:run(Part, "Content-Disposition:\\s*form-data;\\s*name=\"([^\"]+)\"(.*)\r\n\r\n(.+)\r\n$", [{capture, all_but_first, binary}, ungreedy, dotall]) of
+				{match, [Key, Attributes, Value]} ->
+					[{binary_to_list(Key), parse_attributes(Attributes), Value}|Data];
+				_ ->
+					?LOG_WARNING("Unknown part: ~p~n", [Part]),
+					[]
+			end
+	end,
+	lists:foldl(F, [], Parts).
+parse_attributes(Attributes) ->
+	case re:run(Attributes, "([^\"=;\s]+)=\"([^\"]+)\"", [{capture, all_but_first, list}, ungreedy, dotall, global]) of
+		{match, Match} ->
+			lists:reverse(lists:foldl(fun(X, Acc) -> [list_to_tuple(X)|Acc] end, [], Match));
+		_ ->
+			[]
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

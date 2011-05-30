@@ -3,7 +3,8 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>,
+%					  Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
 % All rights reserved.
 %
 % BSD License
@@ -28,11 +29,26 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_utility).
--vsn("0.7.1").
+-vsn("0.8-dev").
 
 % API
 -export([get_http_status_code/1, get_content_type/1, get_key_value/2, header_get_value/2]).
+-export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
 
+% macros
+-define(PERCENT, 37).  % $\%
+-define(FULLSTOP, 46). % $\.
+-define(IS_HEX(C), (
+	(C >= $0 andalso C =< $9) orelse
+	(C >= $a andalso C =< $f) orelse
+	(C >= $A andalso C =< $F)
+)).
+-define(QS_SAFE(C), (
+	(C >= $a andalso C =< $z) orelse
+	(C >= $A andalso C =< $Z) orelse
+	(C >= $0 andalso C =< $9) orelse
+	(C =:= ?FULLSTOP orelse C =:= $- orelse C =:= $~ orelse C =:= $_)
+)).
 
 % ============================ \/ API ======================================================================
 
@@ -322,7 +338,7 @@ get_content_type(FileName) ->
 	end.
 
 % faster than proplists:get_value
-get_key_value(Key, List)->
+get_key_value(Key, List) ->
 	case lists:keyfind(Key, 1, List) of
 		false-> undefined;
 		{_K, Value}-> Value
@@ -334,9 +350,10 @@ header_get_value(Tag, Headers) when is_atom(Tag) ->
 	case lists:keyfind(Tag, 1, Headers) of
 		false ->
 			% header not found, test also conversion to string -> convert all string tags to lowercase (HTTP tags are case insensitive)
-			F =  fun({HTag, HValue}) -> 
+			F =	 fun({HTag, HValue}) -> 
 				case is_atom(HTag) of
 					true -> {HTag, HValue};
+					false when is_binary(HTag) -> {string:to_lower(binary_to_list(HTag)), HValue};
 					false -> {string:to_lower(HTag), HValue}
 				end
 			end,
@@ -349,10 +366,137 @@ header_get_value(Tag, Headers) when is_atom(Tag) ->
 		{_, Value} -> Value
 	end.
 
+
+%% @doc Parse a query string or application/x-www-form-urlencoded.
+parse_qs(Bin) when is_binary(Bin) ->
+	parse_qs_bin(Bin, []);
+parse_qs(String) ->
+	parse_qs(String, []).
+
+parse_qs([], Acc) ->
+	lists:reverse(Acc);
+parse_qs(String, Acc) ->
+	{Key, Rest} = parse_qs_key(String),
+	{Value, Rest1} = parse_qs_value(Rest),
+	parse_qs(Rest1, [{Key, Value} | Acc]).
+	
+parse_qs_bin(<<>>, Acc) ->
+	Acc;
+parse_qs_bin(Bin, Acc) ->
+	{Key, Rest} = parse_qs_key_bin(Bin),
+	{Value, Rest1} = parse_qs_value_bin(Rest),
+	parse_qs_bin(Rest1, [{Key, Value} | Acc]).
+	
+% unquote
+unquote(Binary) when is_binary(Binary) ->
+	list_to_binary(unquote(binary_to_list(Binary)));
+unquote(String) ->
+	qs_revdecode(lists:reverse(String)).
+
+%% @spec quote_plus(atom() | integer() | float() | string() | binary()) -> string()
+%% @doc URL safe encoding of the given term.
+quote_plus(Atom) when is_atom(Atom) ->
+	quote_plus(atom_to_list(Atom));
+quote_plus(Int) when is_integer(Int) ->
+	quote_plus(integer_to_list(Int));
+quote_plus(Binary) when is_binary(Binary) ->
+	list_to_binary(quote_plus(binary_to_list(Binary)));
+quote_plus(String) ->
+	quote_plus(String, []).
+
+
 % ============================ /\ API ======================================================================
 
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
+
+% parse querystring & post
+parse_qs_key(String) ->
+	parse_qs_key(String, []).
+parse_qs_key([], Acc) ->
+	{qs_revdecode(Acc), ""};
+parse_qs_key([$= | Rest], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_key(Rest=[$; | _], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_key(Rest=[$& | _], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_key([C | Rest], Acc) ->
+	parse_qs_key(Rest, [C | Acc]).
+parse_qs_value(String) ->
+	parse_qs_value(String, []).
+parse_qs_value([], Acc) ->
+	{qs_revdecode(Acc), ""};
+parse_qs_value([$; | Rest], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_value([$& | Rest], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_value([C | Rest], Acc) ->
+	parse_qs_value(Rest, [C | Acc]).
+
+parse_qs_key_bin(Bin) ->
+	parse_qs_key_bin(Bin, <<>>).
+parse_qs_key_bin(<<>>, Acc) ->
+	{qs_revdecode_bin(Acc), <<"">>};
+parse_qs_key_bin(<<$=, Rest/binary>>, Acc) ->
+	{qs_revdecode_bin(Acc), Rest};
+parse_qs_key_bin(<<$;, _/binary>> = Rest, Acc) ->
+	{qs_revdecode_bin(Acc), Rest};
+parse_qs_key_bin(<<$&, _/binary>> = Rest, Acc) ->
+	{qs_revdecode_bin(Acc), Rest};
+parse_qs_key_bin(<<C, Rest/binary>>, Acc) ->
+	parse_qs_key_bin(Rest, <<Acc/binary, C>>).
+parse_qs_value_bin(Bin) ->
+	parse_qs_value_bin(Bin, <<>>).
+parse_qs_value_bin(<<>>, Acc) ->
+	{qs_revdecode_bin(Acc), <<"">>};
+parse_qs_value_bin(<<$;, Rest/binary>>, Acc) ->
+	{qs_revdecode_bin(Acc), Rest};
+parse_qs_value_bin(<<$&, Rest/binary>>, Acc) ->
+	{qs_revdecode_bin(Acc), Rest};
+parse_qs_value_bin(<<C, Rest/binary>>, Acc) ->
+	parse_qs_value_bin(Rest, <<Acc/binary, C>>).
+
+% revdecode
+qs_revdecode(S) ->
+	qs_revdecode(S, []).
+qs_revdecode([], Acc) ->
+	Acc;
+qs_revdecode([$+ | Rest], Acc) ->
+	qs_revdecode(Rest, [$\s | Acc]);
+qs_revdecode([Lo, Hi, ?PERCENT | Rest], Acc) when ?IS_HEX(Lo), ?IS_HEX(Hi) ->
+	qs_revdecode(Rest, [(unhexdigit(Lo) bor (unhexdigit(Hi) bsl 4)) | Acc]);
+qs_revdecode([C | Rest], Acc) ->
+	qs_revdecode(Rest, [C | Acc]).
+
+qs_revdecode_bin(Bin) ->
+	qs_revdecode_bin(Bin, <<>>).
+qs_revdecode_bin(<<>>, Acc) ->
+	Acc;
+qs_revdecode_bin(<<$+, Rest/binary>>, Acc) ->
+	qs_revdecode_bin(Rest, <<Acc/binary, $\s>>);
+qs_revdecode_bin(<<Lo, Hi, ?PERCENT, Rest/binary>>, Acc) when ?IS_HEX(Lo), ?IS_HEX(Hi) ->
+	qs_revdecode_bin(Rest, <<Acc/binary, (unhexdigit(Lo) bor (unhexdigit(Hi) bsl 4))/binary>>);
+qs_revdecode_bin(<<C, Rest/binary>>, Acc) ->
+	qs_revdecode_bin(Rest, <<Acc/binary, C>>).
+
+% unexdigit
+unhexdigit(C) when C >= $0, C =< $9 -> C - $0;
+unhexdigit(C) when C >= $a, C =< $f -> C - $a + 10;
+unhexdigit(C) when C >= $A, C =< $F -> C - $A + 10.
+hexdigit(C) when C < 10 -> $0 + C;
+hexdigit(C) when C < 16 -> $A + (C - 10).
+
+% quote
+quote_plus([], Acc) ->
+	lists:reverse(Acc);
+quote_plus([C | Rest], Acc) when ?QS_SAFE(C) ->
+	quote_plus(Rest, [C | Acc]);
+quote_plus([$\s | Rest], Acc) ->
+	quote_plus(Rest, [$+ | Acc]);
+quote_plus([C | Rest], Acc) ->
+	<<Hi:4, Lo:4>> = <<C>>,
+	quote_plus(Rest, [hexdigit(Lo), hexdigit(Hi), ?PERCENT | Acc]).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

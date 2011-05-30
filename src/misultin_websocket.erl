@@ -31,10 +31,10 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_websocket).
--vsn("0.7.1").
+-vsn("0.8-dev").
 
 % API
--export([check/2, connect/4]).
+-export([check/3, connect/4]).
 
 
 % includes
@@ -45,15 +45,15 @@
 
 % Function: {true, Origin, Host, Path} | false
 % Description: Check if the incoming request is a websocket handshake.
-check(_Path, Headers) ->
-	?LOG_DEBUG("testing for a websocket request path: ~p headers: ~p", [_Path, Headers]),
+check(_Path, Headers, BinaryMode) ->
+	?LOG_DEBUG("testing for a websocket request path: ~p headers: ~p with binary mode: ~p", [_Path, Headers, BinaryMode]),
 	% set supported websocket protocols, order does matter
 	VsnSupported = [{'draft-hixie', 76}, {'draft-hixie', 68}],	
 	% checks
-	check_websockets(VsnSupported, Headers).
+	check_websockets(VsnSupported, Headers, BinaryMode).
 
 % Connect and handshake with Websocket.
-connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Path, headers = Headers, ws_autoexit = WsAutoExit} = Ws, WsLoop) ->
+connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, binary_mode = BinaryMode, path = Path, headers = Headers, ws_autoexit = WsAutoExit} = Ws, WsLoop) ->
 	?LOG_DEBUG("building handshake response", []),
 	% get data
 	Origin = misultin_utility:header_get_value('Origin', Headers),
@@ -70,9 +70,9 @@ connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode
 	% set opts
 	misultin_socket:setopts(Socket, [{packet, 0}], SocketMode),
 	% add main websocket pid to misultin server reference
-	misultin:ws_pid_ref_add(ServerRef, self()),
+	misultin_server:ws_pid_ref_add(ServerRef, self()),
 	% start listening for incoming data
-	ws_loop(ServerRef, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit),
+	ws_loop(ServerRef, BinaryMode, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit),
 	% unlink
 	process_flag(trap_exit, false),
 	erlang:unlink(WsHandleLoopPid).
@@ -83,16 +83,16 @@ connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % Description: Loop to check for all available supported websocket protocols.
-check_websockets([], _Headers) -> false;
-check_websockets([Vsn|T], Headers) ->
-	case check_websocket(Vsn, Headers) of
-		false -> check_websockets(T, Headers);
+check_websockets([], _Headers, _BinaryMode) -> false;
+check_websockets([Vsn|T], Headers, BinaryMode) ->
+	case check_websocket(Vsn, Headers, BinaryMode) of
+		false -> check_websockets(T, Headers, BinaryMode);
 		{true, Vsn} -> {true, Vsn}
 	end.
 
 % Function: {true, Vsn} | false
 % Description: Check if the incoming request is a websocket request.
-check_websocket({'draft-hixie', 76} = Vsn, Headers) ->
+check_websocket({'draft-hixie', 76} = Vsn, Headers, BinaryMode) ->
 	?LOG_DEBUG("testing for websocket protocol ~p", [Vsn]),
 	% set required headers
 	RequiredHeaders = [
@@ -100,7 +100,7 @@ check_websocket({'draft-hixie', 76} = Vsn, Headers) ->
 		{'Sec-WebSocket-Key1', ignore}, {'Sec-WebSocket-Key2', ignore}
 	],
 	% check for headers existance
-	case check_headers(Headers, RequiredHeaders) of
+	case check_headers(Headers, RequiredHeaders, BinaryMode) of
 		true ->
 			% return
 			{true, Vsn};
@@ -108,14 +108,14 @@ check_websocket({'draft-hixie', 76} = Vsn, Headers) ->
 			?LOG_DEBUG("not protocol ~p, remaining headers: ~p", [Vsn, _RemainingHeaders]),
 			false
 	end;
-check_websocket({'draft-hixie', 68} = Vsn, Headers) ->
+check_websocket({'draft-hixie', 68} = Vsn, Headers, BinaryMode) ->
 	?LOG_DEBUG("testing for websocket protocol ~p", [Vsn]),
 	% set required headers
 	RequiredHeaders = [
 		{'Upgrade', "WebSocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Origin', ignore}
 	],
 	% check for headers existance
-	case check_headers(Headers, RequiredHeaders) of
+	case check_headers(Headers, RequiredHeaders, BinaryMode) of
 		true -> {true, Vsn};
 		_RemainingHeaders ->
 			?LOG_DEBUG("not protocol ~p, remaining headers: ~p", [Vsn, _RemainingHeaders]),
@@ -124,12 +124,17 @@ check_websocket({'draft-hixie', 68} = Vsn, Headers) ->
 
 % Function: true | [{RequiredTag, RequiredVal}, ..]
 % Description: Check if headers correspond to headers requirements.
-check_headers(Headers, RequiredHeaders) ->
+check_headers(Headers, RequiredHeaders, BinaryMode) ->
 	F = fun({Tag, Val}) ->
 		% see if the required Tag is in the Headers
 		case misultin_utility:header_get_value(Tag, Headers) of
 			false -> true; % header not found, keep in list
-			HVal ->
+			HVal0 ->
+				% if header is in binary format, convert to list to match for desired header
+				HVal = case BinaryMode of
+					false -> HVal0;
+					true -> binary_to_list(HVal0)
+				end,
 				case Val of
 					ignore -> false; % ignore value -> ok, remove from list
 					HVal -> false;	 % expected val -> ok, remove from list
@@ -169,7 +174,7 @@ handshake({'draft-hixie', 76}, #req{socket = Sock, socket_mode = SocketMode}, He
 		"Upgrade: WebSocket\r\n",
 		"Connection: Upgrade\r\n",
 		"Sec-WebSocket-Origin: ", Origin, "\r\n",
-		"Sec-WebSocket-Location: ", WsMode, "://", lists:concat([Host, Path]), "\r\n\r\n",
+		"Sec-WebSocket-Location: ", WsMode, "://", Host, Path, "\r\n\r\n",
 		build_challenge({'draft-hixie', 76}, {Key1, Key2, Body})
 	];
 handshake({'draft-hixie', 68}, #req{socket_mode = SocketMode} = _Req, _Headers, {Path, Origin, Host}) ->
@@ -182,30 +187,41 @@ handshake({'draft-hixie', 68}, #req{socket_mode = SocketMode} = _Req, _Headers, 
 		"Upgrade: WebSocket\r\n",
 		"Connection: Upgrade\r\n",
 		"WebSocket-Origin: ", Origin , "\r\n",
-		"WebSocket-Location: ", WsMode, "://", lists:concat([Host, Path]), "\r\n\r\n"
+		"WebSocket-Location: ", WsMode, "://", Host, Path, "\r\n\r\n"
 	].
 
 % Function: List
 % Description: Builds the challenge for a handshake response.
 % Code portions from Sergio Veiga <http://sergioveiga.com/index.php/2010/06/17/websocket-handshake-76-in-erlang/>
-build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
+build_challenge({'draft-hixie', 76}, {Key1, Key2, Body}) when is_binary(Key1) ->
+	% all headers in binary, convert to list
+	build_challenge({'draft-hixie', 76}, {binary_to_list(Key1), binary_to_list(Key2), Body});
+build_challenge({'draft-hixie', 76}, {Key1, Key2, Body}) ->
 	Ikey1 = [D || D <- Key1, $0 =< D, D =< $9],
 	Ikey2 = [D || D <- Key2, $0 =< D, D =< $9],
 	Blank1 = length([D || D <- Key1, D =:= 32]),
 	Blank2 = length([D || D <- Key2, D =:= 32]),
 	Part1 = erlang:list_to_integer(Ikey1) div Blank1,
 	Part2 = erlang:list_to_integer(Ikey2) div Blank2,
-	Ckey = <<Part1:4/big-unsigned-integer-unit:8, Part2:4/big-unsigned-integer-unit:8, Key3/binary>>,
+	Ckey = <<Part1:4/big-unsigned-integer-unit:8, Part2:4/big-unsigned-integer-unit:8, Body/binary>>,
 	erlang:md5(Ckey).
 
 % Main Websocket loop
-ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
+ws_loop(ServerRef, BinaryMode, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
+		{tcp, Socket, Data} when BinaryMode =:= false ->
+			% list mode			
+			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
 		{tcp, Socket, Data} ->
-			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
+			% binary mode
+			handle_data_bin(Buffer, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
+		{ssl, Socket, Data} when BinaryMode =:= false ->
+			% list mode	ssl
+			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
 		{ssl, Socket, Data} ->
-			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
+			% binary mode ssl
+			handle_data_bin(Buffer, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
 		{tcp_closed, Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
@@ -226,38 +242,51 @@ ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 		{send, Data} ->
 			?LOG_DEBUG("sending data to websocket: ~p", [Data]),
 			misultin_socket:send(Socket, [0, Data, 255], SocketMode),
-			ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit);
+			ws_loop(ServerRef, BinaryMode, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit);
 		shutdown ->
 			?LOG_DEBUG("shutdown request received, closing websocket with pid ~p", [self()]),
 			% close websocket and custom controlling loop
 			websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		_Ignored ->
 			?LOG_WARNING("received unexpected message, ignoring: ~p", [_Ignored]),
-			ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit)
+			ws_loop(ServerRef, BinaryMode, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit)
 	end.
 
 % Buffering and data handling
-handle_data(none, [0|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	handle_data([], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data(none, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	ws_loop(ServerRef, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data(none, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+handle_data(none, [0|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	handle_data([], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
+handle_data(none, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	ws_loop(ServerRef, BinaryMode, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data(none, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
 	websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit),
-	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
+handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
 	WsHandleLoopPid ! {browser, lists:reverse(L)},
-	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data(L, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-    ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data(L, [H|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data([], L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit).
+	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
+handle_data(L, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	ws_loop(ServerRef, BinaryMode, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data(L, [H|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode).
+
+handle_data_bin(none, <<0, T/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	handle_data_bin(<<>>, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
+handle_data_bin(none, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	ws_loop(ServerRef, BinaryMode, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data_bin(none, <<255, T/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit),
+	handle_data_bin(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
+handle_data_bin(L, <<255, T/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	WsHandleLoopPid ! {browser, L},
+	handle_data_bin(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode);
+handle_data_bin(L, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	ws_loop(ServerRef, BinaryMode, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data_bin(L, <<H, T/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode) ->
+	handle_data_bin(<<L/binary, H>>, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef, BinaryMode).
 
 % Close socket and custom handling loop dependency
 websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	% remove main websocket pid from misultin server reference
-	misultin:ws_pid_ref_remove(ServerRef, self()),
+	misultin_server:ws_pid_ref_remove(ServerRef, self()),
 	case WsAutoExit of
 		true ->
 			% kill custom handling loop process

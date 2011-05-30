@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Running Misultin from a gen_server.
+% MISULTIN - Example: Application based on Misultin - MAIN APPLICATION GEN_SERVER
 %
 % >-|-|-(°>
 % 
@@ -27,35 +27,22 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_gen_server).
+-module(misultin_app_example_server).
 -behaviour(gen_server).
 
 % gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % API
--export([start_link/1, stop/0]).
-
-% records
--record(state, {
-	port
-}).
-
-% macros
--define(SERVER, ?MODULE).
+-export([start_link/0, handle_http/1]).
 
 
 % ============================ \/ API ======================================================================
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the server.
-start_link(Port) ->
-	gen_server:start_link({local, ?SERVER}, ?MODULE, [Port], []).
-
-% Function: -> ok
-% Description: Manually stops the server.
-stop() ->
-	gen_server:cast(?SERVER, stop).
+start_link() ->
+	gen_server:start_link(?MODULE, [], []).
 
 % ============================ /\ API ======================================================================
 
@@ -66,13 +53,8 @@ stop() ->
 % Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
 % Description: Initiates the server.
 % ----------------------------------------------------------------------------------------------------------
-init([Port]) ->
-	% trap_exit -> this gen_server needs to be supervised
-	process_flag(trap_exit, true),
-	% start misultin & set monitor
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]),
-	erlang:monitor(process, misultin),
-	{ok, #state{port = Port}}.
+init([]) ->
+	{ok, {}}.
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: handle_call(Request, From, State) -> {reply, Reply, State} | {reply, Reply, State, Timeout} |
@@ -90,10 +72,6 @@ handle_call(_Request, _From, State) ->
 % Description: Handling cast messages.
 % ----------------------------------------------------------------------------------------------------------
 
-% manual shutdown
-handle_cast(stop, State) ->
-	{stop, normal, State};
-
 % handle_cast generic fallback (ignore)
 handle_cast(_Msg, State) ->
 	{noreply, State}.
@@ -102,10 +80,6 @@ handle_cast(_Msg, State) ->
 % Function: handle_info(Info, State) -> {noreply, State} | {noreply, State, Timeout} | {stop, Reason, State}
 % Description: Handling all non call/cast messages.
 % ----------------------------------------------------------------------------------------------------------
-
-% handle info when misultin server goes down -> take down misultin_gen_server too [the supervisor will take everything up again]
-handle_info({'DOWN', _, _, {misultin, _}, _}, State) ->
-	{stop, normal, State};
 
 % handle_info generic fallback (ignore)
 handle_info(_Info, State) ->
@@ -117,8 +91,6 @@ handle_info(_Info, State) ->
 % the gen_server terminates with Reason. The return value is ignored.
 % ----------------------------------------------------------------------------------------------------------
 terminate(_Reason, _State) ->
-	% stop misultin
-	misultin:stop(),
 	terminated.
 
 % ----------------------------------------------------------------------------------------------------------
