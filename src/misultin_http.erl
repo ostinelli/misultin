@@ -118,10 +118,13 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 			misultin_socket:close(Sock, SocketMode);
 		{tcp_closed, _Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
-			ok;
+			tcp_closed;
 		{ssl_closed, _Socket} ->
 			?LOG_DEBUG("ssl tcp connection was closed, exit", []),
-			ok;
+			ssl_closed;
+		shutdown ->
+			?LOG_DEBUG("shutdown message received from server, exit", []),
+			misultin_socket:close(Sock, SocketMode);
 		_Other ->
 			?LOG_WARNING("tcp error on incoming request: ~p, closing socket and exiting", [_Other]),
 			misultin_socket:close(Sock, SocketMode)
@@ -184,6 +187,15 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
 			misultin_socket:send(Sock, build_error_message(400, Req#req.connection), SocketMode),
 			handle_keepalive(Req#req.connection, C, Req);
+		{tcp_closed, _Socket} ->
+			?LOG_DEBUG("tcp connection was closed, exit", []),
+			tcp_closed;
+		{ssl_closed, _Socket} ->
+			?LOG_DEBUG("ssl tcp connection was closed, exit", []),
+			ssl_closed;
+		shutdown ->
+			?LOG_DEBUG("shutdown message received from server, exit", []),
+			misultin_socket:close(Sock, SocketMode);
 		_Other ->
 			?LOG_DEBUG("received unknown message: ~p, ignoring", [_Other]),
 			ignored
