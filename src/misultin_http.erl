@@ -437,7 +437,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -456,10 +456,10 @@ socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, co
 			% are there any raw headers?
 			Enc_headers = case Headers0 of
 				{HeadersList, HeadersStr} ->
-					Headers = add_headers(HeadersList, BodyBinary, Req, ServerRef),
+					Headers = add_headers(HeadersList, BodyBinary, Req),
 					[HeadersStr|enc_headers(lists:flatten([CompressHeaders|Headers]))];
 				_ ->
-					Headers = add_headers(Headers0, BodyBinary, Req, ServerRef),
+					Headers = add_headers(Headers0, BodyBinary, Req),
 					enc_headers(lists:flatten([CompressHeaders|Headers]))
 			end,
 			% build and send response
@@ -540,11 +540,11 @@ convert_to_binary(Body) when is_atom(Body) ->
 
 
 % add necessary headers
-add_headers(OriginalHeaders, BodyBinary, Req, ServerRef) ->
+add_headers(OriginalHeaders, BodyBinary, Req) ->
 	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
 	Headers1 = add_output_header('Connection', {Headers0, Req}),
 	Headers2 = add_output_header('Server', Headers1),
-	add_output_header('Date', {Headers2, ServerRef}).
+	add_output_header('Date', Headers2).
 
 % Description: Add necessary Content-Length Header
 add_output_header('Content-Length', {Headers, Body}) ->
@@ -575,11 +575,11 @@ add_output_header('Server', Headers) ->
 	end;
 
 % Description: Add necessary Date header
-add_output_header('Date', {Headers, ServerRef}) ->
+add_output_header('Date', Headers) ->
 	case misultin_utility:get_key_value('Date', Headers) of
 		undefined ->
 			% get header from gen_server
-			RfcDate = misultin_server:get_rfc_date(ServerRef),
+			RfcDate = misultin_server:get_rfc_date(),
 			[{'Date', RfcDate}|Headers];
 		_ ->
 			Headers

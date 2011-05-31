@@ -39,11 +39,12 @@
 
 % API
 -export([start_link/1]).
--export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1]).
+-export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/0]).
 
 % macros
 -define(TABLE_PIDS_HTTP, pids_http).	% ETS table name which holds the http processes' pids
--define(TABLE_PIDS_WS, pids_ws).		% ETS table name which holds the ws processes' pids
+-define(TABLE_PIDS_WS, pids_ws).		% ETS table name which holds the ws processes' pids% RFC date table
+-define(TABLE_DATE, misultin_table_date).	% ETS table which holds RFC date
 -define(DATE_UPDATE_INTERVAL, 1000).	% update interval in ms for RFC time [used in Date headers]
 
 % records
@@ -87,9 +88,8 @@ ws_pid_ref_remove(ServerRef, WsPid) ->
 	
 % Function -> list()
 % Description: Retrieve computed RFC date
-get_rfc_date(ServerRef) ->
-	gen_server:call(ServerRef, get_rfc_date).
-	
+get_rfc_date() ->
+	ets:lookup_element(?TABLE_DATE, rfc_date, 2).
 
 % ============================ /\ API ======================================================================
 
@@ -106,6 +106,9 @@ init([MaxConnections]) ->
 	% create ets tables to save open connections and websockets
 	ets:new(?TABLE_PIDS_HTTP, [named_table, set, public]),
 	ets:new(?TABLE_PIDS_WS, [named_table, set, public]),
+	% create ets table to hold RFC date information, and fill it with startup info
+	ets:new(?TABLE_DATE, [named_table, set, public, {read_concurrency, true}]),
+	update_rfc_date(),	
 	% start date build timer
 	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), compute_rfc_date),
 	% create listening socket and acceptor
@@ -184,13 +187,12 @@ handle_info(compute_rfc_date, State) ->
 	% avoid locking gen server
 	Self = self(),
 	spawn(fun() ->
-		Self ! {computed_rfc_date, httpd_util:rfc1123_date()},
+		% update date
+		update_rfc_date(),
 		% start date build timer
 		erlang:send_after(?DATE_UPDATE_INTERVAL, Self, compute_rfc_date)
 	end),
 	{noreply, State};
-handle_info({computed_rfc_date, RfcDate}, State) ->
-	{noreply, State#state{rfc_date = RfcDate}};
 	
 % Http process trapping
 handle_info({'DOWN', _Ref, process, _HttpPid, normal}, State) -> {noreply, State};	% normal exiting of an http process
@@ -245,5 +247,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
+
+% compute RFC date and update ETS table
+update_rfc_date() ->
+	ets:insert(?TABLE_DATE, {rfc_date, httpd_util:rfc1123_date()}).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
