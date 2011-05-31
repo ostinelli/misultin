@@ -487,6 +487,9 @@ socket_loop(#c{server_ref = ServerRef, sock = Sock, socket_mode = SocketMode, co
 		{ssl_closed, Sock} ->
 			?LOG_DEBUG("client closed ssl socket",[]),
 			ssl_closed;
+		shutdown ->
+			?LOG_DEBUG("shutdown message received from server",[]),
+			shutdown;			
 		{'EXIT', LoopPid, normal} ->
 			?LOG_DEBUG("normal finishing of custom loop",[]),
 			ok;
