@@ -420,7 +420,7 @@ handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req)
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
 % Description: Main dispatcher
-call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
+call_mfa(#c{loop = Loop, autoexit = AutoExit, no_headers = NoHeaders} = C, Req) ->
 	% spawn_link custom loop
 	Self = self(),
 	% trap exit
@@ -428,7 +428,10 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 	% spawn
 	LoopPid = spawn_link(fun() ->
 		% create request
-		ReqT = {misultin_req, Req, Self},
+		ReqT = case NoHeaders of
+			true -> {misultin_req, Req#req{headers = []}, Self};
+			false -> {misultin_req, Req, Self}
+		end,
 		% start custom loop
 		Loop(ReqT)
 	end),
