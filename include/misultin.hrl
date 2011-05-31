@@ -62,7 +62,9 @@
 	loop,						% the fun handling requests
 	autoexit,					% true | false
 	ws_loop,					% the loop handling websockets
-	ws_autoexit					% true | false
+	ws_autoexit,				% true | false
+	no_headers,					% true | false: optimization option, do not save headers in passed request over to developer code
+	ws_no_headers				% true | false: optimization option, do not save headers in passed request over to developer code
 }).
 
 % Request
@@ -79,6 +81,7 @@
 	uri,						% Truncated URI /index.html
 	args = "",					% Part of URI after ?
 	headers,					% [{Tag, Val}]
+	no_headers,					% true | false: optimization option, do not save headers in passed request over to developer code
 	body = <<>>					% Content Body
 }).
 
@@ -94,5 +97,6 @@
 	origin,						% the originator
 	host,						% the host
 	path,						% the websocket GET request path
-	headers						% [{Tag, Val}]
+	headers,					% [{Tag, Val}]
+	ws_no_headers				% true | false: optimization option, do not save headers in passed request over to developer code
 }).

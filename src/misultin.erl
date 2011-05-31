@@ -108,7 +108,9 @@ init([Options]) ->
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{autoexit, true, fun is_boolean/1, invalid_autoexit_option},
 		{ws_loop, none, fun is_function/1, ws_loop_not_function},
-		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option}
+		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
+		{no_headers, false, fun is_boolean/1, invalid_no_headers_option},
+		{ws_no_headers, false, fun is_boolean/1, invalid_ws_no_headers_option}
 	],
 	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -130,6 +132,8 @@ init([Options]) ->
 			AutoExit = proplists:get_value(autoexit, OptionsVerified),
 			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
+			NoHeaders = proplists:get_value(no_headers, OptionsVerified),
+			WsNoHeaders = proplists:get_value(ws_no_headers, OptionsVerified),
 			% ip address
 			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			% set additional options according to socket mode if necessary
@@ -171,7 +175,17 @@ init([Options]) ->
 					% set options
 					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
 					% build custom_opts
-					CustomOpts = #custom_opts{post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
+					CustomOpts = #custom_opts{
+						post_max_size = PostMaxSize,
+						get_url_max_size = GetUrlMaxSize,
+						compress = Compress,
+						loop = Loop,
+						autoexit = AutoExit,
+						ws_loop = WsLoop,
+						ws_autoexit = WsAutoExit,
+						no_headers = NoHeaders,
+						ws_no_headers = WsNoHeaders
+					},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [[MaxConnections]]}, permanent, 60000, worker, [misultin_server]},
 					% define acceptors supervisor specs

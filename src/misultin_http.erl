@@ -53,7 +53,9 @@
 	loop,
 	autoexit,
 	ws_loop,
-	ws_autoexit
+	ws_autoexit,
+	no_headers,
+	ws_no_headers
 }).
 -record(req_options, {
 	comet = false		% if comet =:= true, we will monitor client tcp close
@@ -80,7 +82,9 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 		loop = CustomOpts#custom_opts.loop,
 		autoexit = CustomOpts#custom_opts.autoexit,
 		ws_loop = CustomOpts#custom_opts.ws_loop,
-		ws_autoexit = CustomOpts#custom_opts.ws_autoexit
+		ws_autoexit = CustomOpts#custom_opts.ws_autoexit,
+		no_headers = CustomOpts#custom_opts.no_headers,
+		ws_no_headers = CustomOpts#custom_opts.ws_no_headers
 	},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
@@ -181,7 +185,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, Req#req{headers = Headers}, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, ws_autoexit = C#c.ws_autoexit, ws_no_headers = C#c.ws_no_headers}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
@@ -416,7 +420,7 @@ handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req)
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
 % Description: Main dispatcher
-call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
+call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 	% spawn_link custom loop
 	Self = self(),
 	% trap exit
@@ -424,12 +428,12 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	% spawn
 	LoopPid = spawn_link(fun() ->
 		% create request
-		Req = {misultin_req, Request, Self},
+		ReqT = {misultin_req, Req, Self},
 		% start custom loop
-		Loop(Req)
+		Loop(ReqT)
 	end),
 	% enter loop
-	socket_loop(C, Request, LoopPid, #req_options{}),
+	socket_loop(C, Req, LoopPid, #req_options{}),
 	% unlink
 	process_flag(trap_exit, false),
 	erlang:unlink(LoopPid),

@@ -53,7 +53,7 @@ check(_Path, Headers) ->
 	check_websockets(VsnSupported, Headers).
 
 % Connect and handshake with Websocket.
-connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Path, headers = Headers, ws_autoexit = WsAutoExit} = Ws, WsLoop) ->
+connect(ServerRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Path, ws_autoexit = WsAutoExit, ws_no_headers = WsNoHeaders} = Ws, WsLoop) ->
 	?LOG_DEBUG("building handshake response", []),
 	% get data
 	Origin = misultin_utility:header_get_value('Origin', Headers),
@@ -63,8 +63,11 @@ connect(ServerRef, Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode
 	% send handshake back
 	misultin_socket:send(Socket, HandshakeServer, SocketMode),
 	% add data to ws record and spawn_link controlling process
-	Ws0 = {misultin_ws, Ws#ws{origin = Origin, host = Host}, self()},
-	WsHandleLoopPid = spawn_link(fun() -> WsLoop(Ws0) end),
+	WsT = case WsNoHeaders of
+		true -> {misultin_ws, Ws#ws{headers = [], origin = Origin, host = Host}, self()};
+		false -> {misultin_ws, Ws#ws{headers = Req#req.headers, origin = Origin, host = Host}, self()}
+	end,
+	WsHandleLoopPid = spawn_link(fun() -> WsLoop(WsT) end),
 	% trap exit
 	process_flag(trap_exit, true),
 	% set opts
