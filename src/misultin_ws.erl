@@ -48,8 +48,26 @@ get(socket, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.socket;
 get(socket_mode, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#req.socket_mode;
-get(peer_addr, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.peer_addr;
+get(peer_addr, {misultin_ws, #ws{headers = Headers} = Ws, _SocketPid}) ->
+	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
+		undefined ->
+			case misultin_utility:get_key_value("X-Forwarded-For", Headers) of
+				undefined -> undefined;
+				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
+			end;
+		Host0 -> Host0
+	end,
+	case Host of
+		undefined ->
+			Ws#ws.peer_addr;
+		_ -> 
+			case inet_parse:address(Host) of
+				{error, _Reason} ->
+					Ws#ws.peer_addr;
+				{ok, IpTuple} ->
+					IpTuple
+			end
+	end;
 get(peer_port, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.peer_port;
 get(peer_cert, {misultin_ws, Ws, _SocketPid}) ->
