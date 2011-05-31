@@ -203,9 +203,9 @@ ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
 		{tcp, Socket, Data} ->
-			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
+			handle_data(Buffer, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
 		{ssl, Socket, Data} ->
-			handle_data(Buffer, binary_to_list(Data), Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
+			handle_data(Buffer, Data, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
 		{tcp_closed, Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
@@ -237,20 +237,17 @@ ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	end.
 
 % Buffering and data handling
-handle_data(none, [0|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	handle_data([], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data(none, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+handle_data(none, <<0, T/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+	handle_data(<<>>, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
+handle_data(none, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	ws_loop(ServerRef, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data(none, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit),
+handle_data(L, <<255, T/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+	WsHandleLoopPid ! {browser, binary_to_list(L)},
 	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data(L, [255|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	WsHandleLoopPid ! {browser, lists:reverse(L)},
-	handle_data(none, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
-handle_data(L, [], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit);
-handle_data(L, [H|T], Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
-	handle_data([H|L], T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef).
+handle_data(L, <<H, T/binary>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+	handle_data(<<L/binary, H>>, T, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
+handle_data(L, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit).
 
 % Close socket and custom handling loop dependency
 websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
