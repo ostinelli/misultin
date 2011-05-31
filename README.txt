@@ -77,6 +77,7 @@ CHANGELOG
        - added Cookie support
        - added preliminary support multipart/form-data and a file upload example [thanks to Max Lapshin]
        - added Date and Server headers
+       - added support for headers being specified as binaries [thanks to akaspin]
        - added an example on how to properly embed misultin in your application
        - Req:get(peer_addr) now properly extracts peer information from headers "X-Real-Ip" or
          "X-Forwarded-For" if these are available [thanks to Max Lapshin]

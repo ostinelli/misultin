@@ -538,7 +538,6 @@ convert_to_binary(Body) when is_binary(Body) ->
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
-
 % add necessary headers
 add_headers(OriginalHeaders, BodyBinary, Req) ->
 	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
@@ -594,6 +593,8 @@ enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
 	[atom_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([{Tag, Val}|T]) when is_list(Tag) ->
 	[Tag, ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
+enc_headers([{Tag, Val}|T]) when is_binary(Tag) ->
+	[binary_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([]) ->
 	[].
 enc_header_val(Val) when is_atom(Val) ->
