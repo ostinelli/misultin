@@ -103,8 +103,8 @@ init([MaxConnections]) ->
 	process_flag(trap_exit, true),
 	?LOG_INFO("starting misultin server with pid: ~p", [self()]),
 	% create ets tables to save open connections and websockets
-	ets:new(?TABLE_PIDS_HTTP, [named_table, set, public]),
-	ets:new(?TABLE_PIDS_WS, [named_table, set, public]),
+	ets:new(?TABLE_PIDS_HTTP, [named_table, set, protected]),
+	ets:new(?TABLE_PIDS_WS, [named_table, set, protected]),
 	% create ets table to hold RFC date information, and fill it with startup info
 	ets:new(?TABLE_DATE, [named_table, set, public, {read_concurrency, true}]),
 	update_rfc_date(),	
@@ -159,6 +159,8 @@ handle_cast({remove_http_pid, {HttpPid, HttpMonRef}}, #state{open_connections_co
 handle_cast({add_ws_pid, WsPid}, State) ->
 	?LOG_DEBUG("adding ws pid reference ~p", [WsPid]),
 	ets:insert(?TABLE_PIDS_WS, {WsPid, none}),
+	% remove from http processes list
+	ets:delete(?TABLE_PIDS_HTTP, WsPid),
 	{noreply, State};
 
 % remove websocket pid reference from server
@@ -222,9 +224,8 @@ terminate(_Reason, _State) ->
 	?LOG_DEBUG("sending shutdown message to ~p websockets", [length(WsPidList)]),
 	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsPidList),
 	% fsend a shutdown message to all http processes
-	HttpPidRefNoWs = lists:subtract(HttpPidList, WsPidList),
-	?LOG_DEBUG("sending shutdown message to ~p http processes", [length(HttpPidRefNoWs)]),
-	lists:foreach(fun(HttpPid) -> catch HttpPid ! shutdown end, HttpPidRefNoWs),
+	?LOG_DEBUG("sending shutdown message to ~p http processes", [length(HttpPidList)]),
+	lists:foreach(fun(HttpPid) -> catch HttpPid ! shutdown end, HttpPidList),
 	% delete ETS tables
 	?LOG_INFO("removing ets tables",[]),
 	ets:delete(?TABLE_PIDS_HTTP),
