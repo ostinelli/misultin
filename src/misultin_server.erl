@@ -51,8 +51,7 @@
 -record(state, {
 	% misultin
 	max_connections,				% maximum allowed simultaneous connections
-	open_connections_count = 0,		% current number of open connections
-	rfc_date						% current RFC date
+	open_connections_count = 0		% current number of open connections
 }).
 
 % includes
