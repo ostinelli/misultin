@@ -135,10 +135,6 @@ handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConn
 			{reply, {ok, HttpMonRef}, State#state{open_connections_count = OpenConnectionsCount + 1}}
 	end;
 
-% retrieve computed RFC date
-handle_call(get_rfc_date, _From, #state{rfc_date = RfcDate} = State) ->
-	{reply, RfcDate, State};
-
 % handle_call generic fallback
 handle_call(_Request, _From, State) ->
 	?LOG_WARNING("received unknown call message: ~p", [_Request]),
