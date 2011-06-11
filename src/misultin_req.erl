@@ -124,7 +124,7 @@ get_cookie_value(CookieTag, Cookies, _ReqT) ->
 	
 % set cookie
 set_cookie(Key, Value, _ReqT) ->
-	set_cookie(Key, Value, []).
+	set_cookie(Key, Value, [], _ReqT).
 set_cookie(Key, Value, Options, _ReqT) ->
 	misultin_cookies:set_cookie(Key, Value, Options).
 	
