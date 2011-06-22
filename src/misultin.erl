@@ -102,13 +102,15 @@ init([Options]) ->
 		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		% misultin
-		{post_max_size, 4*1012*1012, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
+		{post_max_size, 4*1024*1024, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
 		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
 		{compress, false, fun is_boolean/1, invalid_compress_option},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{autoexit, true, fun is_boolean/1, invalid_autoexit_option},
 		{ws_loop, none, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
+		% advanced
+		{recbuf, 1024, fun is_integer/1, recbuf_not_integer},
 		{no_headers, false, fun is_boolean/1, invalid_no_headers_option},
 		{ws_no_headers, false, fun is_boolean/1, invalid_ws_no_headers_option}
 	],
@@ -132,6 +134,7 @@ init([Options]) ->
 			AutoExit = proplists:get_value(autoexit, OptionsVerified),
 			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
+			RecBuf = proplists:get_value(recbuf, OptionsVerified),
 			NoHeaders = proplists:get_value(no_headers, OptionsVerified),
 			WsNoHeaders = proplists:get_value(ws_no_headers, OptionsVerified),
 			% ip address
@@ -183,6 +186,7 @@ init([Options]) ->
 						autoexit = AutoExit,
 						ws_loop = WsLoop,
 						ws_autoexit = WsAutoExit,
+						recbuf = RecBuf,
 						no_headers = NoHeaders,
 						ws_no_headers = WsNoHeaders
 					},
