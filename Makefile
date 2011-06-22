@@ -5,27 +5,20 @@ INCLUDE_DIR := include
 ERLC := erlc
 ERLC_FLAGS := -W -I $(INCLUDE_DIR) -o $(EBIN_DIR)
 
-all:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
-	
+compile:
+	@./rebar compile
 clean:
-	@rm -rf $(EBIN_DIR)/*
-	@rm -f erl_crash.dump
-	
-debug:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) -D log_debug $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
-	
-dialyzer:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) +debug_info $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
+	@./rebar clean
+	@find . -name "erl_crash\.dump" | xargs rm -f
 
-example:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
+eunit:
+	@rm -rf .eunit
+	@./rebar eunit
+
+test: eunit
+
+dialyzer: compile
+	@./rebar dialyze
+
+example: compile
 	$(ERLC) $(ERLC_FLAGS) $(EXAMPLES_DIR)/*.erl
