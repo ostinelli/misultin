@@ -39,19 +39,22 @@
 
 % API
 -export([start_link/1]).
--export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/0]).
+-export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1, get_table_date_ref/1]).
 
 % macros
--define(DATE_UPDATE_INTERVAL, 1000).       % update interval in ms for RFC time [used in Date headers]
--define(TABLE_DATE, misultin_table_date).  % ETS table which holds RFC date
+-define(TABLE_PIDS_HTTP, misultin_table_pids_http).
+-define(TABLE_PIDS_WS, misultin_table_pids_ws).
+-define(TABLE_DATE, misultin_table_date).
+-define(DATE_UPDATE_INTERVAL, 1000).	   % update interval in ms for RFC time [used in Date headers]
 
 % records
 -record(state, {
 	% misultin
 	max_connections,				% maximum allowed simultaneous connections
 	open_connections_count = 0,		% current number of open connections
-    table_pids_http,                % ETS table name which holds the http processes' pids
-    table_pids_ws                  % ETS table name which holds the ws processes' pids
+	table_pids_http,				% ETS table reference which holds the http processes' pids
+	table_pids_ws,					% ETS table reference which holds the ws processes' pids
+	table_date						% ETS table reference which holds the RFC date
 }).
 
 % includes
@@ -87,9 +90,14 @@ ws_pid_ref_remove(ServerRef, WsPid) ->
 
 % Function -> list()
 % Description: Retrieve computed RFC date
-get_rfc_date() ->
-	ets:lookup_element(?TABLE_DATE, rfc_date, 2).
-
+get_rfc_date(TableDateRef) ->
+	ets:lookup_element(TableDateRef, rfc_date, 2).
+	
+% Function -> tid()
+% Description: Retrieve table date reference.
+get_table_date_ref(ServerRef) ->
+	gen_server:call(ServerRef, get_table_date_ref).
+	
 % ============================ /\ API ======================================================================
 
 
@@ -103,21 +111,20 @@ init([MaxConnections]) ->
 	process_flag(trap_exit, true),
 	?LOG_INFO("starting misultin server with pid: ~p", [self()]),
 	% create ets tables to save open connections and websockets
-	TablePidsHttp = ets:new(table_pids_http, [set, protected]),
-	TablePidsWs = ets:new(table_pids_ws, [set, protected]),
+	TablePidsHttp = ets:new(?TABLE_PIDS_HTTP, [set, protected]),
+	TablePidsWs = ets:new(?TABLE_PIDS_WS, [set, protected]),
 	% create ets table to hold RFC date information, and fill it with startup info
-	?TABLE_DATE = try
-                      ets:new(?TABLE_DATE, [named_table, set, public, {read_concurrency, true}])
-                  catch
-                      error:badarg -> ?TABLE_DATE
-                  end,
-	update_rfc_date(),
+	TableDate = ets:new(?TABLE_DATE, [set, public, {read_concurrency, true}]),
+	update_rfc_date(TableDate),
 	% start date build timer
 	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), compute_rfc_date),
-	% create listening socket and acceptor
-	{ok, #state{max_connections = MaxConnections,
-                table_pids_http = TablePidsHttp,
-                table_pids_ws = TablePidsWs}}.
+	% return
+	{ok, #state{
+		max_connections = MaxConnections,
+		table_pids_http = TablePidsHttp,
+		table_pids_ws = TablePidsWs,
+		table_date = TableDate
+	}}.
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: handle_call(Request, From, State) -> {reply, Reply, State} | {reply, Reply, State, Timeout} |
@@ -127,9 +134,7 @@ init([MaxConnections]) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % add an http pid reference
-handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConnections,
-                                                       open_connections_count = OpenConnectionsCount,
-                                                       table_pids_http = TablePidsHttp} = State) ->
+handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConnections, open_connections_count = OpenConnectionsCount, table_pids_http = TablePidsHttp} = State) ->
 	?LOG_DEBUG("new accept connection request received by http process with pid ~p", [HttpPid]),
 	case OpenConnectionsCount >= MaxConnections of
 		true ->
@@ -143,6 +148,10 @@ handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConn
 			{reply, {ok, HttpMonRef}, State#state{open_connections_count = OpenConnectionsCount + 1}}
 	end;
 
+% get table date reference
+handle_call(get_table_date_ref, _From, #state{table_date = TableDate} = State) ->
+	{reply, TableDate, State};
+
 % handle_call generic fallback
 handle_call(_Request, _From, State) ->
 	?LOG_WARNING("received unknown call message: ~p", [_Request]),
@@ -154,8 +163,7 @@ handle_call(_Request, _From, State) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % remove http pid reference from server
-handle_cast({remove_http_pid, {HttpPid, HttpMonRef}}, #state{open_connections_count = OpenConnectionsCount,
-                                                             table_pids_http = TablePidsHttp} = State) ->
+handle_cast({remove_http_pid, {HttpPid, HttpMonRef}}, #state{open_connections_count = OpenConnectionsCount, table_pids_http = TablePidsHttp} = State) ->
 	?LOG_DEBUG("removing http pid reference ~p", [HttpPid]),
 	% remove monitor
 	catch erlang:demonitor(HttpMonRef),
@@ -165,8 +173,7 @@ handle_cast({remove_http_pid, {HttpPid, HttpMonRef}}, #state{open_connections_co
 	{noreply, State#state{open_connections_count = OpenConnectionsCount - 1}};
 
 % add websocket pid reference to server
-handle_cast({add_ws_pid, WsPid}, #state{table_pids_ws = TablePidsWs,
-                                        table_pids_http = TablePidsHttp} = State) ->
+handle_cast({add_ws_pid, WsPid}, #state{table_pids_ws = TablePidsWs, table_pids_http = TablePidsHttp} = State) ->
 	?LOG_DEBUG("adding ws pid reference ~p", [WsPid]),
 	ets:insert(TablePidsWs, {WsPid, none}),
 	% remove from http processes list
@@ -190,12 +197,12 @@ handle_cast(_Msg, State) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % compute RFC date
-handle_info(compute_rfc_date, State) ->
+handle_info(compute_rfc_date, #state{table_date = TableDate} = State) ->
 	% avoid locking gen server
 	Self = self(),
 	spawn(fun() ->
 		% update date
-		update_rfc_date(),
+		update_rfc_date(TableDate),
 		% start date build timer
 		erlang:send_after(?DATE_UPDATE_INTERVAL, Self, compute_rfc_date)
 	end),
@@ -203,9 +210,7 @@ handle_info(compute_rfc_date, State) ->
 
 % Http process trapping
 handle_info({'DOWN', _Ref, process, _HttpPid, normal}, State) -> {noreply, State};	% normal exiting of an http process
-handle_info({'DOWN', _Ref, process, HttpPid, _Reason}, #state{table_pids_http = TablePidsHttp,
-                                                              table_pids_ws = TablePidsWs,
-                                                              open_connections_count = OpenConnectionsCount} = State) ->
+handle_info({'DOWN', _Ref, process, HttpPid, _Reason}, #state{table_pids_http = TablePidsHttp, table_pids_ws = TablePidsWs, open_connections_count = OpenConnectionsCount} = State) ->
 	case ets:member(TablePidsHttp, HttpPid) of
 		true ->
 			?LOG_ERROR("http process ~p has died with reason: ~p, removing from references of open connections and websockets", [HttpPid, _Reason]),
@@ -227,8 +232,7 @@ handle_info(_Info, State) ->
 % Description: This function is called by a gen_server when it is about to terminate. When it returns,
 % the gen_server terminates with Reason. The return value is ignored.
 % ----------------------------------------------------------------------------------------------------------
-terminate(_Reason, #state{table_pids_http = TablePidsHttp,
-                          table_pids_ws = TablePidsWs}) ->
+terminate(_Reason, #state{table_pids_http = TablePidsHttp, table_pids_ws = TablePidsWs, table_date = TableDate}) ->
 	?LOG_INFO("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
 	% build pid lists from ets tables
 	HttpPidList = [X || {X, _} <- ets:tab2list(TablePidsHttp)],
@@ -243,6 +247,7 @@ terminate(_Reason, #state{table_pids_http = TablePidsHttp,
 	?LOG_INFO("removing ets tables",[]),
 	ets:delete(TablePidsHttp),
 	ets:delete(TablePidsWs),
+	ets:delete(TableDate),
 	terminated.
 
 % ----------------------------------------------------------------------------------------------------------
@@ -258,7 +263,7 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % compute RFC date and update ETS table
-update_rfc_date() ->
-	ets:insert(?TABLE_DATE, {rfc_date, httpd_util:rfc1123_date()}).
+update_rfc_date(TableDate) ->
+	ets:insert(TableDate, {rfc_date, httpd_util:rfc1123_date()}).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

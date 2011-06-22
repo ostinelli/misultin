@@ -34,7 +34,7 @@
 -vsn("0.8-dev").
 
 % API
--export([handle_data/9]).
+-export([handle_data/10]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -43,6 +43,7 @@
 % records
 -record(c, {
 	server_ref,
+	table_date_ref,
 	sock,
 	socket_mode,
 	port,
@@ -68,10 +69,11 @@
 % ============================ \/ API ======================================================================
 
 % Callback from misultin_socket
-handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
+handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% build C record
 	C = #c{
 		server_ref = ServerRef,
+		table_date_ref = TableDateRef,
 		sock = Sock,
 		socket_mode = SocketMode,
 		port = ListenPort,
@@ -463,10 +465,10 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			% are there any raw headers?
 			Enc_headers = case Headers0 of
 				{HeadersList, HeadersStr} ->
-					Headers = add_headers(HeadersList, BodyBinary, Req),
+					Headers = add_headers(HeadersList, BodyBinary, C#c.table_date_ref, Req),
 					[HeadersStr|enc_headers(lists:flatten([CompressHeaders|Headers]))];
 				_ ->
-					Headers = add_headers(Headers0, BodyBinary, Req),
+					Headers = add_headers(Headers0, BodyBinary, C#c.table_date_ref, Req),
 					enc_headers(lists:flatten([CompressHeaders|Headers]))
 			end,
 			% build and send response
@@ -546,11 +548,11 @@ convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
 % add necessary headers
-add_headers(OriginalHeaders, BodyBinary, Req) ->
+add_headers(OriginalHeaders, BodyBinary, TableDateRef, Req) ->
 	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
 	Headers1 = add_output_header('Connection', {Headers0, Req}),
 	Headers2 = add_output_header('Server', Headers1),
-	add_output_header('Date', Headers2).
+	add_output_header('Date', {Headers2, TableDateRef}).
 
 % Description: Add necessary Content-Length Header
 add_output_header('Content-Length', {Headers, Body}) ->
@@ -581,11 +583,11 @@ add_output_header('Server', Headers) ->
 	end;
 
 % Description: Add necessary Date header
-add_output_header('Date', Headers) ->
+add_output_header('Date', {Headers, TableDateRef}) ->
 	case misultin_utility:get_key_value('Date', Headers) of
 		undefined ->
 			% get header from gen_server
-			RfcDate = misultin_server:get_rfc_date(),
+			RfcDate = misultin_server:get_rfc_date(TableDateRef),
 			[{'Date', RfcDate}|Headers];
 		_ ->
 			Headers
