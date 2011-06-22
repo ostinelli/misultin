@@ -84,6 +84,7 @@ CHANGELOG
        - solved bug on large data being sent over via websockets [thanks to omarkj]
        - corrected binary sending bug in websockets which would fail binaries on io_lib format [thanks to
          normanb]
+       - added recbuf advanced option [issue #40]
        - various optimizations using binary when needed
 
 0.7.1: - considerably improved stability under heavy load

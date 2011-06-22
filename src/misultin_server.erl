@@ -114,7 +114,13 @@ init([MaxConnections]) ->
 	TablePidsHttp = ets:new(?TABLE_PIDS_HTTP, [set, protected]),
 	TablePidsWs = ets:new(?TABLE_PIDS_WS, [set, protected]),
 	% create ets table to hold RFC date information, and fill it with startup info
-	TableDate = ets:new(?TABLE_DATE, [set, public, {read_concurrency, true}]),
+	TableDate = try
+		ets:new(?TABLE_DATE, [set, public, {read_concurrency, true}])
+	catch
+		error:badarg ->
+			% read_concurrency not supported before R14B
+			ets:new(?TABLE_DATE, [set, public])
+	end,
 	update_rfc_date(TableDate),
 	% start date build timer
 	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), compute_rfc_date),
