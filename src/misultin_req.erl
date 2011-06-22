@@ -2,7 +2,7 @@
 % MISULTIN - Request
 %
 % >-|-|-(°>
-% 
+%
 % Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
 % All rights reserved.
 %
@@ -10,7 +10,7 @@
 % <http://code.google.com/p/mochiweb/>
 %
 % BSD License
-% 
+%
 % Redistribution and use in source and binary forms, with or without modification, are permitted provided
 % that the following conditions are met:
 %
@@ -72,7 +72,7 @@ get(peer_addr, {misultin_req, #req{headers = Headers} = Req, _SocketPid}) ->
 	case Host of
 		undefined ->
 			Req#req.peer_addr;
-		_ -> 
+		_ ->
 			case inet_parse:address(Host) of
 				{error, _Reason} ->
 					Req#req.peer_addr;
@@ -121,13 +121,13 @@ get_cookies({misultin_req, #req{headers = Headers}, _SocketPid}) ->
 % Description: Get the value of a single cookie
 get_cookie_value(CookieTag, Cookies, _ReqT) ->
 	misultin_utility:get_key_value(CookieTag, Cookies).
-	
+
 % set cookie
 set_cookie(Key, Value, _ReqT) ->
 	set_cookie(Key, Value, [], _ReqT).
 set_cookie(Key, Value, Options, _ReqT) ->
 	misultin_cookies:set_cookie(Key, Value, Options).
-	
+
 % delete cookie
 delete_cookie(Key, _ReqT) ->
 	misultin_cookies:delete_cookie(Key).
@@ -149,7 +149,7 @@ respond(HttpCode, Headers, Template, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! {response, HttpCode, Headers, Template}.
 respond(HttpCode, Headers, Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =:= true ->
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
-	
+
 % Description: Allow to add already formatted headers, untouched
 raw_headers_respond(Body, ReqT) ->
 	raw_headers_respond(200, [], [], Body, ReqT).
@@ -190,9 +190,9 @@ chunk(Template, [], ReqT) ->
 	chunk_send(Template, ReqT);
 chunk(Template, Vars, ReqT) ->
 	chunk_send(io_lib:format(Template, Vars), ReqT).
-chunk_send(Data, ReqT) ->	
+chunk_send(Data, ReqT) ->
 	stream([erlang:integer_to_list(erlang:iolist_size(Data), 16), "\r\n", Data, "\r\n"], ReqT).
-	
+
 % Description: Stream support.
 stream(close, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! stream_close;
@@ -208,11 +208,11 @@ stream(Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =
 	catch SocketPid ! {stream_data, io_lib:format(Template, Vars)}.
 stream(head, HttpCode, Headers, {misultin_req, _Req, SocketPid}) ->
 	catch SocketPid ! {stream_head, HttpCode, Headers}.
-	
+
 % Description: Sends a file to the browser.
 file(FilePath, ReqT) ->
 	file_send(FilePath, [], ReqT).
-% Description: Sends a file for download.	
+% Description: Sends a file for download.
 file(attachment, FilePath, ReqT) ->
 	file(attachment, FilePath, [], ReqT);
 % Description: Sends a file to the browser with the given headers.
@@ -242,6 +242,8 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 		ContentType ->
 			[Type|Modificator] = string:tokens(ContentType, ";"),
 			case Type of
+			    "application/octet-stream" ->
+			        Req#req.body;
 				"application/x-www-form-urlencoded" ->
 					misultin_utility:parse_qs(Req#req.body);
 				"multipart/form-data" ->
@@ -271,7 +273,7 @@ resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 clean_uri(lowercase, Uri) ->
 	string:to_lower(Uri);
 clean_uri(urldecode, Uri) ->
-	misultin_utility:unquote(Uri);	
+	misultin_utility:unquote(Uri);
 % ignore unexisting option
 clean_uri(_Unavailable, Uri) ->
 	Uri.
@@ -304,7 +306,7 @@ file_open_and_send(FilePath, FileSize, Headers, ReqT) ->
 			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize} | Headers],
 			stream(head, HeadersFull, ReqT),
 			% read portions
-			case file_read_and_send(IoDevice, 0, ReqT) of 
+			case file_read_and_send(IoDevice, 0, ReqT) of
 				{error, Reason} ->
 					file:close(IoDevice),
 					{error, Reason};
