@@ -34,8 +34,8 @@
 start(Port) ->
 	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end},
 		{ssl, [
-			{certfile, "../priv/test_certificate.pem"},
-			{keyfile, "../priv/test_privkey.pem"},
+			{certfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_certificate.pem"])},
+			{keyfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_privkey.pem"])},
 			{password, "misultin"}
 		]}
 	]).
