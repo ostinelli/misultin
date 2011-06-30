@@ -85,6 +85,7 @@ CHANGELOG
        - corrected binary sending bug in websockets which would fail binaries on io_lib format [thanks to
          normanb]
        - added recbuf advanced option [issue #40]
+       - added preliminary test suite
        - various optimizations using binary when needed
 
 0.7.1: - considerably improved stability under heavy load
