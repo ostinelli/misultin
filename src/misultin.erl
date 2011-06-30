@@ -110,7 +110,7 @@ init([Options]) ->
 		{ws_loop, none, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
 		% advanced
-		{recbuf, 1024, fun is_integer/1, recbuf_not_integer},
+		{recbuf, 1024, fun is_integer/1, recbuf_not_integer},							 	% the size of the receiving buffer, defaults to 1024
 		{no_headers, false, fun is_boolean/1, invalid_no_headers_option},
 		{ws_no_headers, false, fun is_boolean/1, invalid_ws_no_headers_option}
 	],
@@ -176,7 +176,7 @@ init([Options]) ->
 			case Continue of
 				true ->
 					% set options
-					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
+					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}, {recbuf, RecBuf}|AdditionalOptions],
 					% build custom_opts
 					CustomOpts = #custom_opts{
 						post_max_size = PostMaxSize,
@@ -186,7 +186,6 @@ init([Options]) ->
 						autoexit = AutoExit,
 						ws_loop = WsLoop,
 						ws_autoexit = WsAutoExit,
-						recbuf = RecBuf,
 						no_headers = NoHeaders,
 						ws_no_headers = WsNoHeaders
 					},

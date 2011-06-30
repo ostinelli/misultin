@@ -55,7 +55,6 @@
 	autoexit,
 	ws_loop,
 	ws_autoexit,
-	recbuf,
 	no_headers,
 	ws_no_headers
 }).
@@ -86,7 +85,6 @@ handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, Pee
 		autoexit = CustomOpts#custom_opts.autoexit,
 		ws_loop = CustomOpts#custom_opts.ws_loop,
 		ws_autoexit = CustomOpts#custom_opts.ws_autoexit,
-		recbuf = CustomOpts#custom_opts.recbuf,
 		no_headers = CustomOpts#custom_opts.no_headers,
 		ws_no_headers = CustomOpts#custom_opts.ws_no_headers
 	},
@@ -100,8 +98,8 @@ handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, Pee
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
-request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize, recbuf = RecBuf} = C, Req) ->
-	misultin_socket:setopts(Sock, [{active, once}, {packet, http}, {recbuf, RecBuf}], SocketMode),
+request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
+	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_request, _Method, {_, Uri} = _Path, _Version}} when length(Uri) > GetUrlMaxSize ->
 			?LOG_WARNING("get url request uri of ~p exceed maximum length of ~p", [length(Uri), GetUrlMaxSize]),				

@@ -63,7 +63,6 @@
 	autoexit,					% true | false
 	ws_loop,					% the loop handling websockets
 	ws_autoexit,				% true | false
-	recbuf,						% integer() the size of the receiving buffer, defaults to 1024
 	no_headers,					% true | false: optimization option, do not save headers in passed request over to developer code
 	ws_no_headers				% true | false: optimization option, do not save headers in passed request over to developer code
 }).
