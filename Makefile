@@ -31,4 +31,5 @@ example:
 	$(ERLC) $(ERLC_FLAGS) $(EXAMPLES_DIR)/*.erl
 
 tests:
+	@mkdir -p $(PWD)/test/results
 	@ct_run -suite $(PWD)/misultin_SUITE -pa $(PWD)/ebin -logdir $(PWD)/test/results
