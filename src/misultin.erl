@@ -46,11 +46,36 @@
 % includes
 -include("../include/misultin.hrl").
 
+% types
+-type misultin_option_tcp() ::
+	{ip, string() | tuple()} |
+	{port, non_neg_integer()} |
+	{backlog, non_neg_integer()} |
+	{acceptors_poolsize, non_neg_integer()} |
+	{recv_timeout, non_neg_integer()} |
+	{max_connections, non_neg_integer()} |
+	{ssl, [{atom(), term()}]} |
+	{recbuf, non_neg_integer()}.
+-type misultin_option_server() :: 
+	{name, atom()} |
+	{post_max_size, non_neg_integer()} |
+	{get_url_max_size, non_neg_integer()} |
+	{compress, true|false} |
+	{loop, fun()} |
+	{autoexit, true|false} |
+	{ws_loop, true|false} |
+	{ws_autoexit, true|false} |
+	{no_headers, true|false} |
+	{ws_no_headers, true|false}.
+-type misultin_option() :: misultin_option_tcp() |  misultin_option_server().
+-export_type([misultin_option/0, misultin_option_tcp/0, misultin_option_server/0]).
+
 
 % ============================ \/ API ======================================================================
 
 % Function: {ok, Pid} | ignore | {error, Error}
 % Description: Starts the server.
+-spec start_link(Options::[{atom(), term()}]) -> {ok, Pid::pid()} | {error, Reason::term()}.
 start_link(Options) when is_list(Options) ->
 	% check if name option has been specified, otherwise default to 'misultin' as regname
 	case get_option({name, ?SERVER, fun is_atom/1, invalid_misultin_process_name}, Options) of
@@ -71,6 +96,8 @@ start_link(Options) when is_list(Options) ->
 
 % Function: -> ok
 % Description: Manually stops the server.
+-spec stop() -> term().
+-spec stop(SupRef::atom() | pid()) -> term().
 stop() ->
 	stop(?SERVER).
 stop(undefined) ->
@@ -89,6 +116,7 @@ stop(SupPid) when is_pid(SupPid) ->
 % Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
 % Description: Starts the supervisor
 % ----------------------------------------------------------------------------------------------------------å
+-spec init(Options::[{atom(), term()}]) -> {ok, term()} | {error, Reason::term()}.
 init([Options]) ->
 	?LOG_INFO("starting supervisor with pid: ~p", [self()]),
 	% test and get options
@@ -101,6 +129,7 @@ init([Options]) ->
 		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer},
 		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
+		{recbuf, 1024, fun is_integer/1, recbuf_not_integer},
 		% misultin
 		{post_max_size, 4*1024*1024, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
 		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
@@ -109,8 +138,7 @@ init([Options]) ->
 		{autoexit, true, fun is_boolean/1, invalid_autoexit_option},
 		{ws_loop, none, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
-		% advanced
-		{recbuf, 1024, fun is_integer/1, recbuf_not_integer},							 	% the size of the receiving buffer, defaults to 1024
+		% advanced							 	% the size of the receiving buffer, defaults to 1024
 		{no_headers, false, fun is_boolean/1, invalid_no_headers_option},
 		{ws_no_headers, false, fun is_boolean/1, invalid_ws_no_headers_option}
 	],
@@ -192,7 +220,7 @@ init([Options]) ->
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [[MaxConnections]]}, permanent, 60000, worker, [misultin_server]},
 					% define acceptors supervisor specs
-					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [[self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
+					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% spawn
 					{ok, {{one_for_all, 5, 30}, [ServerSpec, AcceptorSupSpec]}};
 				Error ->
@@ -210,6 +238,7 @@ init([Options]) ->
 
 % Function: -> false | IpTuple
 % Description: Checks and if necessary converts a string Ip to inet repr.
+-spec check_and_convert_string_to_ip(Ip::string() | tuple()) -> inet:ip_address() | false.
 check_and_convert_string_to_ip(Ip) when is_tuple(Ip) ->
 	case size(Ip) of
 		4 ->
@@ -233,6 +262,7 @@ check_and_convert_string_to_ip(Ip) ->
 	
 % Function: -> true | false
 % Description: Checks if all necessary Ssl Options have been specified
+-spec check_ssl_options(SslOptions::[{atom(), term()}]) -> true|false.
 check_ssl_options(SslOptions) ->
 	Opts = [verify, fail_if_no_peer_cert, verify_fun, depth, certfile, keyfile, password, cacertfile, ciphers, reuse_sessions, reuse_session],
 	F = fun({Name, _Value}) ->
@@ -244,6 +274,12 @@ check_ssl_options(SslOptions) ->
 	lists:all(F, SslOptions).
 
 % Description: Validate and get misultin options.
+-spec get_option({
+	OptionName::atom(),
+	DefaultValue::term(),
+	CheckAndConvertFun::fun(),
+	FailTypeError::term()
+	}, Options::[{atom(), term()}]) -> misultin_option() | {error, Reason::term()}.
 get_option({OptionName, DefaultValue, CheckAndConvertFun, FailTypeError}, Options) ->
 	case proplists:get_value(OptionName, Options) of
 		undefined ->
@@ -266,6 +302,7 @@ get_option({OptionName, DefaultValue, CheckAndConvertFun, FailTypeError}, Option
 
 % Function: -> ok | {error, Reason}
 % Description: Start an application.
+-spec start_application(Application::atom()) -> ok | {error, Reason::term()}.
 start_application(Application) ->
 	case lists:keyfind(Application, 1, application:which_applications()) of
 		false ->

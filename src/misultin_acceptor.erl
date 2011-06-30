@@ -46,10 +46,25 @@
 % ============================ \/ API ======================================================================
 
 % Description: Starts the acceptor.
+-spec start_link(
+	MainSupRef::pid(),
+	ListenSocket::misultin_socket:socket(),
+	ListenPort::non_neg_integer(),
+	RecvTimeout::non_neg_integer(),
+	SocketMode::misultin_socket:socketmode(),
+	CustomOpts::misultin:misultin_option_server()) -> {ok, Pid::pid()}.
 start_link(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	Pid = proc_lib:spawn_link(?MODULE, init, [MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts]),
 	{ok, Pid}.
-	
+
+% init
+-spec init(
+	MainSupRef::pid(),
+	ListenSocket::misultin_socket:socket(),
+	ListenPort::non_neg_integer(),
+	RecvTimeout::non_neg_integer(),
+	SocketMode::misultin_socket:socketmode(),
+	CustomOpts::misultin:misultin_option_server()) -> term() | {error, Reason::term()}.
 init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	?LOG_DEBUG("starting new acceptor with pid ~p", [self()]),
 	% get pid of misultin server
@@ -66,6 +81,14 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 
 % Function: {ok,Pid} | ignore | {error, Error}
 % Description: Starts the socket.
+-spec acceptor(
+	ServerRef::pid(),
+	TableDateRef::ets:tid(),
+	ListenSocket::misultin_socket:socket(),
+	ListenPort::non_neg_integer(),
+	RecvTimeout::non_neg_integer(),
+	SocketMode::misultin_socket:socketmode(),
+	CustomOpts::misultin:misultin_option_server()) -> term().
 acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case catch misultin_socket:accept(ListenSocket, SocketMode) of
 		{ok, Sock} when SocketMode =:= http ->
@@ -122,6 +145,14 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % activate the controller pid
+-spec activate_controller_process(
+	ServerRef::pid(),
+	TableDateRef::ets:tid(),
+	Sock::misultin_socket:socket(),
+	ListenPort::non_neg_integer(),
+	RecvTimeout::non_neg_integer(),
+	SocketMode::misultin_socket:socketmode(),
+	CustomOpts::misultin:misultin_option_server()) -> term().
 activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	receive
 		set ->
@@ -133,6 +164,14 @@ activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeo
 	end.
 
 % manage open connection
+-spec open_connections_switch(
+	ServerRef::pid(),
+	TableDateRef::ets:tid(),
+	Sock::misultin_socket:socket(),
+	ListenPort::non_neg_integer(),
+	RecvTimeout::non_neg_integer(),
+	SocketMode::misultin_socket:socketmode(),
+	CustomOpts::misultin:misultin_option_server()) -> term().
 open_connections_switch(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
 		{ok, HttpMonRef} ->
