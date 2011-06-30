@@ -244,6 +244,10 @@ handle_data(<<0, T/binary>>, none, Socket, WsHandleLoopPid, SocketMode, WsAutoEx
 	handle_data(T, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
 handle_data(<<>>, none, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	ws_loop(ServerRef, Socket, none, WsHandleLoopPid, SocketMode, WsAutoExit);
+handle_data(<<255, 0>>, _L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
+	?LOG_DEBUG("websocket close message received from client, closing websocket with pid ~p", [self()]),
+	misultin_socket:send(Socket, <<255, 0>>, SocketMode),
+	websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 handle_data(<<255, T/binary>>, L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	WsHandleLoopPid ! {browser, binary_to_list(L)},
 	handle_data(T, none, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
