@@ -53,6 +53,45 @@
 -endif.
 -endif.
 
+% types
+-type misultin_option_tcp() ::
+	{ip, string() | tuple()} |
+	{port, non_neg_integer()} |
+	{backlog, non_neg_integer()} |
+	{acceptors_poolsize, non_neg_integer()} |
+	{recv_timeout, non_neg_integer()} |
+	{max_connections, non_neg_integer()} |
+	{ssl, gen_proplist()} |
+	{recbuf, non_neg_integer()}.
+-type misultin_option_server() :: 
+	{name, atom()} |
+	{post_max_size, non_neg_integer()} |
+	{get_url_max_size, non_neg_integer()} |
+	{compress, true|false} |
+	{loop, fun()} |
+	{autoexit, true|false} |
+	{ws_loop, true|false} |
+	{ws_autoexit, true|false} |
+	{no_headers, true|false} |
+	{ws_no_headers, true|false}.
+-type misultin_option() :: misultin_option_tcp() |  misultin_option_server().
+
+-type http_header() :: 'Cache-Control' | 'Connection' | 'Date' | 'Pragma'
+	| 'Transfer-Encoding' | 'Upgrade' | 'Via' | 'Accept' | 'Accept-Charset'
+	| 'Accept-Encoding' | 'Accept-Language' | 'Authorization' | 'From' | 'Host'
+	| 'If-Modified-Since' | 'If-Match' | 'If-None-Match' | 'If-Range'
+	| 'If-Unmodified-Since' | 'Max-Forwards' | 'Proxy-Authorization' | 'Range'
+	| 'Referer' | 'User-Agent' | 'Age' | 'Location' | 'Proxy-Authenticate'
+	| 'Public' | 'Retry-After' | 'Server' | 'Vary' | 'Warning'
+	| 'Www-Authenticate' | 'Allow' | 'Content-Base' | 'Content-Encoding'
+	| 'Content-Language' | 'Content-Length' | 'Content-Location'
+	| 'Content-Md5' | 'Content-Range' | 'Content-Type' | 'Etag'
+	| 'Expires' | 'Last-Modified' | 'Accept-Ranges' | 'Set-Cookie'
+	| 'Set-Cookie2' | 'X-Forwarded-For' | 'Cookie' | 'Keep-Alive'
+	| 'Proxy-Connection' | list().
+
+-type gen_proplist() :: gen_proplist().
+
 % misultin server Options
 -record(custom_opts, {
 	post_max_size,				% maximum post size in bytes, defaults to 4 MB

@@ -50,7 +50,7 @@
 % ============================ \/ API ======================================================================
 
 % socket listen
--spec listen(Port::non_neg_integer(), Options::[{atom(), term()}], socketmode()) -> {ok, ListenSock::socket()} | {error, Reason::term()}.
+-spec listen(Port::non_neg_integer(), Options::gen_proplist(), socketmode()) -> {ok, ListenSock::socket()} | {error, Reason::term()}.
 listen(Port, Options, http) -> gen_tcp:listen(Port, Options);
 listen(Port, Options, ssl) -> ssl:listen(Port, Options).
 
@@ -93,7 +93,7 @@ peercert(Sock, ssl) ->
 	end.
 
 % socket set options
--spec setopts(Sock::socket(), Options::[{atom(), term()}], socketmode()) -> ok | {error, Reason::term()}.
+-spec setopts(Sock::socket(), Options::gen_proplist(), socketmode()) -> ok | {error, Reason::term()}.
 setopts(Sock, Options, http) -> inet:setopts(Sock, Options);
 setopts(Sock, Options, ssl) -> ssl:setopts(Sock, Options).
 

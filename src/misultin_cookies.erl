@@ -48,6 +48,10 @@
 	C =:= ${ orelse C =:= $}
 )).
 
+% includes
+-include("../include/misultin.hrl").
+
+
 % ============================ \/ API ======================================================================
 
 %% @type proplist() = [{Key::string(), Value::string()}].

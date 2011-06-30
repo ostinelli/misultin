@@ -46,36 +46,12 @@
 % includes
 -include("../include/misultin.hrl").
 
-% types
--type misultin_option_tcp() ::
-	{ip, string() | tuple()} |
-	{port, non_neg_integer()} |
-	{backlog, non_neg_integer()} |
-	{acceptors_poolsize, non_neg_integer()} |
-	{recv_timeout, non_neg_integer()} |
-	{max_connections, non_neg_integer()} |
-	{ssl, [{atom(), term()}]} |
-	{recbuf, non_neg_integer()}.
--type misultin_option_server() :: 
-	{name, atom()} |
-	{post_max_size, non_neg_integer()} |
-	{get_url_max_size, non_neg_integer()} |
-	{compress, true|false} |
-	{loop, fun()} |
-	{autoexit, true|false} |
-	{ws_loop, true|false} |
-	{ws_autoexit, true|false} |
-	{no_headers, true|false} |
-	{ws_no_headers, true|false}.
--type misultin_option() :: misultin_option_tcp() |  misultin_option_server().
--export_type([misultin_option/0, misultin_option_tcp/0, misultin_option_server/0]).
-
 
 % ============================ \/ API ======================================================================
 
 % Function: {ok, Pid} | ignore | {error, Error}
 % Description: Starts the server.
--spec start_link(Options::[{atom(), term()}]) -> {ok, Pid::pid()} | {error, Reason::term()}.
+-spec start_link(Options::gen_proplist()) -> {ok, Pid::pid()} | {error, Reason::term()}.
 start_link(Options) when is_list(Options) ->
 	% check if name option has been specified, otherwise default to 'misultin' as regname
 	case get_option({name, ?SERVER, fun is_atom/1, invalid_misultin_process_name}, Options) of
@@ -116,7 +92,7 @@ stop(SupPid) when is_pid(SupPid) ->
 % Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
 % Description: Starts the supervisor
 % ----------------------------------------------------------------------------------------------------------å
--spec init(Options::[{atom(), term()}]) -> {ok, term()} | {error, Reason::term()}.
+-spec init(Options::gen_proplist()) -> {ok, term()} | {error, Reason::term()}.
 init([Options]) ->
 	?LOG_INFO("starting supervisor with pid: ~p", [self()]),
 	% test and get options
@@ -262,7 +238,7 @@ check_and_convert_string_to_ip(Ip) ->
 	
 % Function: -> true | false
 % Description: Checks if all necessary Ssl Options have been specified
--spec check_ssl_options(SslOptions::[{atom(), term()}]) -> true|false.
+-spec check_ssl_options(SslOptions::gen_proplist()) -> true|false.
 check_ssl_options(SslOptions) ->
 	Opts = [verify, fail_if_no_peer_cert, verify_fun, depth, certfile, keyfile, password, cacertfile, ciphers, reuse_sessions, reuse_session],
 	F = fun({Name, _Value}) ->
@@ -279,7 +255,7 @@ check_ssl_options(SslOptions) ->
 	DefaultValue::term(),
 	CheckAndConvertFun::fun(),
 	FailTypeError::term()
-	}, Options::[{atom(), term()}]) -> misultin_option() | {error, Reason::term()}.
+	}, Options::gen_proplist()) -> misultin_option() | {error, Reason::term()}.
 get_option({OptionName, DefaultValue, CheckAndConvertFun, FailTypeError}, Options) ->
 	case proplists:get_value(OptionName, Options) of
 		undefined ->
