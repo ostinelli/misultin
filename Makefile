@@ -29,3 +29,6 @@ example:
 	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
 	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
 	$(ERLC) $(ERLC_FLAGS) $(EXAMPLES_DIR)/*.erl
+
+tests:
+	@ct_run -suite $(PWD)/misultin_SUITE -pa $(PWD)/ebin -logdir $(PWD)/test/results
