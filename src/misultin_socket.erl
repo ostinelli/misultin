@@ -98,7 +98,7 @@ send(Sock, Data, F) ->
 			ok;
 		{error, _Reason} ->
 			?LOG_ERROR("error sending data: ~p", [_Reason]),
-			exit(normal)
+			exit(kill)
 	end.
 
 % TCP close
@@ -111,7 +111,7 @@ close(Sock, F) ->
 			ok;
 		_Else ->
 			?LOG_WARNING("could not close socket: ~p", [_Else]),
-			exit(normal)
+			exit(kill)
 	end.
 
 % ============================ /\ API ======================================================================

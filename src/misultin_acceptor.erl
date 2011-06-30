@@ -79,7 +79,7 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 					Pid ! set;
 				{error, _Reason} ->
 					?LOG_ERROR("could not set controlling process: ~p, closing socket", [_Reason]),
-					catch misultin_socket:close(Sock, SocketMode)
+					misultin_socket:close(Sock, SocketMode)
 			end,					
 			% get back to accept loop
 			acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
@@ -94,7 +94,7 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 					{error, _Reason} ->
 						% could not negotiate a SSL transaction, leave process
 						?LOG_WARNING("could not negotiate a SSL transaction: ~p", [_Reason]),
-						catch misultin_socket:close(Sock, SocketMode)
+						misultin_socket:close(Sock, SocketMode)
 				end
 			end),
 			% set controlling process
@@ -103,7 +103,7 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 					Pid ! set;
 				{error, _Reason} ->
 					?LOG_ERROR("could not set controlling process: ~p, closing socket", [_Reason]),
-					catch misultin_socket:close(Sock, SocketMode)
+					misultin_socket:close(Sock, SocketMode)
 			end,
 			% get back to accept loop
 			acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
@@ -129,7 +129,7 @@ activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeo
 			open_connections_switch(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts)
 	after 60000 ->
 		?LOG_ERROR("timeout waiting for set in controlling process, closing socket", []),
-		catch misultin_socket:close(Sock, SocketMode)
+		misultin_socket:close(Sock, SocketMode)
 	end.
 
 % manage open connection
