@@ -41,7 +41,7 @@
 -export([raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
--export([raw/1, get/2, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
+-export([raw/1, get/2, get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
 -export([parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
@@ -103,6 +103,11 @@ get(headers, {misultin_req, Req, _SocketPid}) ->
 	Req#req.headers;
 get(body, {misultin_req, Req, _SocketPid}) ->
 	Req#req.body.
+
+% Function -> VariableValue | undefined
+% Description: Get the value of a single variable
+get_variable(VarName, Variables, _ReqT) ->
+	misultin_utility:get_key_value(VarName, Variables).
 
 % Function -> [Cookie, ...]
 %  Cookie = [{Tag, Value}]
