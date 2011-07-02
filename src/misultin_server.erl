@@ -49,12 +49,11 @@
 
 % records
 -record(state, {
-	% misultin
-	max_connections,				% maximum allowed simultaneous connections
-	open_connections_count = 0,		% current number of open connections
-	table_pids_http,				% ETS table reference which holds the http processes' pids
-	table_pids_ws,					% ETS table reference which holds the ws processes' pids
-	table_date						% ETS table reference which holds the RFC date
+	max_connections			= undefined :: undefined | non_neg_integer(),	% maximum allowed simultaneous connections
+	open_connections_count	= 0 :: non_neg_integer(),						% current number of open connections
+	table_pids_http			= undefined :: undefined | ets:tid(),			% ETS table reference which holds the http processes' pids
+	table_pids_ws			= undefined :: undefined | ets:tid(),			% ETS table reference which holds the ws processes' pids
+	table_date				= undefined :: undefined | ets:tid()			% ETS table reference which holds the RFC date
 }).
 
 % includes
@@ -63,38 +62,38 @@
 
 % ============================ \/ API ======================================================================
 
-% Function: {ok, Pid} | ignore | {error, Error}
-% Description: Starts the server.
+% Starts the server.
+-spec start_link([term()]) -> {ok, Pid::pid()} | {error, Error::term()}.
 start_link(Options) when is_list(Options) ->
 	gen_server:start_link(?MODULE, Options, []).
 
-% Function -> {ok, HttpMonRef} | {error, Reason}
-% Description: Accepts the connection if the connection count is not over quota, and add monitor
+% Accepts the connection if the connection count is not over quota, and add monitor
+-spec http_pid_ref_add(ServerRef::pid(), HttpPid::pid()) -> {ok, HttpMonRef::reference()} | {error, too_many_open_connections}.
 http_pid_ref_add(ServerRef, HttpPid) ->
 	gen_server:call(ServerRef, {http_pid_ref_add, HttpPid}).
 
-% Function -> ok
-% Description: Remove a http pid reference from status
+% Remove a http pid reference from status
+-spec http_pid_ref_remove(ServerRef::pid(), HttpPid::pid(), HttpMonRef::reference()) -> ok.
 http_pid_ref_remove(ServerRef, HttpPid, HttpMonRef) ->
 	gen_server:cast(ServerRef, {remove_http_pid, {HttpPid, HttpMonRef}}).
 
-% Function -> ok
-% Description: Adds a new websocket pid reference to status
+% Adds a new websocket pid reference to status
+-spec ws_pid_ref_add(ServerRef::pid(), WsPid::pid()) -> ok.
 ws_pid_ref_add(ServerRef, WsPid) ->
 	gen_server:cast(ServerRef, {add_ws_pid, WsPid}).
 
-% Function -> ok
-% Description: Remove a websocket pid reference from status
+% Remove a websocket pid reference from status
+-spec ws_pid_ref_remove(ServerRef::pid(), WsPid::pid()) -> ok.
 ws_pid_ref_remove(ServerRef, WsPid) ->
 	gen_server:cast(ServerRef, {remove_ws_pid, WsPid}).
 
-% Function -> list()
-% Description: Retrieve computed RFC date
+% Retrieve computed RFC date
+-spec get_rfc_date(TableDateRef::ets:tid()) -> string().
 get_rfc_date(TableDateRef) ->
 	ets:lookup_element(TableDateRef, rfc_date, 2).
 	
-% Function -> tid()
-% Description: Retrieve table date reference.
+% Retrieve table date reference.
+-spec get_table_date_ref(ServerRef::pid()) -> TableDateRef::ets:tid().
 get_table_date_ref(ServerRef) ->
 	gen_server:call(ServerRef, get_table_date_ref).
 	
@@ -144,7 +143,7 @@ handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConn
 	?LOG_DEBUG("new accept connection request received by http process with pid ~p", [HttpPid]),
 	case OpenConnectionsCount >= MaxConnections of
 		true ->
-			{error, too_many_open_connections};
+			{reply, {error, too_many_open_connections}, State};
 		false ->
 			% add monitor
 			HttpMonRef = erlang:monitor(process, HttpPid),
@@ -269,6 +268,7 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % compute RFC date and update ETS table
+-spec update_rfc_date(TableDate::ets:tid()) -> term().
 update_rfc_date(TableDate) ->
 	ets:insert(TableDate, {rfc_date, httpd_util:rfc1123_date()}).
 

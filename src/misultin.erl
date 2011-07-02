@@ -238,7 +238,7 @@ check_and_convert_string_to_ip(Ip) ->
 	
 % Function: -> true | false
 % Description: Checks if all necessary Ssl Options have been specified
--spec check_ssl_options(SslOptions::gen_proplist()) -> true|false.
+-spec check_ssl_options(SslOptions::gen_proplist()) -> boolean().
 check_ssl_options(SslOptions) ->
 	Opts = [verify, fail_if_no_peer_cert, verify_fun, depth, certfile, keyfile, password, cacertfile, ciphers, reuse_sessions, reuse_session],
 	F = fun({Name, _Value}) ->

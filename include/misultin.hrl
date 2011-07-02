@@ -72,13 +72,13 @@
 	{name, atom()} |
 	{post_max_size, non_neg_integer()} |
 	{get_url_max_size, non_neg_integer()} |
-	{compress, true|false} |
+	{compress, boolean()} |
 	{loop, function()} |
-	{autoexit, true|false} |
-	{ws_loop, true|false} |
-	{ws_autoexit, true|false} |
-	{no_headers, true|false} |
-	{ws_no_headers, true|false}.
+	{autoexit, boolean()} |
+	{ws_loop, boolean()} |
+	{ws_autoexit, boolean()} |
+	{no_headers, boolean()} |
+	{ws_no_headers, boolean()}.
 -type misultin_option() :: misultin_option_tcp() |  misultin_option_server().
 % ---------------------------- /\ MISULTIN -----------------------------------------------------------------
 
@@ -97,25 +97,40 @@
 	| 'Content-Md5' | 'Content-Range' | 'Content-Type' | 'Etag'
 	| 'Expires' | 'Last-Modified' | 'Accept-Ranges' | 'Set-Cookie'
 	| 'Set-Cookie2' | 'X-Forwarded-For' | 'Cookie' | 'Keep-Alive'
-	| 'Proxy-Connection' | list().
--type http_headers() :: list({http_header(), list() | binary()}).
+	| 'Proxy-Connection' | list() | binary().
+-type http_headers() :: list({http_header(), list() | binary() | integer() | atom()}).
 
 -type http_method() :: 'GET' | 'POST' | 'HEAD' | 'PUT' | 'DELETE' | 'TRACE' | 'CONNECT'.
+
+-type http_connection() :: close | keep_alive.
 
 -type http_uri() ::
 	{abs_path, Path::list()} |
 	{absoluteURI, Path::list()} |
 	{absoluteURI, http | https | atom(), Host::binary(), Port::non_neg_integer(), Path::list()} |
 	{scheme, Scheme::list(), RequestString::list()}.
+	
+-type http_supported_encoding() :: deflate | gzip.
 % ---------------------------- /\ HTTP ---------------------------------------------------------------------
 
 % ---------------------------- \/ OTHER --------------------------------------------------------------------
--type websocket_vsn() :: term().
+-type websocket_version() :: term().
 
 -type socketmode() :: http | ssl.
 -type socket() :: inet:socket() | term().	% unfortunately ssl does not export the socket equivalent, we could use {sslsocket, term(), term()} but this is relying on internals.
 
+-type cookies_options() :: [
+	{max_age, undefined | integer()} |
+	{local_time, undefined | date_tuple()} |
+	{secure, true | term()} |
+	{domain, undefined | string()} |
+	{path, undefined | string()} |
+	{http_only, true | term()}
+].
+
 -type gen_proplist() :: [{Tag::atom()|list()|binary(), Value::term()}].
+
+-type date_tuple() :: {{non_neg_integer(), 1..12, 1..31}, {0..24, 0..60, 0..60}}.
 % ---------------------------- /\ OTHER --------------------------------------------------------------------
 
 % ============================ /\ TYPES ====================================================================
@@ -127,13 +142,13 @@
 -record(custom_opts, {
 	post_max_size		= undefined :: undefined | non_neg_integer(),	% maximum post size in bytes, defaults to 4 MB
 	get_url_max_size	= undefined :: undefined | non_neg_integer(),	% maximum GET url size in bytes, defaults to 2000
-	compress			= false :: true|false,							% send compressed output if supported by browser
+	compress			= false :: boolean(),							% send compressed output if supported by browser
 	loop				= undefined :: undefined | function(),			% the fun handling requests
-	autoexit			= true :: true|false,							% shoud the http process be automatically killed?
+	autoexit			= true :: boolean(),							% shoud the http process be automatically killed?
 	ws_loop				= undefined :: undefined | function(),			% the loop handling websockets
-	ws_autoexit			= true :: true|false,							% shoud the ws process be automatically killed?
-	no_headers			= false :: true|false,							% optimization option, do not save headers in passed request over to developer code
-	ws_no_headers		= false :: true|false							% optimization option, do not save headers in passed request over to developer code
+	ws_autoexit			= true :: boolean(),							% shoud the ws process be automatically killed?
+	no_headers			= false :: boolean(),							% optimization option, do not save headers in passed request over to developer code
+	ws_no_headers		= false :: boolean()							% optimization option, do not save headers in passed request over to developer code
 }).
 
 % Request
@@ -150,7 +165,7 @@
 	uri				= undefined :: undefined | http_uri(),
 	args			= "" :: list(),									% Part of URI after ?
 	headers			= [] :: http_headers(),
-	no_headers		= false :: true|false,
+	no_headers		= false :: boolean(),
 	body			= <<>> :: binary()
 }).
 
@@ -158,16 +173,16 @@
 -record(ws, {
 	socket			= undefined :: undefined | socket(),			% the socket handling the request
 	socket_mode		= http :: socketmode(),
-	ws_autoexit		= true :: true|false,							% shoud the ws process be automatically killed?
+	ws_autoexit		= true :: boolean(),							% shoud the ws process be automatically killed?
 	peer_addr		= undefined :: undefined | inet:ip_address(),	% peer IP | undefined
 	peer_port		= undefined :: undefined | non_neg_integer(),	% peer port | undefined
 	peer_cert		= undefined :: undefined | term(),				% the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
-	vsn				= undefined :: undefined | websocket_vsn(),
+	vsn				= undefined :: undefined | websocket_version(),
 	origin			= undefined :: undefined | list(),				% the originator
 	host			= undefined :: undefined | list(),				% the host
 	path			= undefined :: undefined | list(),				% the websocket GET request path
 	headers			= [] :: http_headers(),
-	ws_no_headers	= false :: true|false
+	ws_no_headers	= false :: boolean()
 }).
 
 % ============================ /\ RECORDS ==================================================================

@@ -50,16 +50,16 @@
 	recv_timeout		= undefined :: undefined | non_neg_integer(),
 	post_max_size		= undefined :: undefined | non_neg_integer(),
 	get_url_max_size	= undefined :: undefined | non_neg_integer(),
-	compress			= false :: true|false,
+	compress			= false :: boolean(),
 	loop				= undefined :: undefined | function(),
-	autoexit			= true :: true|false,
+	autoexit			= true :: boolean(),
 	ws_loop				= undefined :: undefined | function(),
-	ws_autoexit			= true :: true|false,
-	no_headers			= false :: true|false,
-	ws_no_headers		= false :: true|false
+	ws_autoexit			= true :: boolean(),
+	no_headers			= false :: boolean(),
+	ws_no_headers		= false :: boolean()
 }).
 -record(req_options, {
-	comet				= false :: true|false		% if comet =:= true, we will monitor client tcp close
+	comet				= false :: boolean()		% if comet =:= true, we will monitor client tcp close
 }).
 
 % includes
@@ -152,6 +152,8 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 	end.
 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
+-spec headers(C::#c{}, Req::#req{}, H::http_headers()) -> term().
+-spec headers(C::#c{}, Req::#req{}, H::http_headers(), HCount::non_neg_integer()) -> term().
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
 headers(#c{sock = Sock, socket_mode = SocketMode} = C, Req, _H, ?MAX_HEADERS_COUNT) ->
@@ -231,10 +233,12 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 	end.
 
 % default connection
+-spec default_connection(http_version()) -> http_connection().
 default_connection({1,1}) -> keep_alive;
 default_connection(_) -> close.
 
 % Shall we keep the connection alive? Default case for HTTP/1.1 is yes, default for HTTP/1.0 is no.
+-spec keep_alive(http_version(), string()) -> http_connection().
 keep_alive({1,1}, "close")		-> close;
 keep_alive({1,1}, "Close")		-> close;
 % string:to_upper is used only as last resort.
@@ -254,6 +258,7 @@ keep_alive(_Vsn, _KA)	-> close.
 
 % Function -> Req | {error, HttpErrorNum}
 % Description: Build uri & args in Req
+-spec get_uri_and_args(Req::#req{}) -> #req{} | {error, non_neg_integer()}.
 get_uri_and_args(Req) ->
 	case Req#req.uri of
 		{abs_path, Path} ->
@@ -274,6 +279,7 @@ get_uri_and_args(Req) ->
 	end.
 
 % dispatch operations according to defined method
+-spec method_dispatch(C::#c{}, Req::#req{}) -> term().
 method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:= 'POST'; Method =:= 'HEAD'; Method =:= 'PUT'; Method =:= 'DELETE'; Method =:= 'CONNECT' ->
 	?LOG_DEBUG("~p request received", [Method]),
 	% read body & dispatch
@@ -288,7 +294,8 @@ method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, #req{method = _Me
 	misultin_socket:send(Sock, build_error_message(501, Connection), SocketMode),
 	handle_keepalive(Connection, C, Req).
 
-% read body and dispatch to mfa if ok	
+% read body and dispatch to mfa if ok
+-spec read_body_dispatch(C::#c{}, Req::#req{}) -> term().	
 read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 	% read post body
 	case read_post_body(C, Req) of
@@ -311,8 +318,9 @@ read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 			handle_keepalive(close, C, Req)
 	end.
 
-% Function -> {ok, Bin} | {error, Reason}
-% Description: Read the post body according to headers
+% Read the post body according to headers
+-spec read_post_body(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body(C::#c{}, Req::#req{}, Out::{error, no_valid_content_specs} | {ok, <<>>}) -> {ok, Body::binary()} | {error, Reason::term()}.
 read_post_body(C, #req{method = Method} = Req) when Method =:= 'POST'; Method =:= 'PUT' ->
 	% on PUT and POST require content length or transfer encoding headers
 	read_post_body(C, Req, {error, no_valid_content_specs});
@@ -339,8 +347,8 @@ read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOu
 			i_read_post_body(C, Req, Len)
 	end.
 
-% Function -> {ok, Bin} | {error, Reason}
-% Description: Read body
+% Read body
+-spec i_read_post_body(C::#c{}, Req::#req{}, Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
 i_read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, post_max_size = PostMaxSize}, _Req, Len) ->
 	% check if content length has been provided
 	case Len of
@@ -363,8 +371,10 @@ i_read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTi
 			{error, post_max_size}
 	end.
 
-% Function -> {ok, Bin} | {error, Reason}
-% Description: Read body chunks
+% Read body chunks
+-spec read_post_body_chunk(C::#c{}) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body_chunk_headline(C::#c{}, Acc::binary()) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body_chunk_content(C::#c{}, Acc::binary(), Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
 read_post_body_chunk(C) ->
 	read_post_body_chunk_headline(C, <<>>).
 read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, Acc) when size(Acc) > PostMaxSize ->
@@ -407,8 +417,8 @@ read_post_body_chunk_content(#c{sock = Sock, socket_mode = SocketMode, recv_time
 			{error, Other}
 	end.
 
-% Function -> {ok, Len} | done | {error, Reason}
-% Description: Get length of the next chunk.
+% Get length of the next chunk.
+-spec get_chunk_length(HeadLine::string()) -> {ok, Len::non_neg_integer()} | {error, Reason::term()}.
 get_chunk_length(HeadLine) ->
 	% take away CRLF
 	HeadLine0 = case string:rchr(HeadLine, $\r) of
@@ -428,12 +438,14 @@ get_chunk_length(HeadLine) ->
 	end.
 
 % handle the request and get back to the request loop
+-spec handle_keepalive(http_connection(), C::#c{}, Req::#req{}) -> term().
 handle_keepalive(close, #c{sock = Sock, socket_mode = SocketMode}, _Req) ->
 	misultin_socket:close(Sock, SocketMode);
 handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
 % Description: Main dispatcher
+-spec call_mfa(C::#c{}, Req::#req{}) -> term().
 call_mfa(#c{loop = Loop, autoexit = AutoExit, no_headers = NoHeaders} = C, Req) ->
 	% spawn_link custom loop
 	Self = self(),
@@ -458,6 +470,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit, no_headers = NoHeaders} = C, Req) 
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
+-spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}) -> term().
 socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
@@ -539,6 +552,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 	end.
 
 % Close socket and custom handling loop dependency
+-spec loop_close(LoopPid::pid(), AutoExit::boolean()) -> term().
 loop_close(LoopPid, AutoExit) ->
 	case AutoExit of
 		true ->
@@ -552,14 +566,16 @@ loop_close(LoopPid, AutoExit) ->
 	end.
 
 % Description: Ensure Body is binary.
-convert_to_binary(Body) when is_list(Body) ->
-	list_to_binary(lists:flatten(Body));
+-spec convert_to_binary(list() | binary() | atom()) -> binary().
 convert_to_binary(Body) when is_binary(Body) ->
 	Body;
+convert_to_binary(Body) when is_list(Body) ->
+	list_to_binary(lists:flatten(Body));
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
 % add necessary headers
+-spec add_headers(http_headers(), BodyBinary::binary(), TableDateRef::ets:tid(), Req::#req{}) -> http_headers().
 add_headers(OriginalHeaders, BodyBinary, TableDateRef, Req) ->
 	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
 	Headers1 = add_output_header('Connection', {Headers0, Req}),
@@ -567,6 +583,7 @@ add_headers(OriginalHeaders, BodyBinary, TableDateRef, Req) ->
 	add_output_header('Date', {Headers2, TableDateRef}).
 
 % Description: Add necessary Content-Length Header
+-spec add_output_header(http_header(), term()) -> http_headers().
 add_output_header('Content-Length', {Headers, Body}) ->
 	case misultin_utility:get_key_value('Content-Length', Headers) of
 		undefined ->
@@ -574,7 +591,6 @@ add_output_header('Content-Length', {Headers, Body}) ->
 		_ ->
 			Headers
 	end;
-
 % Description: Add necessary Connection Header
 add_output_header('Connection', {Headers, Req}) ->
 	% echo
@@ -584,7 +600,6 @@ add_output_header('Connection', {Headers, Req}) ->
 		_ ->
 			Headers
 	end;
-
 % Description: Add necessary Server header
 add_output_header('Server', Headers) ->
 	case misultin_utility:get_key_value('Server', Headers) of
@@ -593,7 +608,6 @@ add_output_header('Server', Headers) ->
 		_ ->
 			Headers
 	end;
-
 % Description: Add necessary Date header
 add_output_header('Date', {Headers, TableDateRef}) ->
 	case misultin_utility:get_key_value('Date', Headers) of
@@ -606,10 +620,12 @@ add_output_header('Date', {Headers, TableDateRef}) ->
 	end.
 
 % Helper to Connection string
+-spec connection_str(http_connection()) -> string().
 connection_str(keep_alive) -> "Keep-Alive";
 connection_str(close) -> "Close".
 
 % Description: Encode headers
+-spec enc_headers(http_headers()) -> string().
 enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
 	[atom_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([{Tag, Val}|T]) when is_list(Tag) ->
@@ -626,6 +642,7 @@ enc_header_val(Val) ->
 	Val.
 
 % Split the path at the ?
+-spec split_at_q_mark(string(), Acc::string()) -> {H::string(), T::string()}.
 split_at_q_mark([$?|T], Acc) ->
 	{lists:reverse(Acc), T};
 split_at_q_mark([H|T], Acc) ->
@@ -633,8 +650,8 @@ split_at_q_mark([H|T], Acc) ->
 split_at_q_mark([], Acc) ->
 	{lists:reverse(Acc), []}.
 
-% Function: -> {EncodingHeader, binary()}
-% Description: Compress body depending on Request Headers and misultin supported encodings.
+% Compress body depending on Request Headers and misultin supported encodings.
+-spec compress_body(RequestHeaders::http_headers(), BodyBinary::binary(), boolean()) -> {EncodingHeaders::http_headers(), CompressedBody::binary()}.
 compress_body(RequestHeaders, BodyBinary, true) ->
 	case misultin_utility:get_key_value('Accept-Encoding', RequestHeaders) of
 		undefined ->
@@ -649,22 +666,23 @@ compress_body(RequestHeaders, BodyBinary, true) ->
 					{[], BodyBinary};
 				Encoding ->
 					?LOG_DEBUG("building binary body with ~p compression", [Encoding]),
-					{{'Content-Encoding', Encoding}, encode(Encoding, BodyBinary)}
+					{{'Content-Encoding', Encoding},
+					encode(Encoding, BodyBinary)}
 			end
 	end;
 compress_body(_RequestHeaders, BodyBinary, false) ->
 	?LOG_DEBUG("building binary body without compression", []),
 	{[], BodyBinary}.
 			
-% Function: -> binary()
-% Description: Compress body.
+% Compress body.
+-spec encode(EncodeType::http_supported_encoding(), Body::binary()) -> CompressedBody::binary().
 encode(deflate, BodyBinary) ->
 	zlib:compress(BodyBinary);
 encode(gzip, BodyBinary) ->
 	zlib:gzip(BodyBinary).
 
-% Function: -> atom() | none
-% Description: Set encoding name depending on Request Headers and supported misultin encodings.
+% Set encoding name depending on Request Headers and supported misultin encodings.
+-spec set_encoding(AcceptEncodingHeader::string()) -> http_supported_encoding() | none.
 set_encoding(AcceptEncodingHeader) ->
 	% get request accepted encodings
 	RequestEncodings = get_accepted_encodings(AcceptEncodingHeader),
@@ -677,8 +695,8 @@ set_encoding(AcceptEncodingHeader) ->
 		[{Enc, _Q}|_T] -> list_to_atom(Enc)
 	end.
 
-% Function: -> [{Encoding, Q},...]
-% Description: Get accepted encodings and quality, sorted by quality.
+% Get accepted encodings and quality, sorted by quality.
+-spec get_accepted_encodings(AcceptEncodingHeader::string()) -> gen_proplist().
 get_accepted_encodings(AcceptEncodingHeader) ->
 	% take away empty spaces
 	Header = lists:filter(fun(E) -> case E of $\s -> false; _ -> true end end, AcceptEncodingHeader),
@@ -699,8 +717,8 @@ get_accepted_encodings(AcceptEncodingHeader) ->
 	% sort
 	lists:sort(fun({_E1, Q1}, {_E2, Q2}) -> Q1 > Q2 end, Encodings0).
 			
-% Function: -> number() | not_a_number
-% Description: Converts a list to a number.		
+% Converts a list to a number.
+-spec list_to_number(list()) -> integer() | not_a_number.
 list_to_number(L) ->
 	case catch list_to_float(L) of
 		{'EXIT', _} ->
@@ -712,6 +730,7 @@ list_to_number(L) ->
 	end.
 
 % build error message
+-spec build_error_message(HttpCode::non_neg_integer(), Connection::http_connection()) -> iolist().
 build_error_message(HttpCode, Connection) ->
 	% build headers
 	Headers = [{'Content-Length', 0}, {'Connection', Connection}],

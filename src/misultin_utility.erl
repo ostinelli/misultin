@@ -50,11 +50,14 @@
 	(C =:= ?FULLSTOP orelse C =:= $- orelse C =:= $~ orelse C =:= $_)
 )).
 
+% includes
+-include("../include/misultin.hrl").
+
+
 % ============================ \/ API ======================================================================
 
-% Function: HttpStatus
-% Description: Returns a complete HTTP header
-% most common first
+% Returns a complete HTTP header. Most common first
+-spec get_http_status_code(HttpStatus::non_neg_integer()) -> string().
 get_http_status_code(200) ->
 	"HTTP/1.1 200 OK\r\n";
 get_http_status_code(100) ->
@@ -140,6 +143,7 @@ get_http_status_code(Other) ->
 	lists:flatten(io_lib:format("HTTP/1.1 ~p \r\n", [Other])).
 
 % get content type
+-spec get_content_type(FileName::string()) -> string().
 get_content_type(FileName) ->
 	case filename:extension(FileName) of
 		% most common first
@@ -338,14 +342,15 @@ get_content_type(FileName) ->
 	end.
 
 % faster than proplists:get_value
+-spec get_key_value(Key::term(), List::[{term(), term()}]) -> undefined | term().
 get_key_value(Key, List) ->
 	case lists:keyfind(Key, 1, List) of
 		false-> undefined;
 		{_K, Value}-> Value
 	end.
 
-% Function: Value | false
-% Description: Find atom Tag in Headers, Headers being both atoms [for known headers] and strings. Comparison on string Header Tags is case insensitive.
+% Find atom Tag in Headers, Headers being both atoms [for known headers] and strings. Comparison on string Header Tags is case insensitive.
+-spec header_get_value(Tag::atom(), Headers::http_headers()) -> false | string() | false.
 header_get_value(Tag, Headers) when is_atom(Tag) ->
 	case lists:keyfind(Tag, 1, Headers) of
 		false ->
@@ -368,6 +373,7 @@ header_get_value(Tag, Headers) when is_atom(Tag) ->
 
 %% @spec parse_qs(string() | binary()) -> [{Key, Value}]
 %% @doc Parse a query string or application/x-www-form-urlencoded.
+-spec parse_qs(string() | binary()) -> [{Key::string(), Value::string()}].
 parse_qs(Binary) when is_binary(Binary) ->
 	parse_qs(binary_to_list(Binary));
 parse_qs(String) ->
@@ -380,6 +386,7 @@ parse_qs(String, Acc) ->
 	parse_qs(Rest1, [{Key, Value} | Acc]).
 	
 % unquote
+-spec unquote(binary() | string()) -> string().
 unquote(Binary) when is_binary(Binary) ->
 	unquote(binary_to_list(Binary));
 unquote(String) ->
@@ -387,6 +394,8 @@ unquote(String) ->
 
 %% @spec quote_plus(atom() | integer() | float() | string() | binary()) -> string()
 %% @doc URL safe encoding of the given term.
+-spec quote_plus(atom() | integer() | float() | string() | binary()) -> string().
+
 quote_plus(Atom) when is_atom(Atom) ->
 	quote_plus(atom_to_list(Atom));
 quote_plus(Int) when is_integer(Int) ->
@@ -402,6 +411,7 @@ quote_plus(String) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % parse querystring & post
+-spec parse_qs_key(String::string()) -> {Key::string(), Rest::string()}.
 parse_qs_key(String) ->
 	parse_qs_key(String, []).
 parse_qs_key([], Acc) ->
@@ -426,6 +436,7 @@ parse_qs_value([C | Rest], Acc) ->
 	parse_qs_value(Rest, [C | Acc]).
 
 % revdecode
+-spec qs_revdecode(string()) -> string().
 qs_revdecode(S) ->
 	qs_revdecode(S, []).
 qs_revdecode([], Acc) ->
@@ -438,6 +449,7 @@ qs_revdecode([C | Rest], Acc) ->
 	qs_revdecode(Rest, [C | Acc]).
 
 % unexdigit
+-spec unhexdigit(char()) -> char().
 unhexdigit(C) when C >= $0, C =< $9 -> C - $0;
 unhexdigit(C) when C >= $a, C =< $f -> C - $a + 10;
 unhexdigit(C) when C >= $A, C =< $F -> C - $A + 10.
@@ -445,6 +457,7 @@ hexdigit(C) when C < 10 -> $0 + C;
 hexdigit(C) when C < 16 -> $A + (C - 10).
 
 % quote
+-spec quote_plus(string(), string()) -> string().
 quote_plus([], Acc) ->
 	lists:reverse(Acc);
 quote_plus([C | Rest], Acc) when ?QS_SAFE(C) ->

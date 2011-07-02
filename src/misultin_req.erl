@@ -48,14 +48,19 @@
 -include("../include/misultin.hrl").
 -include_lib("kernel/include/file.hrl").
 
+% types
+-type reqt() :: {misultin_req, #req{}, SocketPid::pid()}.
+
 
 % ============================ \/ API ======================================================================
 
-% Description: Returns raw request content.
+% Returns raw request content.
+-spec raw(reqt()) -> #req{}.
 raw({misultin_req, Req, _SocketPid}) ->
 	Req.
 
 % Description: Get request info.
+-spec get(ReqInfo::atom(), reqt()) -> term().
 get(socket, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket;
 get(socket_mode, {misultin_req, Req, _SocketPid}) ->
@@ -104,14 +109,13 @@ get(headers, {misultin_req, Req, _SocketPid}) ->
 get(body, {misultin_req, Req, _SocketPid}) ->
 	Req#req.body.
 
-% Function -> VariableValue | undefined
-% Description: Get the value of a single variable
+% Get the value of a single variable
+-spec get_variable(VarName::string(), Variables::gen_proplist(), reqt()) -> undefined | string().
 get_variable(VarName, Variables, _ReqT) ->
 	misultin_utility:get_key_value(VarName, Variables).
 
-% Function -> [Cookie, ...]
-%  Cookie = [{Tag, Value}]
-% Description: Get all cookies.
+% Get all cookies.
+-spec get_cookies(reqt()) -> gen_proplist().
 get_cookies({misultin_req, #req{headers = Headers}, _SocketPid}) ->
 	case misultin_utility:get_key_value('Cookie', Headers) of
 		undefined -> [];
@@ -122,22 +126,28 @@ get_cookies({misultin_req, #req{headers = Headers}, _SocketPid}) ->
 			lists:foldl(F, [], misultin_cookies:parse_cookie(CookieContent))
 	end.
 
-% Function -> CookieValue | undefined
-% Description: Get the value of a single cookie
+% Get the value of a single cookie
+-spec get_cookie_value(CookieTag::string(), Cookies::gen_proplist(), reqt()) -> undefined | string().
 get_cookie_value(CookieTag, Cookies, _ReqT) ->
 	misultin_utility:get_key_value(CookieTag, Cookies).
 
 % set cookie
+-spec set_cookie(Key::string(), Value::string(), reqt()) -> {http_header(), string()}.
+-spec set_cookie(Key::string(), Value::string(), Options::cookies_options(), reqt()) -> {http_header(), string()}.
 set_cookie(Key, Value, _ReqT) ->
 	set_cookie(Key, Value, [], _ReqT).
 set_cookie(Key, Value, Options, _ReqT) ->
 	misultin_cookies:set_cookie(Key, Value, Options).
 
 % delete cookie
+-spec delete_cookie(Key::string(), reqt()) -> {http_header(), string()}.
 delete_cookie(Key, _ReqT) ->
 	misultin_cookies:delete_cookie(Key).
 
 % Description: Formats a 200 response.
+-spec ok(Template::list() | binary() | iolist(), reqt()) -> term().
+-spec ok(Headers::http_headers(), Template::list() | binary() | iolist(), reqt()) -> term().
+-spec ok(Headers::http_headers(), Template::list(), Vars::[term()], reqt()) -> term().
 ok(Template, ReqT) ->
 	ok([], Template, ReqT).
 ok(Headers, Template, ReqT) ->
@@ -146,6 +156,10 @@ ok(Headers, Template, Vars, ReqT) ->
 	respond(200, Headers, Template, Vars, ReqT).
 
 % Description: Formats a response.
+-spec respond(HttpCode::non_neg_integer(), reqt()) -> term().
+-spec respond(HttpCode::non_neg_integer(), Template::list() | binary() | iolist(), reqt()) -> term().
+-spec respond(HttpCode::non_neg_integer(), Headers::http_headers(), Template::list() | binary() | iolist(), reqt()) -> term().
+-spec respond(HttpCode::non_neg_integer(), Headers::http_headers(), Template::list(), Vars::[term()], reqt()) -> term().
 respond(HttpCode, ReqT) ->
 	respond(HttpCode, [], [], ReqT).
 respond(HttpCode, Template, ReqT) ->
@@ -156,6 +170,10 @@ respond(HttpCode, Headers, Template, Vars, {misultin_req, _Req, SocketPid}) when
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
 
 % Description: Allow to add already formatted headers, untouched
+-spec raw_headers_respond(Body::binary(), reqt()) -> term().
+-spec raw_headers_respond(HeadersStr::string(), Body::binary(), reqt()) -> term().
+-spec raw_headers_respond(HttpCode::non_neg_integer(), HeadersStr::string(), Body::binary(), reqt()) -> term().
+-spec raw_headers_respond(HttpCode::non_neg_integer(), Headers::http_headers(), HeadersStr::string(), Body::binary(), reqt()) -> term().
 raw_headers_respond(Body, ReqT) ->
 	raw_headers_respond(200, [], [], Body, ReqT).
 raw_headers_respond(HeadersStr, Body, ReqT) ->
@@ -166,10 +184,12 @@ raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, _Req, So
 	SocketPid ! {response, HttpCode, {Headers, HeadersStr}, Body}.
 
 % set advanced options valid for a single request
+-spec options(Options::gen_proplist(), reqt()) -> term().
 options(Options, ReqT) when is_list(Options) ->
 	% loop options and apply
 	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
 % set to comet mode
+-spec options_set(OptionName::atom(), OptionVal::term(), reqt()) -> term().
 options_set(comet, OptionVal, {misultin_req, _Req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
 	SocketPid ! {set_option, {comet, OptionVal}};
 options_set(_OptionTag, _OptionVal, {misultin_req, _Req, _SocketPid})	->
@@ -177,7 +197,9 @@ options_set(_OptionTag, _OptionVal, {misultin_req, _Req, _SocketPid})	->
 	?LOG_DEBUG("ignoring advanced option ~p for request ~p", [{_OptionTag, _OptionVal}, _Req]),
 	ignore.
 
-% Description: Chunked Transfer-Encoding.
+% Chunked Transfer-Encoding.
+-spec chunk(head | done | string(), reqt()) -> term().
+-spec chunk(head | string(), http_headers() | [term()], reqt()) -> term().
 chunk(head, ReqT) ->
 	chunk(head, [], ReqT);
 chunk(done, ReqT) ->
@@ -195,10 +217,15 @@ chunk(Template, [], ReqT) ->
 	chunk_send(Template, ReqT);
 chunk(Template, Vars, ReqT) ->
 	chunk_send(io_lib:format(Template, Vars), ReqT).
+
+-spec chunk_send(Data::string() | binary() | iolist(), reqt()) -> term().
 chunk_send(Data, ReqT) ->
 	stream([erlang:integer_to_list(erlang:iolist_size(Data), 16), "\r\n", Data, "\r\n"], ReqT).
 
-% Description: Stream support.
+% Stream support.
+-spec stream(close | head | {error, term()} | string() | binary() | iolist(), reqt()) -> term().
+-spec stream(head | string(), http_headers() | [term()], reqt()) -> term().
+-spec stream(head, HttpCode::non_neg_integer(), Headers::http_headers(), reqt()) -> term().
 stream(close, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! stream_close;
 stream(head, ReqT) ->
@@ -214,16 +241,19 @@ stream(Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =
 stream(head, HttpCode, Headers, {misultin_req, _Req, SocketPid}) ->
 	catch SocketPid ! {stream_head, HttpCode, Headers}.
 
-% Description: Sends a file to the browser.
+% Sends a file to the browser.
+-spec file(FilePath::string(), reqt()) -> term().
+-spec file(attachment | string(), string() | http_headers(), reqt()) -> term().
+-spec file(attachment, FilePath::string(), Headers::http_headers(), reqt()) -> term().
 file(FilePath, ReqT) ->
 	file_send(FilePath, [], ReqT).
-% Description: Sends a file for download.
+% Sends a file for download.
 file(attachment, FilePath, ReqT) ->
 	file(attachment, FilePath, [], ReqT);
-% Description: Sends a file to the browser with the given headers.
+% Sends a file to the browser with the given headers.
 file(FilePath, Headers, ReqT) ->
 	file_send(FilePath, Headers, ReqT).
-% Description: Sends a file for download with the given headers.
+% Sends a file for download with the given headers.
 file(attachment, FilePath, Headers, ReqT) ->
 	% get filename
 	FileName = filename:basename(FilePath),
@@ -234,11 +264,13 @@ file(attachment, FilePath, Headers, ReqT) ->
 	end,
 	file_send(FilePath, Headers0, ReqT).
 
-% Description: Parse QueryString
+% Parse QueryString
+-spec parse_qs(reqt()) -> string().
 parse_qs({misultin_req, Req, _SocketPid}) ->
 	misultin_utility:parse_qs(Req#req.args).
 
 % Description: Parse Post
+-spec parse_post(reqt()) -> binary() | [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
 parse_post({misultin_req, Req, _SocketPid}) ->
 	% get header confirmation
 	case misultin_utility:header_get_value('Content-Type', Req#req.headers) of
@@ -260,7 +292,8 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 			end
 	end.
 
-% Description: Sets resource elements for restful services.
+% Sets resource elements for restful services.
+-spec resource(Options::[term()], reqt()) -> [string()].
 resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 	% clean uri
 	{_UriType, RawUri} = Req#req.uri,
@@ -275,6 +308,7 @@ resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % Description: Clean URI.
+-spec clean_uri(Option::atom(), Uri::string()) -> string().
 clean_uri(lowercase, Uri) ->
 	string:to_lower(Uri);
 clean_uri(urldecode, Uri) ->
@@ -284,6 +318,7 @@ clean_uri(_Unavailable, Uri) ->
 	Uri.
 
 % sending of a file
+-spec file_send(FilePath::string(), Headers::http_headers(), reqt()) -> term().
 file_send(FilePath, Headers, ReqT) ->
 	% get file size
 	case file:read_file_info(FilePath) of
@@ -302,6 +337,7 @@ file_send(FilePath, Headers, ReqT) ->
 			% file not found or other errors
 			stream({error, 404}, ReqT)
 	end.
+-spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), Headers::http_headers(), reqt()) -> term().
 file_open_and_send(FilePath, FileSize, Headers, ReqT) ->
 	case file:open(FilePath, [read, binary]) of
 		{error, Reason} ->
@@ -320,6 +356,7 @@ file_open_and_send(FilePath, FileSize, Headers, ReqT) ->
 					ok
 			end
 	end.
+-spec file_read_and_send(IoDevice::file:io_device(), Position::non_neg_integer(), reqt()) -> term().
 file_read_and_send(IoDevice, Position, ReqT) ->
 	% read buffer
 	case file:pread(IoDevice, Position, ?FILE_READ_BUFFER) of
@@ -336,6 +373,7 @@ file_read_and_send(IoDevice, Position, ReqT) ->
 	end.
 
 % parse multipart data
+-spec parse_multipart_form_data(Body::binary(), Boundary::binary()) -> [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
 parse_multipart_form_data(Body, Boundary) ->
 	[<<>> | Parts] = re:split(Body, <<"--", Boundary/binary>>),
 	F = fun
@@ -350,6 +388,7 @@ parse_multipart_form_data(Body, Boundary) ->
 			end
 	end,
 	lists:foldl(F, [], Parts).
+-spec parse_attributes(Attributes::string()) -> gen_proplist().
 parse_attributes(Attributes) ->
 	case re:run(Attributes, "([^\"=;\s]+)=\"([^\"]+)\"", [{capture, all_but_first, list}, ungreedy, dotall, global]) of
 		{match, Match} ->
