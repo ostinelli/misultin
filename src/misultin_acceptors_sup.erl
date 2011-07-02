@@ -54,7 +54,7 @@
 	OptionsTcp::[misultin_option_tcp],
 	AcceptorsPoolsize::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
-	SocketMode::misultin_socket:socketmode(),
+	SocketMode::socketmode(),
 	CustomOpts::[misultin_option_server()]) -> {ok, Pid::pid()}.
 start_link(MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts) ->
 	supervisor:start_link(?MODULE, [MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]).
@@ -74,7 +74,7 @@ start_link(MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketM
 %	OptionsTcp::[misultin_option_tcp],
 %	AcceptorsPoolsize::non_neg_integer(),
 %	RecvTimeout::non_neg_integer(),
-%	SocketMode::misultin_socket:socketmode(),
+%	SocketMode::socketmode(),
 %	CustomOpts::[misultin_option_server()]) -> {ok, term()} | {error, Reason::term()}.
 init([MainSupRef, Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]) ->
 	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, OptionsTcp, Port]),

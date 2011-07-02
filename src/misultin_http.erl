@@ -42,24 +42,24 @@
 
 % records
 -record(c, {
-	server_ref,
-	table_date_ref,
-	sock,
-	socket_mode,
-	port,
-	recv_timeout,
-	post_max_size,
-	get_url_max_size,
-	compress,
-	loop,
-	autoexit,
-	ws_loop,
-	ws_autoexit,
-	no_headers,
-	ws_no_headers
+	server_ref			= undefined	:: undefined | pid(),
+	table_date_ref		= undefined	:: undefined | ets:tid(),
+	sock				= undefined :: undefined | socket(),
+	socket_mode			= http :: socketmode(),
+	port				= undefined :: undefined | non_neg_integer(),
+	recv_timeout		= undefined :: undefined | non_neg_integer(),
+	post_max_size		= undefined :: undefined | non_neg_integer(),
+	get_url_max_size	= undefined :: undefined | non_neg_integer(),
+	compress			= false :: true|false,
+	loop				= undefined :: undefined | function(),
+	autoexit			= true :: true|false,
+	ws_loop				= undefined :: undefined | function(),
+	ws_autoexit			= true :: true|false,
+	no_headers			= false :: true|false,
+	ws_no_headers		= false :: true|false
 }).
 -record(req_options, {
-	comet = false		% if comet =:= true, we will monitor client tcp close
+	comet				= false :: true|false		% if comet =:= true, we will monitor client tcp close
 }).
 
 % includes
@@ -69,6 +69,17 @@
 % ============================ \/ API ======================================================================
 
 % Callback from misultin_socket
+-spec handle_data(
+	ServerRef::pid(),
+	TableDateRef::ets:tid(),
+	Sock::socket(),
+	SocketMode::socketmode(),
+	ListenPort::non_neg_integer(),
+	PeerAddr::inet:ip_address(),
+	PeerPort::non_neg_integer(),
+	PeerCert::term(),
+	RecvTimeout::non_neg_integer(),
+	CustomOpts::#custom_opts{}) -> term().
 handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% build C record
 	C = #c{
@@ -97,7 +108,8 @@ handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, Pee
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
+% REQUEST: wait for a HTTP Request line. Transition to state headers if one is received.
+-spec request(C::#c{}, Req::#req{}) -> term().
 request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
 	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
 	receive
@@ -150,8 +162,15 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_header, _, 'Content-Length', _, Val} = _Head} ->
-			?LOG_DEBUG("received header: ~p", [_Head]),
-			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
+			?LOG_DEBUG("received content-length header: ~p", [_Head]),
+			case catch erlang:list_to_integer(Val) of
+				{'EXIT', _} ->
+					?LOG_DEBUG("no valid content length: ~p", [Val]),
+					misultin_socket:send(Sock, build_error_message(411, Req#req.connection), SocketMode),
+					handle_keepalive(Req#req.connection, C, Req);
+				ContentLength ->
+					headers(C, Req#req{content_length = ContentLength}, [{'Content-Length', Val}|H], HeaderCount + 1)
+			end;
 		{SocketMode, Sock, {http_header, _, 'Connection', _, Val} = _Head} ->
 			?LOG_DEBUG("received header: ~p", [_Head]),
 			headers(C, Req#req{connection = keep_alive(Req#req.vsn, Val)}, [{'Connection', Val}|H], HeaderCount + 1);
@@ -170,7 +189,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			{_PathType, Path} = Req#req.uri,
 			% check if it's a websocket request
 			CheckWs = case WsLoop of
-				none -> false;
+				undefined -> false;
 				_Function -> misultin_websocket:check(Path, Headers)
 			end,
 			case CheckWs of
@@ -243,6 +262,9 @@ get_uri_and_args(Req) ->
 		{absoluteURI, http, _Host, _, Path} ->
 			{F, Args} = split_at_q_mark(Path, []),
 			Req#req{args = Args, uri = {absoluteURI, F}};
+		{absoluteURI, https, _Host, _, Path} ->
+			{F, Args} = split_at_q_mark(Path, []),
+			Req#req{args = Args, uri = {absoluteURI, F}};
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
 			{error, 501};
 		{scheme, _Scheme, _RequestString} ->
@@ -278,11 +300,7 @@ read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 		{error, timeout} ->
 			?LOG_WARNING("request timeout, sending error", []),
 			misultin_socket:send(Sock, build_error_message(408, Req#req.connection), SocketMode),
-			handle_keepalive(close, C, Req);
-		{error, no_valid_content_specs} ->	
-			?LOG_DEBUG("no valid content length specified or not a chunked request",[]),
-			misultin_socket:send(Sock, build_error_message(411, Req#req.connection), SocketMode),
-			handle_keepalive(Req#req.connection, C, Req);			
+			handle_keepalive(close, C, Req);			
 		{error, post_max_size} ->	
 			?LOG_WARNING("post request entity too large", []),				
 			misultin_socket:send(Sock, build_error_message(413, close), SocketMode),
@@ -317,14 +335,8 @@ read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOu
 						NoContentNoChunkOutput
 				end
 			end;
-		StrLen ->
-			case catch erlang:list_to_integer(StrLen) of
-				{'EXIT', _} ->
-					?LOG_DEBUG("no valid content length: ~p", [StrLen]),
-					{error, no_valid_content_specs};
-				Len ->
-					i_read_post_body(C, Req, Len)
-			end
+		Len ->
+			i_read_post_body(C, Req, Len)
 	end.
 
 % Function -> {ok, Bin} | {error, Reason}

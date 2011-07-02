@@ -39,13 +39,6 @@
 % includes
 -include("../include/misultin.hrl").
 
-% types
--type socketmode() :: http | ssl.
--export_type([socketmode/0]).
-
--type socket() :: inet:socket() | term().	% unfortunately ssl does not export the socket equivalent,
-											% we could use {sslsocket, term(), term()} but this is relying on internals.
--export_type([socket/0]).
 
 % ============================ \/ API ======================================================================
 
@@ -71,7 +64,7 @@ controlling_process(Sock, Pid, ssl) -> ssl:controlling_process(Sock, Pid).
 
 % Function: -> {PeerAddr, PeerPort} | PeerAddr = list() | undefined | PeerPort = integer() | undefined
 % Description: Get socket peername
--spec peername(Sock::socket(), socketmode() | fun()) -> {inet:ip_address(), non_neg_integer()}.
+-spec peername(Sock::socket(), socketmode() | function()) -> {inet:ip_address(), non_neg_integer()}.
 peername(Sock, http) -> peername(Sock, fun inet:peername/1);
 peername(Sock, ssl) -> peername(Sock, fun ssl:peername/1);
 peername(Sock, F) ->
@@ -103,7 +96,7 @@ recv(Sock, Len, RecvTimeout, http) -> gen_tcp:recv(Sock, Len, RecvTimeout);
 recv(Sock, Len, RecvTimeout, ssl) -> ssl:recv(Sock, Len, RecvTimeout).
 
 % socket send
--spec send(Sock::socket(), Data::binary() | iolist() | list(), socketmode() | fun()) -> ok.
+-spec send(Sock::socket(), Data::binary() | iolist() | list(), socketmode() | function()) -> ok.
 send(Sock, Data, http) -> send(Sock, Data, fun gen_tcp:send/2);
 send(Sock, Data, ssl) -> send(Sock, Data, fun ssl:send/2);
 send(Sock, Data, F) -> 
@@ -117,7 +110,7 @@ send(Sock, Data, F) ->
 	end.
 
 % TCP close
--spec close(Sock::socket(), socketmode() | fun()) -> ok.
+-spec close(Sock::socket(), socketmode() | function()) -> ok.
 close(Sock, http) -> close(Sock, fun gen_tcp:close/1);
 close(Sock, ssl) -> close(Sock, fun ssl:close/1);
 close(Sock, F) ->
