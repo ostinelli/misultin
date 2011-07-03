@@ -198,14 +198,18 @@ options_set(_OptionTag, _OptionVal, {misultin_req, _Req, _SocketPid})	->
 	ignore.
 
 % Chunked Transfer-Encoding.
--spec chunk(head | done | string(), reqt()) -> term().
--spec chunk(head | string(), http_headers() | [term()], reqt()) -> term().
+-spec chunk
+	(head | done, reqt()) -> term();
+	(Template::string() | binary() | iolist(), reqt()) -> term().
+-spec chunk
+	(head, Headers::http_headers(), reqt()) -> term();
+	(Template::string(), Vars::[term()], reqt()) -> term().
 chunk(head, ReqT) ->
 	chunk(head, [], ReqT);
 chunk(done, ReqT) ->
 	stream("0\r\n\r\n", ReqT);
 chunk(Template, ReqT) ->
-	chunk(Template, [], ReqT).
+	chunk_send(Template, ReqT).
 chunk(head, Headers, ReqT) ->
 	% add Transfer-Encoding chunked header if needed
 	Headers0 = case misultin_utility:header_get_value('Transfer-Encoding', Headers) of
@@ -213,8 +217,6 @@ chunk(head, Headers, ReqT) ->
 		_ -> Headers
 	end,
 	stream(head, Headers0, ReqT);
-chunk(Template, [], ReqT) ->
-	chunk_send(Template, ReqT);
 chunk(Template, Vars, ReqT) ->
 	chunk_send(io_lib:format(Template, Vars), ReqT).
 
@@ -223,9 +225,14 @@ chunk_send(Data, ReqT) ->
 	stream([erlang:integer_to_list(erlang:iolist_size(Data), 16), "\r\n", Data, "\r\n"], ReqT).
 
 % Stream support.
--spec stream(close | head | {error, term()} | string() | binary() | iolist(), reqt()) -> term().
--spec stream(head | string(), http_headers() | [term()], reqt()) -> term().
--spec stream(head, HttpCode::non_neg_integer(), Headers::http_headers(), reqt()) -> term().
+-spec stream
+	(close | head | {error, Reason::term()}, reqt()) -> term();
+	(Data::string() | binary() | iolist(), reqt()) -> term().
+-spec stream
+	(head, Headers::http_headers(), reqt()) -> term();
+	(Template::string(), Vars::[term()], reqt()) -> term().
+-spec stream
+	(head, HttpCode::non_neg_integer(), Headers::http_headers(), reqt()) -> term().
 stream(close, {misultin_req, _Req, SocketPid}) ->
 	SocketPid ! stream_close;
 stream(head, ReqT) ->
@@ -242,9 +249,13 @@ stream(head, HttpCode, Headers, {misultin_req, _Req, SocketPid}) ->
 	catch SocketPid ! {stream_head, HttpCode, Headers}.
 
 % Sends a file to the browser.
--spec file(FilePath::string(), reqt()) -> term().
--spec file(attachment | string(), string() | http_headers(), reqt()) -> term().
--spec file(attachment, FilePath::string(), Headers::http_headers(), reqt()) -> term().
+-spec file
+	(FilePath::string(), reqt()) -> term().
+-spec file
+	(attachment, FilePath::string(), reqt()) -> term();
+	(FilePath::string(), Headers::http_headers(), reqt()) -> term().
+-spec file
+	(attachment, FilePath::string(), Headers::http_headers(), reqt()) -> term().
 file(FilePath, ReqT) ->
 	file_send(FilePath, [], ReqT).
 % Sends a file for download.

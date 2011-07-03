@@ -60,18 +60,22 @@
 
 %% @spec set_cookie(Key::string(), Value::string()) -> header()
 %% @doc Short-hand for <code>cookie(Key, Value, [])</code>.
+-spec set_cookie(Key::string(), Value::string()) -> {http_header(), string()}.
+-spec set_cookie(Key::string(), Value::string(), Options::cookies_options()) -> {http_header(), string()}.
 set_cookie(Key, Value) ->
 	set_cookie(Key, Value, []).
 set_cookie(Key, Value, Options) ->
 	cookie(Key, misultin_utility:quote_plus(Value), Options).
 	
 %% Delete a cookie
+-spec delete_cookie(Key::string()) -> {http_header(), string()}.
 delete_cookie(Key) ->
 	set_cookie(Key, "", [{max_age, -3600}]).
 
 %% @spec parse_cookie(string()) -> [{K::string(), V::string()}]
 %% @doc Parse the contents of a Cookie header field, ignoring cookie
 %% attributes, and return a simple property list.
+-spec parse_cookie(Cookie::string()) -> gen_proplist().
 parse_cookie("") ->
 	[];
 parse_cookie(Cookie) ->
@@ -91,6 +95,7 @@ parse_cookie(Cookie) ->
 %%				  | {secure, true | false} | {http_only, true | false}
 %%
 %% @doc Generate a Set-Cookie header field tuple.
+-spec cookie(Key::string(), Value::string(), Options::cookies_options()) -> {http_header(), string()}.
 cookie(Key, Value, Options) ->
 	Cookie = [any_to_list(Key), "=", quote(Value), "; Version=1"],
 	%% Set-Cookie:
@@ -145,6 +150,7 @@ cookie(Key, Value, Options) ->
 %%		   [?QUOTE | lists:foldr(Fun, [?QUOTE], V)].
 
 %% Convert to a string and raise an error if quoting is required.
+-spec quote(Unquoted::term()) -> Quoted::string().
 quote(V0) ->
 	V = any_to_list(V0),
 	lists:all(fun(Ch) -> Ch =:= $/ orelse not ?IS_SEPARATOR(Ch) end, V)
@@ -153,6 +159,7 @@ quote(V0) ->
 
 %% Return a date in the form of: Wdy, DD-Mon-YYYY HH:MM:SS GMT
 %% See also: rfc2109: 10.1.2
+-spec rfc2109_cookie_expires_date(LocalTime::date_tuple()) -> string().
 rfc2109_cookie_expires_date(LocalTime) ->
 	{{YYYY,MM,DD},{Hour,Min,Sec}} = case calendar:local_time_to_universal_time_dst(LocalTime) of
 		[Gmt]	-> Gmt;
@@ -164,15 +171,16 @@ rfc2109_cookie_expires_date(LocalTime) ->
 		[httpd_util:day(DayNumber),DD,httpd_util:month(MM),YYYY,Hour,Min,Sec])
 	).
 
+-spec age_to_cookie_date(Age::integer(), LocalTime::date_tuple()) -> string().
+age_to_cookie_date(Age, LocalTime) ->
+	rfc2109_cookie_expires_date(add_seconds(Age, LocalTime)).
+-spec add_seconds(Secs::integer(), LocalTime::date_tuple()) -> date_tuple().
 add_seconds(Secs, LocalTime) ->
 	Greg = calendar:datetime_to_gregorian_seconds(LocalTime),
 	calendar:gregorian_seconds_to_datetime(Greg + Secs).
 
-age_to_cookie_date(Age, LocalTime) ->
-	rfc2109_cookie_expires_date(add_seconds(Age, LocalTime)).
-
-
 % PARSE COOKIE
+-spec parse_cookie(Cookie::string(), Acc::string()) -> gen_proplist().
 parse_cookie([], Acc) ->
 	lists:reverse(Acc);
 parse_cookie(String, Acc) ->

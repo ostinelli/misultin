@@ -85,19 +85,15 @@
 % ---------------------------- \/ HTTP ---------------------------------------------------------------------
 -type http_version() :: {Maj::non_neg_integer(), Min::non_neg_integer()}.
 
--type http_header() :: 'Cache-Control' | 'Connection' | 'Date' | 'Pragma'
-	| 'Transfer-Encoding' | 'Upgrade' | 'Via' | 'Accept' | 'Accept-Charset'
-	| 'Accept-Encoding' | 'Accept-Language' | 'Authorization' | 'From' | 'Host'
-	| 'If-Modified-Since' | 'If-Match' | 'If-None-Match' | 'If-Range'
-	| 'If-Unmodified-Since' | 'Max-Forwards' | 'Proxy-Authorization' | 'Range'
-	| 'Referer' | 'User-Agent' | 'Age' | 'Location' | 'Proxy-Authenticate'
-	| 'Public' | 'Retry-After' | 'Server' | 'Vary' | 'Warning'
-	| 'Www-Authenticate' | 'Allow' | 'Content-Base' | 'Content-Encoding'
-	| 'Content-Language' | 'Content-Length' | 'Content-Location'
-	| 'Content-Md5' | 'Content-Range' | 'Content-Type' | 'Etag'
-	| 'Expires' | 'Last-Modified' | 'Accept-Ranges' | 'Set-Cookie'
-	| 'Set-Cookie2' | 'X-Forwarded-For' | 'Cookie' | 'Keep-Alive'
-	| 'Proxy-Connection' | list() | binary().
+-type http_header() :: 'Cache-Control' | 'Connection' | 'Date' | 'Pragma' | 'Transfer-Encoding' | 'Upgrade' |
+	'Via' | 'Accept' | 'Accept-Charset' | 'Accept-Encoding' | 'Accept-Language' | 'Authorization' | 'From' |
+	'Host' | 'If-Modified-Since' | 'If-Match' | 'If-None-Match' | 'If-Range' | 'If-Unmodified-Since' |
+	'Max-Forwards' | 'Proxy-Authorization' | 'Range' | 'Referer' | 'User-Agent' | 'Age' | 'Location' |
+	'Proxy-Authenticate' | 'Public' | 'Retry-After' | 'Server' | 'Vary' | 'Warning' | 'Www-Authenticate' |
+	'Allow' | 'Content-Base' | 'Content-Encoding' | 'Content-Language' | 'Content-Length' | 'Content-Location' |
+	'Content-Md5' | 'Content-Range' | 'Content-Type' | 'Etag' | 'Expires' | 'Last-Modified' | 'Accept-Ranges' |
+	'Set-Cookie' | 'Set-Cookie2' | 'X-Forwarded-For' | 'Cookie' | 'Keep-Alive' | 'Proxy-Connection' |
+	list() | binary().
 -type http_headers() :: list({http_header(), list() | binary() | integer() | atom()}).
 
 -type http_method() :: 'GET' | 'POST' | 'HEAD' | 'PUT' | 'DELETE' | 'TRACE' | 'CONNECT'.
@@ -114,7 +110,9 @@
 % ---------------------------- /\ HTTP ---------------------------------------------------------------------
 
 % ---------------------------- \/ OTHER --------------------------------------------------------------------
--type websocket_version() :: term().
+-type websocket_version() ::
+	{'draft-hixie', 68} |
+	{'draft-hixie', 76}.
 
 -type socketmode() :: http | ssl.
 -type socket() :: inet:socket() | term().	% unfortunately ssl does not export the socket equivalent, we could use {sslsocket, term(), term()} but this is relying on internals.

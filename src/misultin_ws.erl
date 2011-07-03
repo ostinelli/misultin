@@ -36,14 +36,19 @@
 % includes
 -include("../include/misultin.hrl").
 
+% types
+-type wst() :: {misultin_ws, #ws{}, SocketPid::pid()}.
+
 
 % ============================ \/ API ======================================================================
 
 % Description: Returns raw websocket content.
+-spec raw(wst()) -> #ws{}.
 raw({misultin_ws, Ws, _SocketPid}) ->
 	Ws.
 
 % Description: Get websocket info.
+-spec get(WsInfo::atom(), wst()) -> term().
 get(socket, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.socket;
 get(socket_mode, {misultin_ws, Ws, _SocketPid}) ->
@@ -84,6 +89,7 @@ get(headers, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.headers.
 
 % send data
+-spec send(Data::list() | binary() | iolist(), wst()) -> term().
 send(Data, {misultin_ws, _Ws, SocketPid}) ->
 	SocketPid ! {send, Data}.
 		

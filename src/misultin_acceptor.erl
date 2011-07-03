@@ -79,8 +79,7 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 			{error, could_not_get_serverref}
 	end.	
 
-% Function: {ok,Pid} | ignore | {error, Error}
-% Description: Starts the socket.
+% Starts the socket.
 -spec acceptor(
 	ServerRef::pid(),
 	TableDateRef::ets:tid(),
@@ -88,7 +87,7 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> term().
+	CustomOpts::misultin_option_server()) -> [].
 acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case catch misultin_socket:accept(ListenSocket, SocketMode) of
 		{ok, Sock} when SocketMode =:= http ->
@@ -152,7 +151,7 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> term().
+	CustomOpts::misultin_option_server()) -> ok.
 activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	receive
 		set ->
@@ -171,7 +170,7 @@ activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeo
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> term().
+	CustomOpts::misultin_option_server()) -> ok.
 open_connections_switch(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
 		{ok, HttpMonRef} ->

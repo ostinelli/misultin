@@ -395,7 +395,6 @@ unquote(String) ->
 %% @spec quote_plus(atom() | integer() | float() | string() | binary()) -> string()
 %% @doc URL safe encoding of the given term.
 -spec quote_plus(atom() | integer() | float() | string() | binary()) -> string().
-
 quote_plus(Atom) when is_atom(Atom) ->
 	quote_plus(atom_to_list(Atom));
 quote_plus(Int) when is_integer(Int) ->

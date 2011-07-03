@@ -72,12 +72,12 @@ start_link(Options) when is_list(Options) ->
 
 % Function: -> ok
 % Description: Manually stops the server.
--spec stop() -> term().
--spec stop(SupRef::atom() | pid()) -> term().
+-spec stop() -> true.
+-spec stop(SupRef::atom() | pid()) -> true.
 stop() ->
 	stop(?SERVER).
 stop(undefined) ->
-	ok;
+	true;
 stop(SupName) when is_atom(SupName) ->
 	stop(whereis(SupName));
 stop(SupPid) when is_pid(SupPid) ->

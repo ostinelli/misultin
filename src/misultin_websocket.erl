@@ -36,15 +36,14 @@
 % API
 -export([check/2, connect/4]).
 
-
 % includes
 -include("../include/misultin.hrl").
 
 
 % ============================ \/ API ======================================================================
 
-% Function: {true, Origin, Host, Path} | false
-% Description: Check if the incoming request is a websocket handshake.
+% Check if the incoming request is a websocket handshake.
+-spec check(Path::string(), Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
 check(_Path, Headers) ->
 	?LOG_DEBUG("testing for a websocket request path: ~p headers: ~p", [_Path, Headers]),
 	% set supported websocket protocols, order does matter
@@ -53,6 +52,7 @@ check(_Path, Headers) ->
 	check_websockets(VsnSupported, Headers).
 
 % Connect and handshake with Websocket.
+-spec connect(ServerRef::pid(), Req::#req{}, Ws::#ws{}, WsLoop::function()) -> true.
 connect(ServerRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Path, ws_autoexit = WsAutoExit, ws_no_headers = WsNoHeaders} = Ws, WsLoop) ->
 	?LOG_DEBUG("building handshake response", []),
 	% get data
@@ -85,7 +85,8 @@ connect(ServerRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% Description: Loop to check for all available supported websocket protocols.
+% Loop to check for all available supported websocket protocols.
+-spec check_websockets(VsnSupported::[websocket_version()], Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
 check_websockets([], _Headers) -> false;
 check_websockets([Vsn|T], Headers) ->
 	case check_websocket(Vsn, Headers) of
@@ -93,8 +94,8 @@ check_websockets([Vsn|T], Headers) ->
 		{true, Vsn} -> {true, Vsn}
 	end.
 
-% Function: {true, Vsn} | false
-% Description: Check if the incoming request is a websocket request.
+% Check if the incoming request is a websocket request.
+-spec check_websocket(Vsn::websocket_version(), Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
 check_websocket({'draft-hixie', 76} = Vsn, Headers) ->
 	?LOG_DEBUG("testing for websocket protocol ~p", [Vsn]),
 	% set required headers
@@ -125,8 +126,8 @@ check_websocket({'draft-hixie', 68} = Vsn, Headers) ->
 			false
 	end.
 
-% Function: true | [{RequiredTag, RequiredVal}, ..]
-% Description: Check if headers correspond to headers requirements.
+% Check if headers correspond to headers requirements.
+-spec check_headers(Headers::http_headers(), RequiredHeaders::http_headers()) -> true | http_headers().
 check_headers(Headers, RequiredHeaders) ->
 	F = fun({Tag, Val}) ->
 		% see if the required Tag is in the Headers
@@ -145,8 +146,8 @@ check_headers(Headers, RequiredHeaders) ->
 		MissingHeaders -> MissingHeaders
 	end.
 
-% Function: List
-% Description: Builds the server handshake response.
+% Builds the server handshake response.
+-spec handshake(Vsn::websocket_version(), Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
 handshake({'draft-hixie', 76}, #req{socket = Sock, socket_mode = SocketMode}, Headers, {Path, Origin, Host}) ->
 	% build data
 	Key1 = misultin_utility:header_get_value('Sec-WebSocket-Key1', Headers),
@@ -188,9 +189,9 @@ handshake({'draft-hixie', 68}, #req{socket_mode = SocketMode} = _Req, _Headers, 
 		"WebSocket-Location: ", WsMode, "://", lists:concat([Host, Path]), "\r\n\r\n"
 	].
 
-% Function: List
-% Description: Builds the challenge for a handshake response.
+% Builds the challenge for a handshake response.
 % Code portions from Sergio Veiga <http://sergioveiga.com/index.php/2010/06/17/websocket-handshake-76-in-erlang/>
+-spec build_challenge(Vsn::websocket_version(), term()) -> binary().
 build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
 	Ikey1 = [D || D <- Key1, $0 =< D, D =< $9],
 	Ikey2 = [D || D <- Key2, $0 =< D, D =< $9],
@@ -202,6 +203,7 @@ build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
 	erlang:md5(Ckey).
 
 % Main Websocket loop
+-spec ws_loop(ServerRef::pid(), Socket::socket(), Buffer::binary() | none, WsHandleLoopPid::pid(), SocketMode::socketmode(), WsAutoExit::boolean()) -> term().
 ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
@@ -240,6 +242,14 @@ ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	end.
 
 % Buffering and data handling
+-spec handle_data(
+	Data::binary(),
+	Buffer::binary() | none,
+	Socket::socket(),
+	WsHandleLoopPid::pid(),
+	SocketMode::socketmode(),
+	WsAutoExit::boolean(),
+	ServerRef::pid()) -> term().
 handle_data(<<0, T/binary>>, none, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	handle_data(T, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
 handle_data(<<>>, none, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
@@ -257,6 +267,7 @@ handle_data(<<>>, L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef)
 	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit).
 
 % Close socket and custom handling loop dependency
+-spec websocket_close(ServerRef::pid(), Socket::socket(), WsHandleLoopPid::pid(), SocketMode::socketmode(), WsAutoExit::boolean()) -> term().
 websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	% remove main websocket pid from misultin server reference
 	misultin_server:ws_pid_ref_remove(ServerRef, self()),
