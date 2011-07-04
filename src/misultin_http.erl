@@ -256,8 +256,7 @@ keep_alive({1,0}, Head) ->
 keep_alive({0,9}, _)	-> close;
 keep_alive(_Vsn, _KA)	-> close.
 
-% Function -> Req | {error, HttpErrorNum}
-% Description: Build uri & args in Req
+% Build uri & args in Req
 -spec get_uri_and_args(Req::#req{}) -> #req{} | {error, non_neg_integer()}.
 get_uri_and_args(Req) ->
 	case Req#req.uri of
@@ -444,7 +443,7 @@ handle_keepalive(close, #c{sock = Sock, socket_mode = SocketMode}, _Req) ->
 handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
-% Description: Main dispatcher
+% Main dispatcher
 -spec call_mfa(C::#c{}, Req::#req{}) -> closed | true.
 call_mfa(#c{loop = Loop, autoexit = AutoExit, no_headers = NoHeaders} = C, Req) ->
 	% spawn_link custom loop
@@ -565,7 +564,7 @@ loop_close(LoopPid, AutoExit) ->
 			LoopPid ! closed
 	end.
 
-% Description: Ensure Body is binary.
+% Ensure Body is binary.
 -spec convert_to_binary(list() | binary() | atom()) -> binary().
 convert_to_binary(Body) when is_binary(Body) ->
 	Body;
@@ -582,7 +581,7 @@ add_headers(OriginalHeaders, BodyBinary, TableDateRef, Req) ->
 	Headers2 = add_output_header('Server', Headers1),
 	add_output_header('Date', {Headers2, TableDateRef}).
 
-% Description: Add necessary Content-Length Header
+% Add necessary Content-Length Header
 -spec add_output_header(http_header(), term()) -> http_headers().
 add_output_header('Content-Length', {Headers, Body}) ->
 	case misultin_utility:get_key_value('Content-Length', Headers) of
@@ -591,7 +590,7 @@ add_output_header('Content-Length', {Headers, Body}) ->
 		_ ->
 			Headers
 	end;
-% Description: Add necessary Connection Header
+% Add necessary Connection Header
 add_output_header('Connection', {Headers, Req}) ->
 	% echo
 	case misultin_utility:get_key_value('Connection', Headers) of
@@ -600,7 +599,7 @@ add_output_header('Connection', {Headers, Req}) ->
 		_ ->
 			Headers
 	end;
-% Description: Add necessary Server header
+% Add necessary Server header
 add_output_header('Server', Headers) ->
 	case misultin_utility:get_key_value('Server', Headers) of
 		undefined ->
@@ -608,7 +607,7 @@ add_output_header('Server', Headers) ->
 		_ ->
 			Headers
 	end;
-% Description: Add necessary Date header
+% Add necessary Date header
 add_output_header('Date', {Headers, TableDateRef}) ->
 	case misultin_utility:get_key_value('Date', Headers) of
 		undefined ->
@@ -624,7 +623,7 @@ add_output_header('Date', {Headers, TableDateRef}) ->
 connection_str(keep_alive) -> "Keep-Alive";
 connection_str(close) -> "Close".
 
-% Description: Encode headers
+% Encode headers
 -spec enc_headers(http_headers()) -> string().
 enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
 	[atom_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];

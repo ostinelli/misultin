@@ -59,7 +59,7 @@
 raw({misultin_req, Req, _SocketPid}) ->
 	Req.
 
-% Description: Get request info.
+% Get request info.
 -spec get(ReqInfo::atom(), reqt()) -> term().
 get(socket, {misultin_req, Req, _SocketPid}) ->
 	Req#req.socket;
@@ -144,7 +144,7 @@ set_cookie(Key, Value, Options, _ReqT) ->
 delete_cookie(Key, _ReqT) ->
 	misultin_cookies:delete_cookie(Key).
 
-% Description: Formats a 200 response.
+% Formats a 200 response.
 -spec ok(Template::list() | binary() | iolist(), reqt()) -> term().
 -spec ok(Headers::http_headers(), Template::list() | binary() | iolist(), reqt()) -> term().
 -spec ok(Headers::http_headers(), Template::list(), Vars::[term()], reqt()) -> term().
@@ -155,7 +155,7 @@ ok(Headers, Template, ReqT) ->
 ok(Headers, Template, Vars, ReqT) ->
 	respond(200, Headers, Template, Vars, ReqT).
 
-% Description: Formats a response.
+% Formats a response.
 -spec respond(HttpCode::non_neg_integer(), reqt()) -> term().
 -spec respond(HttpCode::non_neg_integer(), Template::list() | binary() | iolist(), reqt()) -> term().
 -spec respond(HttpCode::non_neg_integer(), Headers::http_headers(), Template::list() | binary() | iolist(), reqt()) -> term().
@@ -169,7 +169,7 @@ respond(HttpCode, Headers, Template, {misultin_req, _Req, SocketPid}) ->
 respond(HttpCode, Headers, Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =:= true ->
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
 
-% Description: Allow to add already formatted headers, untouched
+% Allow to add already formatted headers, untouched
 -spec raw_headers_respond(Body::binary(), reqt()) -> term().
 -spec raw_headers_respond(HeadersStr::string(), Body::binary(), reqt()) -> term().
 -spec raw_headers_respond(HttpCode::non_neg_integer(), HeadersStr::string(), Body::binary(), reqt()) -> term().
@@ -280,7 +280,7 @@ file(attachment, FilePath, Headers, ReqT) ->
 parse_qs({misultin_req, Req, _SocketPid}) ->
 	misultin_utility:parse_qs(Req#req.args).
 
-% Description: Parse Post
+% Parse Post
 -spec parse_post(reqt()) -> binary() | [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
 parse_post({misultin_req, Req, _SocketPid}) ->
 	% get header confirmation
@@ -318,7 +318,7 @@ resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% Description: Clean URI.
+% Clean URI.
 -spec clean_uri(Option::atom(), Uri::string()) -> string().
 clean_uri(lowercase, Uri) ->
 	string:to_lower(Uri);

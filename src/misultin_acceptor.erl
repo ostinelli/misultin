@@ -45,7 +45,7 @@
 
 % ============================ \/ API ======================================================================
 
-% Description: Starts the acceptor.
+% Starts the acceptor.
 -spec start_link(
 	MainSupRef::pid(),
 	ListenSocket::socket(),

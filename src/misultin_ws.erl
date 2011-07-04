@@ -42,12 +42,12 @@
 
 % ============================ \/ API ======================================================================
 
-% Description: Returns raw websocket content.
+% Returns raw websocket content.
 -spec raw(wst()) -> #ws{}.
 raw({misultin_ws, Ws, _SocketPid}) ->
 	Ws.
 
-% Description: Get websocket info.
+% Get websocket info.
 -spec get(WsInfo::atom(), wst()) -> term().
 get(socket, {misultin_ws, Ws, _SocketPid}) ->
 	Ws#ws.socket;

@@ -49,8 +49,7 @@
 
 % ============================ \/ API ======================================================================
 
-% Function: {ok, Pid} | ignore | {error, Error}
-% Description: Starts the server.
+% Starts the server.
 -spec start_link(Options::gen_proplist()) -> {ok, Pid::pid()} | {error, Reason::term()}.
 start_link(Options) when is_list(Options) ->
 	% check if name option has been specified, otherwise default to 'misultin' as regname
@@ -70,8 +69,7 @@ start_link(Options) when is_list(Options) ->
 			supervisor:start_link({local, Value}, ?MODULE, [Options0])
 	end.
 
-% Function: -> ok
-% Description: Manually stops the server.
+% Manually stops the server.
 -spec stop() -> true.
 -spec stop(SupRef::atom() | pid()) -> true.
 stop() ->
@@ -212,8 +210,7 @@ init([Options]) ->
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% Function: -> false | IpTuple
-% Description: Checks and if necessary converts a string Ip to inet repr.
+% Checks and if necessary converts a string Ip to inet repr.
 -spec check_and_convert_string_to_ip(Ip::string() | tuple()) -> inet:ip_address() | false.
 check_and_convert_string_to_ip(Ip) when is_tuple(Ip) ->
 	case size(Ip) of
@@ -236,8 +233,7 @@ check_and_convert_string_to_ip(Ip) ->
 			IpTuple
 	end.
 	
-% Function: -> true | false
-% Description: Checks if all necessary Ssl Options have been specified
+% Checks if all necessary Ssl Options have been specified
 -spec check_ssl_options(SslOptions::gen_proplist()) -> boolean().
 check_ssl_options(SslOptions) ->
 	Opts = [verify, fail_if_no_peer_cert, verify_fun, depth, certfile, keyfile, password, cacertfile, ciphers, reuse_sessions, reuse_session],
@@ -249,7 +245,7 @@ check_ssl_options(SslOptions) ->
 	end,
 	lists:all(F, SslOptions).
 
-% Description: Validate and get misultin options.
+% Validate and get misultin options.
 -spec get_option({
 	OptionName::atom(),
 	DefaultValue::term(),
@@ -276,8 +272,7 @@ get_option({OptionName, DefaultValue, CheckAndConvertFun, FailTypeError}, Option
 			end
 	end.
 
-% Function: -> ok | {error, Reason}
-% Description: Start an application.
+% Start an application.
 -spec start_application(Application::atom()) -> ok | {error, Reason::term()}.
 start_application(Application) ->
 	case lists:keyfind(Application, 1, application:which_applications()) of

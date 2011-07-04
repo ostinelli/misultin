@@ -62,8 +62,7 @@ accept(ListenSocket, ssl) ->
 controlling_process(Sock, Pid, http) -> gen_tcp:controlling_process(Sock, Pid);
 controlling_process(Sock, Pid, ssl) -> ssl:controlling_process(Sock, Pid).
 
-% Function: -> {PeerAddr, PeerPort} | PeerAddr = list() | undefined | PeerPort = integer() | undefined
-% Description: Get socket peername
+% Get socket peername
 -spec peername(Sock::socket(), socketmode() | function()) -> {inet:ip_address(), non_neg_integer()}.
 peername(Sock, http) -> peername(Sock, fun inet:peername/1);
 peername(Sock, ssl) -> peername(Sock, fun ssl:peername/1);
@@ -75,8 +74,7 @@ peername(Sock, F) ->
 			{undefined, undefined}
 	end.
 
-% Function: -> Certificate | undefined
-% Description: Get socket certificate
+% Get socket certificate
 -spec peercert(Sock::socket(), socketmode()) -> Cert::term() | undefined.
 peercert(_Sock, http) -> undefined;
 peercert(Sock, ssl) ->
