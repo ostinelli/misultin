@@ -194,7 +194,7 @@ init([Options]) ->
 						ws_no_headers = WsNoHeaders
 					},
 					% define misultin_server supervisor specs
-					ServerSpec = {server, {misultin_server, start_link, [[MaxConnections]]}, permanent, 60000, worker, [misultin_server]},
+					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
 					% define acceptors supervisor specs
 					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% spawn

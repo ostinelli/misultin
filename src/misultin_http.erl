@@ -79,7 +79,7 @@
 	PeerPort::non_neg_integer(),
 	PeerCert::term(),
 	RecvTimeout::non_neg_integer(),
-	CustomOpts::#custom_opts{}) -> term().
+	CustomOpts::#custom_opts{}) -> ok | ignored | ssl_closed | tcp_closed | true.
 handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% build C record
 	C = #c{
@@ -109,7 +109,7 @@ handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, Pee
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received.
--spec request(C::#c{}, Req::#req{}) -> term().
+-spec request(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
 request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
 	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
 	receive
@@ -152,8 +152,8 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 	end.
 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
--spec headers(C::#c{}, Req::#req{}, H::http_headers()) -> term().
--spec headers(C::#c{}, Req::#req{}, H::http_headers(), HCount::non_neg_integer()) -> term().
+-spec headers(C::#c{}, Req::#req{}, H::http_headers()) -> ok | ignored | ssl_closed | tcp_closed | true.
+-spec headers(C::#c{}, Req::#req{}, H::http_headers(), HCount::non_neg_integer()) -> ok | ignored | ssl_closed | tcp_closed | true.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
 headers(#c{sock = Sock, socket_mode = SocketMode} = C, Req, _H, ?MAX_HEADERS_COUNT) ->
@@ -279,7 +279,7 @@ get_uri_and_args(Req) ->
 	end.
 
 % dispatch operations according to defined method
--spec method_dispatch(C::#c{}, Req::#req{}) -> term().
+-spec method_dispatch(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
 method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:= 'POST'; Method =:= 'HEAD'; Method =:= 'PUT'; Method =:= 'DELETE'; Method =:= 'CONNECT' ->
 	?LOG_DEBUG("~p request received", [Method]),
 	% read body & dispatch
@@ -295,7 +295,7 @@ method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, #req{method = _Me
 	handle_keepalive(Connection, C, Req).
 
 % read body and dispatch to mfa if ok
--spec read_body_dispatch(C::#c{}, Req::#req{}) -> term().	
+-spec read_body_dispatch(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.	
 read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 	% read post body
 	case read_post_body(C, Req) of
@@ -438,14 +438,14 @@ get_chunk_length(HeadLine) ->
 	end.
 
 % handle the request and get back to the request loop
--spec handle_keepalive(http_connection(), C::#c{}, Req::#req{}) -> term().
+-spec handle_keepalive(http_connection(), C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
 handle_keepalive(close, #c{sock = Sock, socket_mode = SocketMode}, _Req) ->
 	misultin_socket:close(Sock, SocketMode);
 handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
 % Description: Main dispatcher
--spec call_mfa(C::#c{}, Req::#req{}) -> term().
+-spec call_mfa(C::#c{}, Req::#req{}) -> closed | true.
 call_mfa(#c{loop = Loop, autoexit = AutoExit, no_headers = NoHeaders} = C, Req) ->
 	% spawn_link custom loop
 	Self = self(),
@@ -470,7 +470,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit, no_headers = NoHeaders} = C, Req) 
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
--spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}) -> term().
+-spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}) -> ok | shutdown | ssl_closed | tcp_closed.
 socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
@@ -552,7 +552,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 	end.
 
 % Close socket and custom handling loop dependency
--spec loop_close(LoopPid::pid(), AutoExit::boolean()) -> term().
+-spec loop_close(LoopPid::pid(), AutoExit::boolean()) -> closed | true.
 loop_close(LoopPid, AutoExit) ->
 	case AutoExit of
 		true ->

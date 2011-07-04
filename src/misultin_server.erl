@@ -63,8 +63,8 @@
 % ============================ \/ API ======================================================================
 
 % Starts the server.
--spec start_link([term()]) -> {ok, Pid::pid()} | {error, Error::term()}.
-start_link(Options) when is_list(Options) ->
+-spec start_link(term()) -> {ok, Pid::pid()} | {error, Error::term()}.
+start_link(Options) when is_tuple(Options) ->
 	gen_server:start_link(?MODULE, Options, []).
 
 % Accepts the connection if the connection count is not over quota, and add monitor
@@ -106,7 +106,7 @@ get_table_date_ref(ServerRef) ->
 % Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
 % Description: Initiates the server.
 % ----------------------------------------------------------------------------------------------------------
-init([MaxConnections]) ->
+init({MaxConnections}) ->
 	process_flag(trap_exit, true),
 	?LOG_INFO("starting misultin server with pid: ~p", [self()]),
 	% create ets tables to save open connections and websockets
@@ -268,7 +268,7 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % compute RFC date and update ETS table
--spec update_rfc_date(TableDate::ets:tid()) -> term().
+-spec update_rfc_date(TableDate::ets:tid()) -> true.
 update_rfc_date(TableDate) ->
 	ets:insert(TableDate, {rfc_date, httpd_util:rfc1123_date()}).
 

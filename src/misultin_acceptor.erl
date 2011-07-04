@@ -64,7 +64,7 @@ start_link(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, Custom
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> term() | {error, Reason::term()}.
+	CustomOpts::misultin_option_server()) -> true | {error, Reason::term()}.
 init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	?LOG_DEBUG("starting new acceptor with pid ~p", [self()]),
 	% get pid of misultin server

@@ -203,7 +203,7 @@ build_challenge({'draft-hixie', 76}, {Key1, Key2, Key3}) ->
 	erlang:md5(Ckey).
 
 % Main Websocket loop
--spec ws_loop(ServerRef::pid(), Socket::socket(), Buffer::binary() | none, WsHandleLoopPid::pid(), SocketMode::socketmode(), WsAutoExit::boolean()) -> term().
+-spec ws_loop(ServerRef::pid(), Socket::socket(), Buffer::binary() | none, WsHandleLoopPid::pid(), SocketMode::socketmode(), WsAutoExit::boolean()) -> ok.
 ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
@@ -249,7 +249,7 @@ ws_loop(ServerRef, Socket, Buffer, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	WsHandleLoopPid::pid(),
 	SocketMode::socketmode(),
 	WsAutoExit::boolean(),
-	ServerRef::pid()) -> term().
+	ServerRef::pid()) -> ok.
 handle_data(<<0, T/binary>>, none, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
 	handle_data(T, <<>>, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef);
 handle_data(<<>>, none, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef) ->
@@ -267,7 +267,7 @@ handle_data(<<>>, L, Socket, WsHandleLoopPid, SocketMode, WsAutoExit, ServerRef)
 	ws_loop(ServerRef, Socket, L, WsHandleLoopPid, SocketMode, WsAutoExit).
 
 % Close socket and custom handling loop dependency
--spec websocket_close(ServerRef::pid(), Socket::socket(), WsHandleLoopPid::pid(), SocketMode::socketmode(), WsAutoExit::boolean()) -> term().
+-spec websocket_close(ServerRef::pid(), Socket::socket(), WsHandleLoopPid::pid(), SocketMode::socketmode(), WsAutoExit::boolean()) -> ok.
 websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	% remove main websocket pid from misultin server reference
 	misultin_server:ws_pid_ref_remove(ServerRef, self()),

@@ -184,7 +184,7 @@ raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, _Req, So
 	SocketPid ! {response, HttpCode, {Headers, HeadersStr}, Body}.
 
 % set advanced options valid for a single request
--spec options(Options::gen_proplist(), reqt()) -> term().
+-spec options(Options::gen_proplist(), reqt()) -> ok.
 options(Options, ReqT) when is_list(Options) ->
 	% loop options and apply
 	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
