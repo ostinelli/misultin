@@ -103,7 +103,7 @@ init([Options]) ->
 		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer},
 		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
-		{recbuf, 1024, fun is_integer/1, recbuf_not_integer},
+		{recbuf, default, fun check_recbuf/1, recbuf_not_integer},
 		% misultin
 		{post_max_size, 4*1024*1024, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
 		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
@@ -178,7 +178,11 @@ init([Options]) ->
 			case Continue of
 				true ->
 					% set options
-					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}, {recbuf, RecBuf}|AdditionalOptions],
+					OptionsTcp0 = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
+					OptionsTcp = case RecBuf of
+						default -> OptionsTcp0;
+						_ -> [{recbuf, RecBuf}|OptionsTcp0]
+					end,							
 					% build custom_opts
 					CustomOpts = #custom_opts{
 						post_max_size = PostMaxSize,
@@ -244,6 +248,12 @@ check_ssl_options(SslOptions) ->
 		end
 	end,
 	lists:all(F, SslOptions).
+
+% check if recbuf has been set
+-spec check_recbuf(RecBuf::default | non_neg_integer()) -> boolean().
+check_recbuf(default) -> default;
+check_recbuf(RecBuf) when is_integer(RecBuf), RecBuf > 0 -> true;
+check_recbuf(_RecBuf) -> false.
 
 % Validate and get misultin options.
 -spec get_option({
