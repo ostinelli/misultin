@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_req).
--vsn("0.8-dev").
+-vsn("0.8").
 
 % macros
 -define(FILE_READ_BUFFER, 64*1012).

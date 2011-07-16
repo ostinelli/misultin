@@ -71,7 +71,7 @@ API Documentation is available online on the Misultin's wiki: https://github.com
 
 CHANGELOG
 ==========================================================================================================
-0.8-dev:
+0.8:
        - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
          compliant
        - added Cookie support

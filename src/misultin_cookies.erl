@@ -29,7 +29,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_cookies).
--vsn("0.8-dev").
+-vsn("0.8").
 
 % API
 -export([set_cookie/3, set_cookie/2, delete_cookie/1, parse_cookie/1]).

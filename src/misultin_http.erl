@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.8-dev").
+-vsn("0.8").
 
 % API
 -export([handle_data/10]).
@@ -39,6 +39,7 @@
 % macros
 -define(MAX_HEADERS_COUNT, 100).
 -define(SUPPORTED_ENCODINGS, ["gzip", "deflate"]).
+-define(SERVER_VERSION_TAG, "misultin/0.8").
 
 % records
 -record(c, {
@@ -603,7 +604,7 @@ add_output_header('Connection', {Headers, Req}) ->
 add_output_header('Server', Headers) ->
 	case misultin_utility:get_key_value('Server', Headers) of
 		undefined ->
-			[{'Server', "misultin/0.8-dev"}|Headers];
+			[{'Server', ?SERVER_VERSION_TAG}|Headers];
 		_ ->
 			Headers
 	end;

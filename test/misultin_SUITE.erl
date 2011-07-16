@@ -52,7 +52,7 @@ suite() ->
 % ----------------------------------------------------------------------------------------------------------
 init_per_suite(Config) ->
 	inets:start(),
-	Config.
+	[{port, 8080}|Config].	% this port and port + 1 will be used for tests, so by default 8080 and 8081
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: end_per_suite(Config0) -> void() | {save_config,Config1}
@@ -158,9 +158,10 @@ all() ->
 % ----------------------------------------------------------------------------------------------------------
 
 % ---------------------------- \/ BASIC HELLO WORLD --------------------------------------------------------
-http_basic(_Config) -> 
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_basic_handle(Req) end}]),
-	{ok, {{_, 200, _}, _, "http_basic"}} = httpc:request(get, {"http://localhost:8080", []}, [], []),
+http_basic(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_basic_handle(Req) end}]),
+	{ok, {{_, 200, _}, _, "http_basic"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), []}, [], []),
 	misultin:stop(),
 	ok.
 http_basic_handle(Req) ->
@@ -168,14 +169,15 @@ http_basic_handle(Req) ->
 % ---------------------------- /\ BASIC HELLO WORLD --------------------------------------------------------
 
 % ---------------------------- \/ BASIC SSL HELLO WORLD ----------------------------------------------------
-http_basic_ssl(_Config) -> 
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_basic_ssl_handle(Req) end},
+http_basic_ssl(Config) -> 
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_basic_ssl_handle(Req) end},
 	{ssl, [
 		{certfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_certificate.pem"])},
 		{keyfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_privkey.pem"])},
 		{password, "misultin"}
 	]}]),
-	{ok, {{_, 200, _}, _, "http_basic_ssl"}} = httpc:request(get, {"https://localhost:8080", []}, [], []),
+	{ok, {{_, 200, _}, _, "http_basic_ssl"}} = httpc:request(get, {"https://localhost:" ++ integer_to_list(Port), []}, [], []),
 	misultin:stop(),
 	ok.
 http_basic_ssl_handle(Req) ->
@@ -183,9 +185,10 @@ http_basic_ssl_handle(Req) ->
 % ---------------------------- /\ BASIC SSL HELLO WORLD ----------------------------------------------------
 
 % ---------------------------- \/ HELLO WORLD NAMELESS -----------------------------------------------------
-http_nameless(_Config) -> 
-	{ok, ServerPid} = misultin:start_link([{port, 8080}, {name, false}, {loop, fun(Req) -> http_nameless_handle(Req) end}]),
-	{ok, {{_, 200, _}, _, "http_nameless"}} = httpc:request(get, {"http://localhost:8080", []}, [], []),
+http_nameless(Config) -> 
+	Port = proplists:get_value(port, Config),
+	{ok, ServerPid} = misultin:start_link([{port, Port}, {name, false}, {loop, fun(Req) -> http_nameless_handle(Req) end}]),
+	{ok, {{_, 200, _}, _, "http_nameless"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), []}, [], []),
 	misultin:stop(ServerPid),
 	ok.
 http_nameless_handle(Req) ->
@@ -193,11 +196,13 @@ http_nameless_handle(Req) ->
 % ---------------------------- /\ HELLO WORLD NAMELESS -----------------------------------------------------
 
 % ---------------------------- \/ TWO SERVERS REGISTERED ---------------------------------------------------
-http_two_servers(_Config) -> 
-	misultin:start_link([{port, 8080}, {name, misultin1}, {loop, fun(Req) -> http_two_servers_handle(Req, misultin1) end}]),
-	misultin:start_link([{port, 8081}, {name, misultin2}, {loop, fun(Req) -> http_two_servers_handle(Req, misultin2) end}]),
-	{ok, {{_, 200, _}, _, "http_two_servers_misultin1"}} = httpc:request(get, {"http://localhost:8080", []}, [], []),
-	{ok, {{_, 200, _}, _, "http_two_servers_misultin2"}} = httpc:request(get, {"http://localhost:8081", []}, [], []),
+http_two_servers(Config) -> 
+	Port = proplists:get_value(port, Config),
+	Port2 = Port + 1,
+	misultin:start_link([{port, Port}, {name, misultin1}, {loop, fun(Req) -> http_two_servers_handle(Req, misultin1) end}]),
+	misultin:start_link([{port, Port2}, {name, misultin2}, {loop, fun(Req) -> http_two_servers_handle(Req, misultin2) end}]),
+	{ok, {{_, 200, _}, _, "http_two_servers_misultin1"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), []}, [], []),
+	{ok, {{_, 200, _}, _, "http_two_servers_misultin2"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port2), []}, [], []),
 	misultin:stop(misultin1),
 	misultin:stop(misultin2),
 	ok.
@@ -206,9 +211,10 @@ http_two_servers_handle(Req, RegName) ->
 % ---------------------------- /\ TWO SERVERS REGISTERED ---------------------------------------------------
 
 % ---------------------------- \/ GET VARIABLE -------------------------------------------------------------
-http_get_var(_Config) -> 
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_get_var_handle(Req) end}]),
-	{ok, {{_, 200, _}, _, "http_get_var"}} = httpc:request(get, {"http://localhost:8080?value=http_get_var", []}, [], []),
+http_get_var(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_get_var_handle(Req) end}]),
+	{ok, {{_, 200, _}, _, "http_get_var"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port) ++ "/?value=http_get_var", []}, [], []),
 	misultin:stop(),
 	ok.
 http_get_var_handle(Req) ->
@@ -217,9 +223,10 @@ http_get_var_handle(Req) ->
 % ---------------------------- /\ GET VARIABLE -------------------------------------------------------------
 
 % ---------------------------- \/ POST VARIABLE ------------------------------------------------------------
-http_post_var(_Config) -> 
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_post_var_handle(Req) end}]),
-	{ok, {{_, 200, _}, _, "http_post_var"}} = httpc:request(post, {"http://localhost:8080", [], "text/plain", <<"http_post_var">>}, [], []),
+http_post_var(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_post_var_handle(Req) end}]),
+	{ok, {{_, 200, _}, _, "http_post_var"}} = httpc:request(post, {"http://localhost:" ++ integer_to_list(Port), [], "text/plain", <<"http_post_var">>}, [], []),
 	misultin:stop(),
 	ok.
 http_post_var_handle(Req) ->
@@ -228,9 +235,10 @@ http_post_var_handle(Req) ->
 % ---------------------------- /\ POST VARIABLE ------------------------------------------------------------
 
 % ---------------------------- \/ STREAM -------------------------------------------------------------------
-http_stream(_Config) -> 
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_stream_handle(Req) end}]),
-	{ok, {{_, 200, _}, _, "http_stream_test"}} = httpc:request(get, {"http://localhost:8080", []}, [], []),
+http_stream(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_stream_handle(Req) end}]),
+	{ok, {{_, 200, _}, _, "http_stream_test"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), []}, [], []),
 	misultin:stop(),
 	ok.
 http_stream_handle(Req) ->
@@ -242,9 +250,10 @@ http_stream_handle(Req) ->
 % ---------------------------- /\ STREAM -------------------------------------------------------------------
 
 % ---------------------------- \/ CHUNK SEND ---------------------------------------------------------------
-http_chunk_send(_Config) -> 
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_chunk_send_handle(Req) end}]),
-	{ok, {{_, 200, _}, _, "http_chunked_test"}} = httpc:request(get, {"http://localhost:8080", []}, [], []),
+http_chunk_send(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_chunk_send_handle(Req) end}]),
+	{ok, {{_, 200, _}, _, "http_chunked_test"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), []}, [], []),
 	misultin:stop(),
 	ok.
 http_chunk_send_handle(Req) ->
@@ -256,10 +265,11 @@ http_chunk_send_handle(Req) ->
 % ---------------------------- /\ CHUNK SEND ---------------------------------------------------------------
 
 % ---------------------------- \/ COMPRESS -----------------------------------------------------------------
-http_compress(_Config) -> 
-	misultin:start_link([{port, 8080}, {compress, true}, {loop, fun(Req) -> http_compress_handle(Req) end}]),
+http_compress(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {compress, true}, {loop, fun(Req) -> http_compress_handle(Req) end}]),
 	Compressed = binary_to_list(zlib:gzip(<<"http_compress_test">>)),
-	{ok, {{_, 200, _}, _, Compressed}} = httpc:request(get, {"http://localhost:8080", [{"Accept-Encoding", "gzip"}]}, [], []),
+	{ok, {{_, 200, _}, _, Compressed}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), [{"Accept-Encoding", "gzip"}]}, [], []),
 	misultin:stop(),
 	ok.
 http_compress_handle(Req) ->
@@ -267,13 +277,14 @@ http_compress_handle(Req) ->
 % ---------------------------- /\ COMPRESS -----------------------------------------------------------------
 
 % ---------------------------- \/ PIPELINING ---------------------------------------------------------------
-http_pipelining(_Config) ->
+http_pipelining(Config) ->
+	Port = proplists:get_value(port, Config),
 	NumRequests = 5,
 	register(misultin_temp_pipelining_test, self()),
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_pipelining_handle(Req) end}]),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_pipelining_handle(Req) end}]),
 	% send requests
 	lists:foreach(fun(_El) ->
-		{ok, _} = httpc:request(get, {"http://localhost:8080", []}, [], [{sync, false}, {receiver, fun http_pipelining_async/1}])
+		{ok, _} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), []}, [], [{sync, false}, {receiver, fun http_pipelining_async/1}])
 	end, lists:seq(1, NumRequests)),
 	http_pipelining_loop(NumRequests).
 http_pipelining_loop(0) ->
@@ -298,16 +309,17 @@ http_pipelining_async({_RequestId, Result}) ->
 % ---------------------------- /\ PIPELINING ---------------------------------------------------------------
 
 % ---------------------------- \/ COOKIES ------------------------------------------------------------------
-http_cookie(_Config) ->
-	misultin:start_link([{port, 8080}, {loop, fun(Req) -> http_cookie_handle_dispatch(Req) end}]),
+http_cookie(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> http_cookie_handle_dispatch(Req) end}]),
 	httpc:set_options([{cookies, enabled}]),
 	% set cookie & read
-	{ok, {{_, 200, _}, _, ""}} = httpc:request(get, {"http://localhost:8080", []}, [], []), % set cookie
+	{ok, {{_, 200, _}, _, ""}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port), []}, [], []), % set cookie
 	Cookies = httpc:which_cookies(),
 	{session_cookies, SessionCookies} =	 lists:keyfind(session_cookies, 1, Cookies),
 	{http_cookie, _, _,"misultin_test_cookie", "misultin_test_cookie_value", _,	 _, _, _, _, _} = lists:keyfind("misultin_test_cookie", 4, SessionCookies),
 	% send new request to check cookie
-	{ok, {{_, 200, _}, _, "misultin_test_cookie_value"}} = httpc:request(get, {"http://localhost:8080/cookies", []}, [], []),	% get cookie
+	{ok, {{_, 200, _}, _, "misultin_test_cookie_value"}} = httpc:request(get, {"http://localhost:" ++ integer_to_list(Port) ++ "/cookies", []}, [], []),	% get cookie
 	misultin:stop(),
 	ok.
 http_cookie_handle_dispatch(Req) ->
@@ -321,15 +333,16 @@ http_cookie_handle(["cookies"], Req) ->
 
 % ---------------------------- \/ WEBSOCKET ----------------------------------------------------------------
 % note: testing draft-hixie 76 only
-http_websocket(_Config) ->
-	misultin:start_link([{port, 8080}, {loop, fun(_) -> ok end}, {ws_loop, fun(Ws) -> http_websocket_handle(Ws) end}]),
-	{ok, Socket} = gen_tcp:connect("localhost", 8080, [binary, {active, false}, {packet, raw}]),
+http_websocket(Config) ->
+	Port = proplists:get_value(port, Config),
+	misultin:start_link([{port, Port}, {loop, fun(_) -> ok end}, {ws_loop, fun(Ws) -> http_websocket_handle(Ws) end}]),
+	{ok, Socket} = gen_tcp:connect("localhost", Port, [binary, {active, false}, {packet, raw}]),
 	ok = gen_tcp:send(Socket, [
 		"GET / HTTP/1.1\r\n"
 		"Upgrade: WebSocket\r\n"
 		"Connection: Upgrade\r\n"
-		"Host: localhost:8080\r\n"
-		"Origin: http://localhost:8080\r\n"
+		"Host: localhost:", integer_to_list(Port), "\r\n"
+		"Origin: http://localhost:", integer_to_list(Port), "\r\n"
 		"Sec-Websocket-Key1: 4j	  20%  78u0 5y^	   /7 Lw56\r\n"
 		"Sec-Websocket-Key2: 296324-q	  { -1S85  6\r\n"
 		"\r\n", <<252,142,7,202,105,0,109,64>>
@@ -339,8 +352,10 @@ http_websocket(_Config) ->
 	[Headers, Body] = http_websocket_headers(erlang:decode_packet(httph, Rest, []), []),
 	{'Connection', "Upgrade"} = lists:keyfind('Connection', 1, Headers),
 	{'Upgrade', "WebSocket"} = lists:keyfind('Upgrade', 1, Headers),
-	{"sec-websocket-location", "ws://localhost:8080/"} = lists:keyfind("sec-websocket-location", 1, Headers),
-	{"sec-websocket-origin", "http://localhost:8080"} = lists:keyfind("sec-websocket-origin", 1, Headers),
+	WsSecLocation = "ws://localhost:" ++ integer_to_list(Port) ++ "/",
+	WsSecOrigin = "http://localhost:" ++ integer_to_list(Port),
+	{"sec-websocket-location", WsSecLocation} = lists:keyfind("sec-websocket-location", 1, Headers),
+	{"sec-websocket-origin", WsSecOrigin} = lists:keyfind("sec-websocket-origin", 1, Headers),
 	<<205,42,237,47,83,29,193,129,203,200,113,36,66,205,234,75>> = Body,
 	ok = gen_tcp:send(Socket, <<0, "misultin_websocket_client_message", 255>>),
 	{ok, <<0, "misultin_websocket_client_message", 255>>} = gen_tcp:recv(Socket, 0, 5000),
