@@ -39,7 +39,7 @@
 
 % API
 -export([start_link/1]).
--export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1, get_table_date_ref/1]).
+-export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1, get_table_date_ref/1, get_table_pids_ws_ref/1]).
 
 % macros
 -define(TABLE_PIDS_HTTP, misultin_table_pids_http).
