@@ -96,6 +96,11 @@ get_rfc_date(TableDateRef) ->
 -spec get_table_date_ref(ServerRef::pid()) -> TableDateRef::ets:tid().
 get_table_date_ref(ServerRef) ->
 	gen_server:call(ServerRef, get_table_date_ref).
+
+% Retrieve table pids_ws reference
+-spec get_table_pids_ws_ref(ServerRef::pid()) -> TablePidsWs::ets:tid().
+get_table_pids_ws_ref(ServerRef) ->
+  gen_server:call(ServerRef, get_table_pids_ws_ref).
 	
 % ============================ /\ API ======================================================================
 
@@ -156,6 +161,10 @@ handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConn
 % get table date reference
 handle_call(get_table_date_ref, _From, #state{table_date = TableDate} = State) ->
 	{reply, TableDate, State};
+
+% get table pids ws reference
+handle_call(get_table_pids_ws_ref, _From, #state{table_pids_ws = TablePidsWs} = State) ->
+  {reply, TablePidsWs, State};
 
 % handle_call generic fallback
 handle_call(_Request, _From, State) ->
