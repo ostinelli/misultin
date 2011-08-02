@@ -31,6 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module('misultin_websocket_draft-hixie-76').
+-behaviour(misultin_websocket).
 -vsn("0.8.1-dev").
 
 % API

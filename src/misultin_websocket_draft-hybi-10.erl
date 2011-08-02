@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - WebSocket
+% MISULTIN - WebSocket - draft hybi 10
 %
 % >-|-|-(°>
 % 
@@ -32,6 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module('misultin_websocket_draft-hybi-10').
+-behaviour(misultin_websocket).
 -vsn("0.8.1-dev").
 
 % API

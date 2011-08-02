@@ -37,6 +37,9 @@
 -export([check/2, connect/4]).
 -export([check_headers/2, websocket_close/5, ws_loop/7, send_to_browser/2]).
 
+% behaviour
+-export([behaviour_info/1]).
+
 % includes
 -include("../include/misultin.hrl").
 
@@ -118,6 +121,7 @@ websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	% close main socket
 	misultin_socket:close(Socket, SocketMode).
 
+-spec send_to_browser(WsHandleLoopPid::pid(), Data::iolist() | binary()) -> {browser, Data::list()}.
 send_to_browser(WsHandleLoopPid, Data) ->
 	WsHandleLoopPid ! {browser, Data}.
 	
@@ -125,6 +129,17 @@ send_to_browser(WsHandleLoopPid, Data) ->
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
+
+% behaviour
+behaviour_info(callbacks) ->
+    [
+		{check_websocket, 1},
+		{handshake, 3},
+		{handle_data, 3},
+		{send_format, 2}
+	];
+behaviour_info(_) ->
+    undefined.
 
 % Loop to check for all available supported websocket protocols.
 -spec check_websockets(VsnSupportedMod::[websocket_version()], Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
