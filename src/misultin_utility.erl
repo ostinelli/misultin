@@ -449,6 +449,7 @@ qs_revdecode([C | Rest], Acc) ->
 
 % unexdigit
 -spec unhexdigit(char()) -> char().
+-spec hexdigit(char()) -> char().
 unhexdigit(C) when C >= $0, C =< $9 -> C - $0;
 unhexdigit(C) when C >= $a, C =< $f -> C - $a + 10;
 unhexdigit(C) when C >= $A, C =< $F -> C - $A + 10.
