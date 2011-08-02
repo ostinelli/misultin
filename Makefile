@@ -7,7 +7,7 @@ ERLC_FLAGS := -W -pa $(EBIN_DIR) -I $(INCLUDE_DIR) -o $(EBIN_DIR)
 
 all:
 	@mkdir -p $(EBIN_DIR)
-	$(ERLC) -D log_debug $(ERLC_FLAGS) $(SRC_DIR)/*.erl
+	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
 	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
 	
 clean:

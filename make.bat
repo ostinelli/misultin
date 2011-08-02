@@ -41,11 +41,11 @@ GOTO COMPILE
 
 :EXAMPLES
 mkdir ebin
-FOR %%f in (examples\*.erl) DO erlc -W %command% -o ebin "%%f"
+FOR %%f in (examples\*.erl) DO erlc -W %command% -pa ebin -I include -o ebin "%%f"
 
 :COMPILE
 mkdir ebin
-FOR %%f in (src\*.erl) DO erlc -W %command% -o ebin "%%f"
+FOR %%f in (src\*.erl) DO erlc -W %command% -pa ebin -I include -o ebin "%%f"
 copy src\misultin.app.src ebin\misultin.app /Y
 GOTO END
 
