@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.8").
+-vsn("0.8.1-dev").
 
 % API
 -export([handle_data/10]).
@@ -39,7 +39,7 @@
 % macros
 -define(MAX_HEADERS_COUNT, 100).
 -define(SUPPORTED_ENCODINGS, ["gzip", "deflate"]).
--define(SERVER_VERSION_TAG, "misultin/0.8").
+-define(SERVER_VERSION_TAG, "misultin/0.8.1-dev").
 
 % records
 -record(c, {
