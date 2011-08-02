@@ -3,11 +3,11 @@ SRC_DIR := src
 EXAMPLES_DIR := examples
 INCLUDE_DIR := include
 ERLC := erlc
-ERLC_FLAGS := -W -I $(INCLUDE_DIR) -o $(EBIN_DIR)
+ERLC_FLAGS := -W -pa $(EBIN_DIR) -I $(INCLUDE_DIR) -o $(EBIN_DIR)
 
 all:
 	@mkdir -p $(EBIN_DIR)
-	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
+	$(ERLC) -D log_debug $(ERLC_FLAGS) $(SRC_DIR)/*.erl
 	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
 	
 clean:

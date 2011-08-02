@@ -58,7 +58,10 @@
 
 % ============================ \/ API ======================================================================
 
-% callback to check if the incoming request is a websocket request according to this protocol
+% ----------------------------------------------------------------------------------------------------------
+% Function: -> true | false
+% Description: Callback to check if the incoming request is a websocket request according to this protocol.
+% ----------------------------------------------------------------------------------------------------------
 -spec check_websocket(Headers::http_headers()) -> boolean().
 check_websocket(Headers) ->
 	% set required headers
@@ -74,7 +77,10 @@ check_websocket(Headers) ->
 			false
 	end.
 
-% callback to build handshake
+% ----------------------------------------------------------------------------------------------------------
+% Function: -> iolist() | binary()
+% Description: Callback to build handshake data.
+% ----------------------------------------------------------------------------------------------------------
 -spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
 handshake(_Req, Headers, {_Path, _Origin, _Host}) ->
 	% build data
@@ -86,7 +92,10 @@ handshake(_Req, Headers, {_Path, _Origin, _Host}) ->
 		"Sec-WebSocket-Accept: ", Accept, "\r\n\r\n"
 	].
 
-% callback to handle incomed data
+% ----------------------------------------------------------------------------------------------------------
+% Function: -> websocket_close | {websocket_close, DataToSendBeforeClose::binary() | iolist()} | NewStatus
+% Description: Callback to handle incomed data.
+% ----------------------------------------------------------------------------------------------------------
 -spec handle_data(Data::binary(), Status::undefined | term(), {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | {websocket_close, binary()} | term().
 handle_data(Data, undefined, {Socket, SocketMode, WsHandleLoopPid}) ->
 	% init status
@@ -95,7 +104,10 @@ handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) ->
 	% read status
 	i_handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}).
 
-% callback to format data before it is sent into the socket
+% ----------------------------------------------------------------------------------------------------------
+% Function: -> binary() | iolist()
+% Description: Callback to format data before it is sent into the socket.
+% ----------------------------------------------------------------------------------------------------------
 -spec send_format(Data::iolist(), Status::term()) -> binary().
 send_format(Data, _State) ->
 	send_format(Data, ?OP_TEXT, _State).
