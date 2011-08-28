@@ -37,23 +37,31 @@
 -include("../include/misultin.hrl").
 
 % types
--type wst() :: {misultin_ws, #ws{}, SocketPid::pid()}.
+-type wst() :: {misultin_ws, SocketPid::pid()}.
 
 
 % ============================ \/ API ======================================================================
 
 % Returns raw websocket content.
 -spec raw(wst()) -> #ws{}.
-raw({misultin_ws, Ws, _SocketPid}) ->
-	Ws.
+raw({misultin_ws, SocketPid}) ->
+	misultin_utility:call(SocketPid, raw).
 
 % Get websocket info.
 -spec get(WsInfo::atom(), wst()) -> term().
-get(socket, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.socket;
-get(socket_mode, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#req.socket_mode;
-get(peer_addr, {misultin_ws, #ws{headers = Headers} = Ws, _SocketPid}) ->
+get(WsInfo, {misultin_ws, SocketPid}) when
+	WsInfo =:= socket;
+	WsInfo =:= socket_mode;
+	WsInfo =:= peer_port;
+	WsInfo =:= peer_cert;
+	WsInfo =:= vsn;
+	WsInfo =:= origin;
+	WsInfo =:= host;
+	WsInfo =:= path;
+	WsInfo =:= headers ->
+		misultin_utility:call(SocketPid, WsInfo);
+get(peer_addr, {misultin_ws, SocketPid}) ->
+	Headers = get(headers, {misultin_ws, SocketPid}),
 	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
 		undefined ->
 			case misultin_utility:get_key_value("X-Forwarded-For", Headers) of
@@ -64,33 +72,19 @@ get(peer_addr, {misultin_ws, #ws{headers = Headers} = Ws, _SocketPid}) ->
 	end,
 	case Host of
 		undefined ->
-			Ws#ws.peer_addr;
+			misultin_utility:call(SocketPid, peer_addr);
 		_ -> 
 			case inet_parse:address(Host) of
 				{error, _Reason} ->
-					Ws#ws.peer_addr;
+					misultin_utility:call(SocketPid, peer_addr);
 				{ok, IpTuple} ->
 					IpTuple
 			end
-	end;
-get(peer_port, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.peer_port;
-get(peer_cert, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.peer_cert;
-get(vsn, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.vsn;
-get(origin, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.origin;
-get(host, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.host;
-get(path, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.path;
-get(headers, {misultin_ws, Ws, _SocketPid}) ->
-	Ws#ws.headers.
+	end.
 
 % send data
 -spec send(Data::list() | binary() | iolist(), wst()) -> term().
-send(Data, {misultin_ws, _Ws, SocketPid}) ->
+send(Data, {misultin_ws, SocketPid}) ->
 	SocketPid ! {send, Data}.
 		
 % ============================ /\ API ======================================================================

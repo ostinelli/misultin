@@ -96,8 +96,8 @@ get(peer_addr, {misultin_req, SocketPid}) ->
 					IpTuple
 			end
 	end;
-get(uri_unquoted, {misultin_req, SocketPid}) ->
-	{_UriType, RawUri} = misultin_utility:call(SocketPid, uri),
+get(uri_unquoted, ReqT) ->
+	{_UriType, RawUri} = get(uri, ReqT),
 	misultin_utility:unquote(RawUri).
 
 % Get the value of a single variable
