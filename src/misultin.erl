@@ -136,7 +136,6 @@ init([Options]) ->
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
 			WsVersions = proplists:get_value(ws_versions, OptionsVerified),
 			RecBuf = proplists:get_value(recbuf, OptionsVerified),
-			?LOG_DEBUG("XXXXXXXXXXXXXXXXXXXXX LIST IS: ~p",[WsVersions]),
 			% ip address
 			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			% set additional options according to socket mode if necessary
