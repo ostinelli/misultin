@@ -76,9 +76,7 @@
 	{loop, function()} |
 	{autoexit, boolean()} |
 	{ws_loop, boolean()} |
-	{ws_autoexit, boolean()} |
-	{no_headers, boolean()} |
-	{ws_no_headers, boolean()}.
+	{ws_autoexit, boolean()}.
 -type misultin_option() :: misultin_option_tcp() |  misultin_option_server().
 % ---------------------------- /\ MISULTIN -----------------------------------------------------------------
 
@@ -145,9 +143,7 @@
 	loop				= undefined :: undefined | function(),			% the fun handling requests
 	autoexit			= true :: boolean(),							% shoud the http process be automatically killed?
 	ws_loop				= undefined :: undefined | function(),			% the loop handling websockets
-	ws_autoexit			= true :: boolean(),							% shoud the ws process be automatically killed?
-	no_headers			= false :: boolean(),							% optimization option, do not save headers in passed request over to developer code
-	ws_no_headers		= false :: boolean()							% optimization option, do not save headers in passed request over to developer code
+	ws_autoexit			= true :: boolean()								% shoud the ws process be automatically killed?
 }).
 
 % Request
@@ -164,7 +160,6 @@
 	uri				= undefined :: undefined | http_uri(),
 	args			= "" :: list(),									% Part of URI after ?
 	headers			= [] :: http_headers(),
-	no_headers		= false :: boolean(),
 	body			= <<>> :: binary()
 }).
 
@@ -180,8 +175,7 @@
 	origin			= undefined :: undefined | list(),				% the originator
 	host			= undefined :: undefined | list(),				% the host
 	path			= undefined :: undefined | list(),				% the websocket GET request path
-	headers			= [] :: http_headers(),
-	ws_no_headers	= false :: boolean()
+	headers			= [] :: http_headers()
 }).
 
 % ============================ /\ RECORDS ==================================================================
