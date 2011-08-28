@@ -34,7 +34,7 @@
 -vsn("0.8.1-dev").
 
 % API
--export([check/2, connect/4]).
+-export([check/3, connect/4]).
 -export([check_headers/2, websocket_close/5, ws_loop/4, send_to_browser/2]).
 
 % behaviour
@@ -47,13 +47,11 @@
 % ============================ \/ API ======================================================================
 
 % Check if the incoming request is a websocket handshake.
--spec check(Path::string(), Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
-check(_Path, Headers) ->
-	?LOG_DEBUG("testing for a websocket request path: ~p headers: ~p", [_Path, Headers]),
-	% set supported websocket protocols, order does matter
-	VsnSupported = ['draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'],	
+-spec check(WsVersions::[websocket_version()], Path::string(), Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
+check(WsVersions, _Path, Headers) ->
+	?LOG_DEBUG("testing for a websocket request path: ~p headers: ~p", [_Path, Headers]),	
 	% checks
-	check_websockets(VsnSupported, Headers).
+	check_websockets(WsVersions, Headers).
 
 % Connect and handshake with Websocket.
 -spec connect(ServerRef::pid(), Req::#req{}, Ws::#ws{}, WsLoop::function()) -> true.
@@ -139,7 +137,7 @@ behaviour_info(_) ->
     undefined.
 
 % Loop to check for all available supported websocket protocols.
--spec check_websockets(VsnSupportedMod::[websocket_version()], Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
+-spec check_websockets(VsnSupported::[websocket_version()], Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
 check_websockets([], _Headers) -> false;
 check_websockets([Vsn|T], Headers) ->
 	?LOG_DEBUG("testing for websocket protocol ~p", [Vsn]),

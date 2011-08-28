@@ -111,7 +111,8 @@ init([Options]) ->
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{autoexit, true, fun is_boolean/1, invalid_autoexit_option},
 		{ws_loop, undefined, fun is_function/1, ws_loop_not_function},
-		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option}
+		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
+		{ws_versions, ['draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified} % accepted values are 'draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'
 	],
 	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -133,7 +134,9 @@ init([Options]) ->
 			AutoExit = proplists:get_value(autoexit, OptionsVerified),
 			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
+			WsVersions = proplists:get_value(ws_versions, OptionsVerified),
 			RecBuf = proplists:get_value(recbuf, OptionsVerified),
+			?LOG_DEBUG("XXXXXXXXXXXXXXXXXXXXX LIST IS: ~p",[WsVersions]),
 			% ip address
 			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			% set additional options according to socket mode if necessary
@@ -186,7 +189,8 @@ init([Options]) ->
 						loop = Loop,
 						autoexit = AutoExit,
 						ws_loop = WsLoop,
-						ws_autoexit = WsAutoExit
+						ws_autoexit = WsAutoExit,
+						ws_versions = WsVersions
 					},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
@@ -247,6 +251,24 @@ check_ssl_options(SslOptions) ->
 check_recbuf(default) -> default;
 check_recbuf(RecBuf) when is_integer(RecBuf), RecBuf > 0 -> true;
 check_recbuf(_RecBuf) -> false.
+
+% check if ws specified versions are implemented. order does matter so we build a list in proper order
+-spec check_ws_version([websocket_version()]) -> false | [websocket_version()].
+check_ws_version(WsVsn) ->
+	ImplementedVsn = ['draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'],
+	%  build an ordered list of supported versions chosen by user.
+	F = fun(SupportedVsn, Acc) ->
+		case lists:member(SupportedVsn, WsVsn) of
+			true -> [SupportedVsn|Acc];
+			false -> Acc
+		end
+	end,
+	OrderedVsn = lists:reverse(lists:foldl(F, [], ImplementedVsn)),
+	% if length do not agree, then user has specified an unsupported version
+	case length(OrderedVsn) =:= length(WsVsn) of
+		true -> OrderedVsn;
+		_ -> false
+	end.
 
 % Validate and get misultin options.
 -spec get_option({

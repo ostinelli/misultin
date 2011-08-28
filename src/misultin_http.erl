@@ -55,7 +55,8 @@
 	loop				= undefined :: undefined | function(),
 	autoexit			= true :: boolean(),
 	ws_loop				= undefined :: undefined | function(),
-	ws_autoexit			= true :: boolean()
+	ws_autoexit			= true :: boolean(),
+	ws_versions			= undefined :: [websocket_version()]
 }).
 -record(req_options, {
 	comet				= false :: boolean()		% if comet =:= true, we will monitor client tcp close
@@ -94,7 +95,8 @@ handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, Pee
 		loop = CustomOpts#custom_opts.loop,
 		autoexit = CustomOpts#custom_opts.autoexit,
 		ws_loop = CustomOpts#custom_opts.ws_loop,
-		ws_autoexit = CustomOpts#custom_opts.ws_autoexit
+		ws_autoexit = CustomOpts#custom_opts.ws_autoexit,
+		ws_versions = CustomOpts#custom_opts.ws_versions
 	},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
@@ -189,7 +191,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			% check if it's a websocket request
 			CheckWs = case WsLoop of
 				undefined -> false;
-				_Function -> misultin_websocket:check(Path, Headers)
+				_Function -> misultin_websocket:check(C#c.ws_versions, Path, Headers)
 			end,
 			case CheckWs of
 				false ->
