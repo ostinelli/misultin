@@ -33,9 +33,11 @@
 
 % API
 -export([get_http_status_code/1, get_content_type/1, get_key_value/2, header_get_value/2]).
+-export([call/2, call/3, respond/2]).
 -export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
 
 % macros
+-define(INTERNAL_TIMEOUT, 30000).
 -define(PERCENT, 37).  % $\%
 -define(FULLSTOP, 46). % $\.
 -define(IS_HEX(C), (
@@ -370,6 +372,22 @@ header_get_value(Tag, Headers) when is_atom(Tag) ->
 		{_, Value} -> Value
 	end.
 
+% generic call function
+call(DestPid, Term) ->
+	call(DestPid, Term, ?INTERNAL_TIMEOUT).
+call(DestPid, Term, Timeout) ->
+	% send term
+	DestPid ! {self(), Term},
+	% wait for response
+	receive
+		{DestPid, Reply} -> Reply
+	after Timeout ->
+		{error, timeout}
+	end.
+
+% generic reply function
+respond(ReqPid, Term) ->
+	ReqPid ! {self(), Term}.
 
 %% @spec parse_qs(string() | binary()) -> [{Key, Value}]
 %% @doc Parse a query string or application/x-www-form-urlencoded.

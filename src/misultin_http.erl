@@ -450,7 +450,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 	% spawn
 	LoopPid = spawn_link(fun() ->
 		% create request
-		ReqT = {misultin_req, Req, Self},
+		ReqT = {misultin_req, Self},
 		% start custom loop
 		Loop(ReqT)
 	end),
@@ -492,6 +492,62 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			misultin_socket:send(Sock, Resp, SocketMode),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, raw} ->
+			?LOG_DEBUG("received request for: raw", []),
+			misultin_utility:respond(ReqPid, Req),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, socket} ->
+			?LOG_DEBUG("received request for: socket", []),
+			misultin_utility:respond(ReqPid, Req#req.socket),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, socket_mode} ->
+			?LOG_DEBUG("received request for: socket_mode", []),
+			misultin_utility:respond(ReqPid, Req#req.socket_mode),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, peer_addr} ->
+			?LOG_DEBUG("received request for: peer_addr", []),
+			misultin_utility:respond(ReqPid, Req#req.peer_addr),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, peer_port} ->
+			?LOG_DEBUG("received request for: peer_port", []),
+			misultin_utility:respond(ReqPid, Req#req.peer_port),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, peer_cert} ->
+			?LOG_DEBUG("received request for: peer_cert", []),
+			misultin_utility:respond(ReqPid, Req#req.peer_cert),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, connection} ->
+			?LOG_DEBUG("received request for: connection", []),
+			misultin_utility:respond(ReqPid, Req#req.connection),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, content_length} ->
+			?LOG_DEBUG("received request for: content_length", []),
+			misultin_utility:respond(ReqPid, Req#req.content_length),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, vsn} ->
+			?LOG_DEBUG("received request for: vsn", []),
+			misultin_utility:respond(ReqPid, Req#req.vsn),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, method} ->
+			?LOG_DEBUG("received request for: method", []),
+			misultin_utility:respond(ReqPid, Req#req.method),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, uri} ->
+			?LOG_DEBUG("received request for: uri", []),
+			misultin_utility:respond(ReqPid, Req#req.uri),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, args} ->
+			?LOG_DEBUG("received request for: args", []),
+			misultin_utility:respond(ReqPid, Req#req.args),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, headers} ->
+			?LOG_DEBUG("received request for: headers", []),
+			misultin_utility:respond(ReqPid, Req#req.headers),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+		{ReqPid, body} ->
+			?LOG_DEBUG("received request for: body", []),
+			misultin_utility:respond(ReqPid, Req#req.body),
 			socket_loop(C, Req, LoopPid, ReqOptions);
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),

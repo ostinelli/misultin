@@ -49,23 +49,34 @@
 -include_lib("kernel/include/file.hrl").
 
 % types
--type reqt() :: {misultin_req, #req{}, SocketPid::pid()}.
+-type reqt() :: {misultin_req, SocketPid::pid()}.
 
 
 % ============================ \/ API ======================================================================
 
 % Returns raw request content.
 -spec raw(reqt()) -> #req{}.
-raw({misultin_req, Req, _SocketPid}) ->
-	Req.
+raw({misultin_req, SocketPid}) ->
+	misultin_utility:call(SocketPid, raw).
 
 % Get request info.
 -spec get(ReqInfo::atom(), reqt()) -> term().
-get(socket, {misultin_req, Req, _SocketPid}) ->
-	Req#req.socket;
-get(socket_mode, {misultin_req, Req, _SocketPid}) ->
-	Req#req.socket_mode;
-get(peer_addr, {misultin_req, #req{headers = Headers} = Req, _SocketPid}) ->
+get(ReqInfo, {misultin_req, SocketPid}) when
+	ReqInfo =:= socket;
+	ReqInfo =:= socket_mode;
+	ReqInfo =:= peer_port;
+	ReqInfo =:= peer_cert;
+	ReqInfo =:= connection;
+	ReqInfo =:= content_length;
+	ReqInfo =:= vsn;
+	ReqInfo =:= method;
+	ReqInfo =:= uri;
+	ReqInfo =:= args;
+	ReqInfo =:= headers;
+	ReqInfo =:= body ->
+		misultin_utility:call(SocketPid, ReqInfo);
+get(peer_addr, {misultin_req, SocketPid}) ->
+	Headers = get(headers, {misultin_req, SocketPid}),
 	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
 		undefined ->
 			case misultin_utility:get_key_value("X-Forwarded-For", Headers) of
@@ -76,38 +87,18 @@ get(peer_addr, {misultin_req, #req{headers = Headers} = Req, _SocketPid}) ->
 	end,
 	case Host of
 		undefined ->
-			Req#req.peer_addr;
+			misultin_utility:call(SocketPid, peer_addr);
 		_ ->
 			case inet_parse:address(Host) of
 				{error, _Reason} ->
-					Req#req.peer_addr;
+					misultin_utility:call(SocketPid, peer_addr);
 				{ok, IpTuple} ->
 					IpTuple
 			end
 	end;
-get(peer_port, {misultin_req, Req, _SocketPid}) ->
-	Req#req.peer_port;
-get(peer_cert, {misultin_req, Req, _SocketPid}) ->
-	Req#req.peer_cert;
-get(connection, {misultin_req, Req, _SocketPid}) ->
-	Req#req.connection;
-get(content_length, {misultin_req, Req, _SocketPid}) ->
-	Req#req.content_length;
-get(vsn, {misultin_req, Req, _SocketPid}) ->
-	Req#req.vsn;
-get(method, {misultin_req, Req, _SocketPid}) ->
-	Req#req.method;
-get(uri, {misultin_req, Req, _SocketPid}) ->
-	Req#req.uri;
-get(uri_unquoted, {misultin_req, Req, _SocketPid}) ->
-	{_UriType, RawUri} = Req#req.uri,
-	misultin_utility:unquote(RawUri);
-get(args, {misultin_req, Req, _SocketPid}) ->
-	Req#req.args;
-get(headers, {misultin_req, Req, _SocketPid}) ->
-	Req#req.headers;
-get(body, {misultin_req, Req, _SocketPid}) ->
-	Req#req.body.
+get(uri_unquoted, {misultin_req, SocketPid}) ->
+	{_UriType, RawUri} = misultin_utility:call(SocketPid, uri),
+	misultin_utility:unquote(RawUri).
 
 % Get the value of a single variable
 -spec get_variable(VarName::string(), Variables::gen_proplist(), reqt()) -> undefined | string().
@@ -116,7 +107,8 @@ get_variable(VarName, Variables, _ReqT) ->
 
 % Get all cookies.
 -spec get_cookies(reqt()) -> gen_proplist().
-get_cookies({misultin_req, #req{headers = Headers}, _SocketPid}) ->
+get_cookies(ReqT) ->
+	Headers = get(headers, ReqT),
 	case misultin_utility:get_key_value('Cookie', Headers) of
 		undefined -> [];
 		CookieContent ->
@@ -164,9 +156,9 @@ respond(HttpCode, ReqT) ->
 	respond(HttpCode, [], [], ReqT).
 respond(HttpCode, Template, ReqT) ->
 	respond(HttpCode, [], Template, ReqT).
-respond(HttpCode, Headers, Template, {misultin_req, _Req, SocketPid}) ->
+respond(HttpCode, Headers, Template, {misultin_req, SocketPid}) ->
 	SocketPid ! {response, HttpCode, Headers, Template}.
-respond(HttpCode, Headers, Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =:= true ->
+respond(HttpCode, Headers, Template, Vars, {misultin_req, SocketPid}) when is_list(Template) =:= true ->
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
 
 % Allow to add already formatted headers, untouched
@@ -180,7 +172,7 @@ raw_headers_respond(HeadersStr, Body, ReqT) ->
 	raw_headers_respond(200, [], HeadersStr, Body, ReqT).
 raw_headers_respond(HttpCode, HeadersStr, Body, ReqT) ->
 	raw_headers_respond(HttpCode, [], HeadersStr, Body, ReqT).
-raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, _Req, SocketPid}) ->
+raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, SocketPid}) ->
 	SocketPid ! {response, HttpCode, {Headers, HeadersStr}, Body}.
 
 % set advanced options valid for a single request
@@ -190,11 +182,11 @@ options(Options, ReqT) when is_list(Options) ->
 	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
 % set to comet mode
 -spec options_set(OptionName::atom(), OptionVal::term(), reqt()) -> term().
-options_set(comet, OptionVal, {misultin_req, _Req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
+options_set(comet, OptionVal, {misultin_req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
 	SocketPid ! {set_option, {comet, OptionVal}};
-options_set(_OptionTag, _OptionVal, {misultin_req, _Req, _SocketPid})	->
+options_set(_OptionTag, _OptionVal, _ReqT)	->
 	% ignore
-	?LOG_DEBUG("ignoring advanced option ~p for request ~p", [{_OptionTag, _OptionVal}, _Req]),
+	?LOG_DEBUG("ignoring advanced option ~p", [{_OptionTag, _OptionVal}]),
 	ignore.
 
 % Chunked Transfer-Encoding.
@@ -233,19 +225,19 @@ chunk_send(Data, ReqT) ->
 	(Template::string(), Vars::[term()], reqt()) -> term().
 -spec stream
 	(head, HttpCode::non_neg_integer(), Headers::http_headers(), reqt()) -> term().
-stream(close, {misultin_req, _Req, SocketPid}) ->
+stream(close, {misultin_req, SocketPid}) ->
 	SocketPid ! stream_close;
 stream(head, ReqT) ->
 	stream(head, 200, [], ReqT);
-stream({error, Reason}, {misultin_req, _Req, SocketPid}) ->
+stream({error, Reason}, {misultin_req, SocketPid}) ->
 	SocketPid ! {stream_error, Reason};
-stream(Data, {misultin_req, _Req, SocketPid}) ->
+stream(Data, {misultin_req, SocketPid}) ->
 	catch SocketPid ! {stream_data, Data}.
 stream(head, Headers, ReqT) ->
 	stream(head, 200, Headers, ReqT);
-stream(Template, Vars, {misultin_req, _Req, SocketPid}) when is_list(Template) =:= true ->
+stream(Template, Vars, {misultin_req, SocketPid}) when is_list(Template) =:= true ->
 	catch SocketPid ! {stream_data, io_lib:format(Template, Vars)}.
-stream(head, HttpCode, Headers, {misultin_req, _Req, SocketPid}) ->
+stream(head, HttpCode, Headers, {misultin_req, SocketPid}) ->
 	catch SocketPid ! {stream_head, HttpCode, Headers}.
 
 % Sends a file to the browser.
@@ -277,27 +269,31 @@ file(attachment, FilePath, Headers, ReqT) ->
 
 % Parse QueryString
 -spec parse_qs(reqt()) -> string().
-parse_qs({misultin_req, Req, _SocketPid}) ->
-	misultin_utility:parse_qs(Req#req.args).
+parse_qs(ReqT) ->
+	Args = get(args, ReqT),
+	misultin_utility:parse_qs(Args).
 
 % Parse Post
 -spec parse_post(reqt()) -> binary() | [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
-parse_post({misultin_req, Req, _SocketPid}) ->
+parse_post(ReqT) ->
 	% get header confirmation
-	case misultin_utility:header_get_value('Content-Type', Req#req.headers) of
+	Headers = get(headers, ReqT),
+	case misultin_utility:header_get_value('Content-Type', Headers) of
 		false ->
 			[];
 		ContentType ->
 			[Type|Modificator] = string:tokens(ContentType, ";"),
 			case Type of
 			    "application/octet-stream" ->
-			        Req#req.body;
+			        get(body, ReqT);
 				"application/x-www-form-urlencoded" ->
-					misultin_utility:parse_qs(Req#req.body);
+					Body = get(body, ReqT),
+					misultin_utility:parse_qs(Body);
 				"multipart/form-data" ->
 					[Modificator0] = Modificator,
 					"boundary=" ++ Boundary = string:strip(Modificator0),
-					parse_multipart_form_data(Req#req.body, list_to_binary(Boundary));
+					Body = get(body, ReqT),
+					parse_multipart_form_data(Body, list_to_binary(Boundary));
 				_Other ->
 					[]
 			end
@@ -305,9 +301,9 @@ parse_post({misultin_req, Req, _SocketPid}) ->
 
 % Sets resource elements for restful services.
 -spec resource(Options::[term()], reqt()) -> [string()].
-resource(Options, {misultin_req, Req, _SocketPid}) when is_list(Options) ->
+resource(Options, ReqT) when is_list(Options) ->
 	% clean uri
-	{_UriType, RawUri} = Req#req.uri,
+	RawUri = get(uri_unquoted, ReqT),
 	Uri = lists:foldl(fun(Option, Acc) -> clean_uri(Option, Acc) end, RawUri, Options),
 	% split
 	string:tokens(Uri, "/").
