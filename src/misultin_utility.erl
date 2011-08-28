@@ -373,6 +373,8 @@ header_get_value(Tag, Headers) when is_atom(Tag) ->
 	end.
 
 % generic call function
+-spec call(DestPid::pid(), Term::term()) -> {error, timeout} | term().
+-spec call(DestPid::pid(), Term::term(), Timeout::non_neg_integer()) -> {error, timeout} | term().
 call(DestPid, Term) ->
 	call(DestPid, Term, ?INTERNAL_TIMEOUT).
 call(DestPid, Term, Timeout) ->
@@ -386,6 +388,7 @@ call(DestPid, Term, Timeout) ->
 	end.
 
 % generic reply function
+-spec respond(ReqPid::pid(), Term::term()) -> {Pid::pid(), Term::term()}.
 respond(ReqPid, Term) ->
 	ReqPid ! {self(), Term}.
 
