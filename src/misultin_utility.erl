@@ -35,6 +35,7 @@
 -export([get_http_status_code/1, get_content_type/1, get_key_value/2, header_get_value/2]).
 -export([call/2, call/3, respond/2]).
 -export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
+-export([convert_ip_to_list/1]).
 
 % macros
 -define(INTERNAL_TIMEOUT, 30000).
@@ -424,6 +425,16 @@ quote_plus(Binary) when is_binary(Binary) ->
 	quote_plus(binary_to_list(Binary));
 quote_plus(String) ->
 	quote_plus(String, []).
+
+
+% convert an Ip tuple to string format
+-spec convert_ip_to_list(Ip::term()) -> list().
+convert_ip_to_list({A, B, C, D}) ->
+	lists:flatten(io_lib:format("~p.~p.~p.~p", [A, B, C, D]));
+convert_ip_to_list({A, B, C, D, E, F, G, H}) ->
+	lists:flatten(io_lib:format("~p.~p.~p.~p.~p.~p.~p.~p", [A, B, C, D, E, F, G, H]));
+convert_ip_to_list(_) ->
+	"undefined".
 
 % ============================ /\ API ======================================================================
 

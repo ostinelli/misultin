@@ -52,6 +52,7 @@
 % Starts the server.
 -spec start_link(Options::gen_proplist()) -> {ok, Pid::pid()} | {error, Reason::term()}.
 start_link(Options) when is_list(Options) ->
+	?LOG_DEBUG("starting misultin server",[]),
 	% check if name option has been specified, otherwise default to 'misultin' as regname
 	case get_option({name, ?SERVER, fun is_atom/1, invalid_misultin_process_name}, Options) of
 		{error, Reason} ->
@@ -60,7 +61,7 @@ start_link(Options) when is_list(Options) ->
 			{error, Reason};
 		{name, false} ->
 			% start misultin without name
-			?LOG_DEBUG("starting misultin supervisor without a registered name",[]),
+			?LOG_DEBUG("starting misultin without a registered name",[]),
 			supervisor:start_link(?MODULE, [Options]);
 		{name, Value} ->
 			% start misultin with specified name
@@ -79,6 +80,7 @@ stop(undefined) ->
 stop(SupName) when is_atom(SupName) ->
 	stop(whereis(SupName));
 stop(SupPid) when is_pid(SupPid) ->
+	?LOG_INFO("shutting down misultin server",[]),
 	exit(SupPid, normal).
 
 % ============================ /\ API ======================================================================
@@ -92,7 +94,7 @@ stop(SupPid) when is_pid(SupPid) ->
 % ----------------------------------------------------------------------------------------------------------å
 -spec init(Options::gen_proplist()) -> {ok, term()} | {error, Reason::term()}.
 init([Options]) ->
-	?LOG_INFO("starting supervisor with pid: ~p", [self()]),
+	?LOG_DEBUG("starting server with pid: ~p", [self()]),
 	% test and get options
 	OptionProps = [
 		% socket
@@ -136,8 +138,6 @@ init([Options]) ->
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
 			WsVersions = proplists:get_value(ws_versions, OptionsVerified),
 			RecBuf = proplists:get_value(recbuf, OptionsVerified),
-			% ip address
-			?LOG_DEBUG("ip address is: ~p", [Ip]),
 			% set additional options according to socket mode if necessary
 			Continue = case SslOptions0 of
 				false ->
@@ -195,13 +195,17 @@ init([Options]) ->
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
 					% define acceptors supervisor specs
 					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
+					% ip address
+					?LOG_INFO("starting misultin server on address ~p and port ~p", [misultin_utility:convert_ip_to_list(Ip), Port]),
 					% spawn
 					{ok, {{one_for_all, 5, 30}, [ServerSpec, AcceptorSupSpec]}};
 				Error ->
+					?LOG_ERROR("error starting misultin server: ~p", [Error]),
 					{error, Error}
 			end;
 		Reason ->
 			% error found in options
+			?LOG_ERROR("option error starting misultin server: ~p", [Reason]),
 			{error, Reason}
 	end.
 

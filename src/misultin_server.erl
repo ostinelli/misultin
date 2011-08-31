@@ -39,7 +39,7 @@
 
 % API
 -export([start_link/1]).
--export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1, get_table_date_ref/1]).
+-export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1, get_iso8601_date/1, get_table_date_ref/1]).
 
 % macros
 -define(TABLE_PIDS_HTTP, misultin_table_pids_http).
@@ -92,6 +92,11 @@ ws_pid_ref_remove(ServerRef, WsPid) ->
 get_rfc_date(TableDateRef) ->
 	ets:lookup_element(TableDateRef, rfc_date, 2).
 	
+% Retrieve computed ISO 8601 date
+-spec get_iso8601_date(TableDateRef::ets:tid()) -> string().
+get_iso8601_date(TableDateRef) ->
+	ets:lookup_element(TableDateRef, iso_8601_date, 2).
+	
 % Retrieve table date reference.
 -spec get_table_date_ref(ServerRef::pid()) -> TableDateRef::ets:tid().
 get_table_date_ref(ServerRef) ->
@@ -108,7 +113,7 @@ get_table_date_ref(ServerRef) ->
 % ----------------------------------------------------------------------------------------------------------
 init({MaxConnections}) ->
 	process_flag(trap_exit, true),
-	?LOG_INFO("starting misultin server with pid: ~p", [self()]),
+	?LOG_DEBUG("starting misultin server with pid: ~p", [self()]),
 	% create ets tables to save open connections and websockets
 	TablePidsHttp = ets:new(?TABLE_PIDS_HTTP, [set, protected]),
 	TablePidsWs = ets:new(?TABLE_PIDS_WS, [set, protected]),
@@ -120,7 +125,7 @@ init({MaxConnections}) ->
 			% read_concurrency not supported before R14B
 			ets:new(?TABLE_DATE, [set, public])
 	end,
-	update_rfc_date(TableDate),
+	update_datetable(TableDate),
 	% start date build timer
 	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), compute_rfc_date),
 	% return
@@ -207,7 +212,7 @@ handle_info(compute_rfc_date, #state{table_date = TableDate} = State) ->
 	Self = self(),
 	spawn(fun() ->
 		% update date
-		update_rfc_date(TableDate),
+		update_datetable(TableDate),
 		% start date build timer
 		erlang:send_after(?DATE_UPDATE_INTERVAL, Self, compute_rfc_date)
 	end),
@@ -238,7 +243,7 @@ handle_info(_Info, State) ->
 % the gen_server terminates with Reason. The return value is ignored.
 % ----------------------------------------------------------------------------------------------------------
 terminate(_Reason, #state{table_pids_http = TablePidsHttp, table_pids_ws = TablePidsWs, table_date = TableDate}) ->
-	?LOG_INFO("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
+	?LOG_DEBUG("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
 	% build pid lists from ets tables
 	HttpPidList = [X || {X, _} <- ets:tab2list(TablePidsHttp)],
 	WsPidList = [X || {X, _} <- ets:tab2list(TablePidsWs)],
@@ -249,7 +254,7 @@ terminate(_Reason, #state{table_pids_http = TablePidsHttp, table_pids_ws = Table
 	?LOG_DEBUG("sending shutdown message to ~p http processes", [length(HttpPidList)]),
 	lists:foreach(fun(HttpPid) -> catch HttpPid ! shutdown end, HttpPidList),
 	% delete ETS tables
-	?LOG_INFO("removing ets tables",[]),
+	?LOG_DEBUG("removing ets tables",[]),
 	ets:delete(TablePidsHttp),
 	ets:delete(TablePidsWs),
 	ets:delete(TableDate),
@@ -267,9 +272,13 @@ code_change(_OldVsn, State, _Extra) ->
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% compute RFC date and update ETS table
--spec update_rfc_date(TableDate::ets:tid()) -> true.
-update_rfc_date(TableDate) ->
-	ets:insert(TableDate, {rfc_date, httpd_util:rfc1123_date()}).
+% compute RFC and ISO8601 dates and update ETS table
+-spec update_datetable(TableDate::ets:tid()) -> true.
+update_datetable(TableDate) ->
+	{{Year,Month,Day},{Hour,Min,Sec}} = calendar:universal_time(),
+	ets:insert(TableDate, [
+		{rfc_date, httpd_util:rfc1123_date({{Year,Month,Day},{Hour,Min,Sec}})},
+		{iso_8601_date, lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B UTC", [Year, Month, Day, Hour, Min, Sec]))}
+	]).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

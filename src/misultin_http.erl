@@ -466,7 +466,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 
 % socket loop
 -spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}) -> ok | shutdown | ssl_closed | tcp_closed.
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress, table_date_ref = TableDateRef} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -493,6 +493,16 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			end,
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
+			% info log
+			?LOG_INFO("~p - - [~p] ~p ~p ~p", [
+				misultin_utility:convert_ip_to_list(Req#req.peer_addr),
+				misultin_server:get_iso8601_date(TableDateRef),
+				%misultin_req:get(uri_unquoted, Req),
+				"GET TEST",
+				HttpCode,
+				size(BodyBinary)
+			]),
+			% send
 			misultin_socket:send(Sock, Resp, SocketMode),
 			socket_loop(C, Req, LoopPid, ReqOptions);
 		{LoopPid, raw} ->
