@@ -428,13 +428,13 @@ quote_plus(String) ->
 
 
 % convert an Ip tuple to string format
--spec convert_ip_to_list(Ip::term()) -> list().
+-spec convert_ip_to_list(Ip::term()) -> undefined | list().
 convert_ip_to_list({A, B, C, D}) ->
 	lists:flatten(io_lib:format("~p.~p.~p.~p", [A, B, C, D]));
 convert_ip_to_list({A, B, C, D, E, F, G, H}) ->
 	lists:flatten(io_lib:format("~p.~p.~p.~p.~p.~p.~p.~p", [A, B, C, D, E, F, G, H]));
 convert_ip_to_list(_) ->
-	"undefined".
+	undefined.
 
 % ============================ /\ API ======================================================================
 

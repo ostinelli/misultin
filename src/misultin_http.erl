@@ -34,7 +34,7 @@
 -vsn("0.8.1-dev").
 
 % API
--export([handle_data/10]).
+-export([handle_data/10, build_error_message/3]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -101,6 +101,17 @@ handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, Pee
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
 	request(C, Req).
+
+% build error message
+-spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid()) -> iolist().
+build_error_message(HttpCode, Req, TableDateRef) ->
+	% build headers
+	Headers = [{'Content-Length', 0}, {'Connection', Req#req.connection}],
+	Enc_headers = enc_headers(Headers),
+	% info log
+	build_access_log(HttpCode, 0, Req, TableDateRef),
+	% build and send response
+	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
 
 % ============================ /\ API ======================================================================
 
@@ -783,19 +794,15 @@ list_to_number(L) ->
 		Value -> Value
 	end.
 
-% build error message
--spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid()) -> iolist().
-build_error_message(HttpCode, Req, TableDateRef) ->
-	% build headers
-	Headers = [{'Content-Length', 0}, {'Connection', Req#req.connection}],
-	Enc_headers = enc_headers(Headers),
-	% info log
-	build_access_log(HttpCode, 0, Req, TableDateRef),
-	% build and send response
-	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
-
 % build access log
 -spec build_access_log(HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid()) -> ok.
+build_access_log(HttpCode, ContentLength, #req{uri = undefined} = Req, TableDateRef) ->
+	?LOG_INFO("~s - - [~s] \"-\" ~p ~p", [
+		misultin_utility:convert_ip_to_list(Req#req.peer_addr),
+		misultin_server:get_iso8601_date(TableDateRef),
+		HttpCode,
+		ContentLength
+	]);
 build_access_log(HttpCode, ContentLength, Req, TableDateRef) ->
 	{Maj, Min} = Req#req.vsn,
 	?LOG_INFO("~s - - [~s] \"~s ~s HTTP/~p.~p\" ~p ~p", [

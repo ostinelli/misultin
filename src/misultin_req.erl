@@ -267,9 +267,11 @@ file(attachment, FilePath, Headers, ReqT) ->
 	file_send(FilePath, Headers0, ReqT).
 
 % unquote uri
--spec uri_unquote({UriType::atom(), RawUri::list()}) -> list().
-uri_unquote({_UriType, RawUri}) when is_list(RawUri) ->
-	misultin_utility:unquote(RawUri).
+-spec uri_unquote({UriType::atom(), RawUri::list()}) -> undefined | list().
+uri_unquote({_UriType, RawUri}) ->
+	misultin_utility:unquote(RawUri);
+uri_unquote(_) ->
+	undefined.
 
 % Parse QueryString
 -spec parse_qs(reqt()) -> string().

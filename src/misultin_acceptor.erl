@@ -187,8 +187,10 @@ open_connections_switch(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, 
 			misultin_server:http_pid_ref_remove(ServerRef, self(), HttpMonRef);
 		{error, _Reason} ->
 			% too many open connections, send error and close [spawn to avoid locking]
-			?LOG_WARNING("~p, refusing new request", [_Reason]),
-			misultin_socket:send(Sock, [misultin_utility:get_http_status_code(503), <<"Connection: Close\r\n\r\n">>], SocketMode),
+			?LOG_DEBUG("~p, refusing new request", [_Reason]),
+			{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
+			Msg = misultin_http:build_error_message(503, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef),
+			misultin_socket:send(Sock, Msg, SocketMode),
 			misultin_socket:close(Sock, SocketMode)
 	end.
 
