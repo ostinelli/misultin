@@ -19,6 +19,11 @@ debug:
 	$(ERLC) -D log_debug $(ERLC_FLAGS) $(SRC_DIR)/*.erl
 	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
 	
+info:
+	@mkdir -p $(EBIN_DIR)
+	$(ERLC) -D log_info $(ERLC_FLAGS) $(SRC_DIR)/*.erl
+	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
+	
 dialyzer:
 	@mkdir -p $(EBIN_DIR)
 	$(ERLC) +debug_info $(ERLC_FLAGS) $(SRC_DIR)/*.erl
