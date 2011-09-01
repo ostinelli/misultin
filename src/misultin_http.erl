@@ -796,23 +796,23 @@ list_to_number(L) ->
 
 % build access log
 -spec build_access_log(HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid()) -> ok.
-build_access_log(HttpCode, ContentLength, #req{uri = undefined} = Req, TableDateRef) ->
+build_access_log(_HttpCode, _ContentLength, #req{uri = undefined} = _Req, _TableDateRef) ->
 	?LOG_INFO("~s - - [~s] \"-\" ~p ~p", [
-		misultin_utility:convert_ip_to_list(Req#req.peer_addr),
-		misultin_server:get_iso8601_date(TableDateRef),
-		HttpCode,
-		ContentLength
+		misultin_utility:convert_ip_to_list(_Req#req.peer_addr),
+		misultin_server:get_iso8601_date(_TableDateRef),
+		_HttpCode,
+		_ContentLength
 	]);
-build_access_log(HttpCode, ContentLength, Req, TableDateRef) ->
-	{Maj, Min} = Req#req.vsn,
+build_access_log(_HttpCode, _ContentLength, _Req, _TableDateRef) ->
+	{_Maj, _Min} = _Req#req.vsn,
 	?LOG_INFO("~s - - [~s] \"~s ~s HTTP/~p.~p\" ~p ~p", [
-		misultin_utility:convert_ip_to_list(Req#req.peer_addr),
-		misultin_server:get_iso8601_date(TableDateRef),
-		Req#req.method,
-		misultin_req:uri_unquote(Req#req.uri),
-		Maj, Min,
-		HttpCode,
-		ContentLength
+		misultin_utility:convert_ip_to_list(_Req#req.peer_addr),
+		misultin_server:get_iso8601_date(_TableDateRef),
+		_Req#req.method,
+		misultin_req:uri_unquote(_Req#req.uri),
+		_Maj, _Min,
+		_HttpCode,
+		_ContentLength
 	]).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
