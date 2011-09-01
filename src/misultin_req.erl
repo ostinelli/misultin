@@ -42,7 +42,7 @@
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
 -export([raw/1, get/2, get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
--export([parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
+-export([uri_unquote/1, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -97,8 +97,7 @@ get(peer_addr, {misultin_req, SocketPid}) ->
 			end
 	end;
 get(uri_unquoted, ReqT) ->
-	{_UriType, RawUri} = get(uri, ReqT),
-	misultin_utility:unquote(RawUri).
+	uri_unquote(get(uri, ReqT)).
 
 % Get the value of a single variable
 -spec get_variable(VarName::string(), Variables::gen_proplist(), reqt()) -> undefined | string().
@@ -266,6 +265,11 @@ file(attachment, FilePath, Headers, ReqT) ->
 		_ -> Headers
 	end,
 	file_send(FilePath, Headers0, ReqT).
+
+% unquote uri
+-spec uri_unquote({UriType::atom(), RawUri::list()}) -> list().
+uri_unquote({_UriType, RawUri}) when is_list(RawUri) ->
+	misultin_utility:unquote(RawUri).
 
 % Parse QueryString
 -spec parse_qs(reqt()) -> string().

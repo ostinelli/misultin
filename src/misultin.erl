@@ -196,7 +196,7 @@ init([Options]) ->
 					% define acceptors supervisor specs
 					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% ip address
-					?LOG_INFO("starting misultin server on address ~p and port ~p", [misultin_utility:convert_ip_to_list(Ip), Port]),
+					?LOG_INFO("starting misultin server on address ~s and port ~p", [misultin_utility:convert_ip_to_list(Ip), Port]),
 					% spawn
 					{ok, {{one_for_all, 5, 30}, [ServerSpec, AcceptorSupSpec]}};
 				Error ->
