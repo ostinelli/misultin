@@ -35,7 +35,7 @@
 
 % API
 -export([check/3, connect/4]).
--export([check_headers/2, websocket_close/5, ws_loop/4, send_to_browser/2]).
+-export([check_headers/2, websocket_close/5, ws_loop/4, send_to_browser/2, get_wsinfo/2]).
 
 % behaviour
 -export([behaviour_info/1]).
@@ -116,9 +116,15 @@ websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit) ->
 	% close main socket
 	misultin_socket:close(Socket, SocketMode).
 
+% send to browser
 -spec send_to_browser(WsHandleLoopPid::pid(), Data::iolist() | binary()) -> {browser, Data::list()}.
 send_to_browser(WsHandleLoopPid, Data) ->
 	WsHandleLoopPid ! {browser, Data}.
+
+% get ws info from websocket process handler
+-spec get_wsinfo(SocketPid::pid(), WsInfo::atom()) -> term().
+get_wsinfo(SocketPid, WsInfo) ->
+	misultin_utility:call(SocketPid, {wsinfo, WsInfo}).
 	
 % ============================ /\ API ======================================================================
 
@@ -175,50 +181,23 @@ ws_loop(ServerRef, WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode 
 				NewState ->
 					ws_loop(ServerRef, WsHandleLoopPid, Ws, NewState)
 			end;
-		{WsHandleLoopPid, raw} ->
-			?LOG_DEBUG("received ws request info for: raw", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws),
+		{WsHandleLoopPid, {wsinfo, WsInfo}} ->
+			WsResponse = case WsInfo of
+				raw				-> Ws;
+				socket			-> Ws#ws.socket;
+				socket_mode		-> Ws#ws.socket_mode;
+				peer_addr		-> Ws#ws.peer_addr;
+				peer_port		-> Ws#ws.peer_port;
+				peer_cert		-> Ws#ws.peer_cert;
+				vsn				-> Ws#ws.vsn;
+				origin			-> Ws#ws.origin;
+				host			-> Ws#ws.host;
+				path			-> Ws#ws.path;
+				headers			-> Ws#ws.headers
+			end,
+			?LOG_DEBUG("received ws info for: ~p, responding with ~p", [WsInfo, WsResponse]),
+			misultin_utility:respond(WsHandleLoopPid, WsResponse),
 			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, socket} ->
-			?LOG_DEBUG("received ws request info for: socket", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.socket),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, socket_mode} ->
-			?LOG_DEBUG("received ws request info for: socket_mode", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.socket_mode),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, peer_addr} ->
-			?LOG_DEBUG("received ws request info for: peer_addr", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.peer_addr),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, peer_port} ->
-			?LOG_DEBUG("received ws request info for: peer_port", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.peer_port),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, peer_cert} ->
-			?LOG_DEBUG("received ws request info for: peer_cert", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.peer_cert),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, vsn} ->
-			?LOG_DEBUG("received ws request info for: vsn", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.vsn),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, origin} ->
-			?LOG_DEBUG("received ws request info for: origin", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.origin),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, host} ->
-			?LOG_DEBUG("received ws request info for: host", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.host),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, path} ->
-			?LOG_DEBUG("received ws request info for: path", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.path),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
-		{WsHandleLoopPid, headers} ->
-			?LOG_DEBUG("received ws request info for: headers", []),
-			misultin_utility:respond(WsHandleLoopPid, Ws#ws.headers),
-			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);		
 		{tcp_closed, Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop

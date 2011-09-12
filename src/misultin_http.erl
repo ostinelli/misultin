@@ -530,8 +530,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 				uri				-> Req#req.uri;
 				args			-> Req#req.args;
 				headers			-> Req#req.headers;
-				body			-> Req#req.body;
-				_				-> undefined			% fallback, should never happen
+				body			-> Req#req.body
 			end,
 			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
 			misultin_utility:respond(LoopPid, ReqResponse),

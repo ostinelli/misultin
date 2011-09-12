@@ -45,7 +45,7 @@
 % Returns raw websocket content.
 -spec raw(wst()) -> #ws{}.
 raw({misultin_ws, SocketPid}) ->
-	misultin_utility:call(SocketPid, raw).
+	misultin_websocket:get_wsinfo(SocketPid, raw).
 
 % Get websocket info.
 -spec get(WsInfo::atom(), wst()) -> term().
@@ -59,7 +59,7 @@ get(WsInfo, {misultin_ws, SocketPid}) when
 	WsInfo =:= host;
 	WsInfo =:= path;
 	WsInfo =:= headers ->
-		misultin_utility:call(SocketPid, WsInfo);
+		misultin_websocket:get_wsinfo(SocketPid, WsInfo);
 get(peer_addr, {misultin_ws, SocketPid}) ->
 	Headers = get(headers, {misultin_ws, SocketPid}),
 	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
@@ -72,11 +72,11 @@ get(peer_addr, {misultin_ws, SocketPid}) ->
 	end,
 	case Host of
 		undefined ->
-			misultin_utility:call(SocketPid, peer_addr);
+			misultin_websocket:get_wsinfo(SocketPid, peer_addr);
 		_ -> 
 			case inet_parse:address(Host) of
 				{error, _Reason} ->
-					misultin_utility:call(SocketPid, peer_addr);
+					misultin_websocket:get_wsinfo(SocketPid, peer_addr);
 				{ok, IpTuple} ->
 					IpTuple
 			end
