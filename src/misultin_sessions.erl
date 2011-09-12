@@ -35,18 +35,23 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 % API
--export([start_link/1, start_session/2]).
+-export([start_link/1]).
+-export([start_session/3, set_session_cookie/1]).
 
 % internal
--export([session_loop/3]).
+-export([expire_sessions/1]).
 
 % macros
 -define(TABLE_SESSIONS, misultin_table_sessions).
 -define(RAND_BYTES_NUM, 128).
+-define(SESSION_HEADER_NAME, "misultin_session").
+-define(SESSION_EXPIRE_SEC, 15).		% 600 = ten minutes of inactivity.
+-define(DATE_UPDATE_INTERVAL, 1000).	% compute table expired sessions every 1000ms = 1 sec
 
 % records
 -record(state, {
-	table_sessions			= undefined :: undefined | ets:tid()			% ETS table reference which holds the sessions
+	table_sessions			= undefined :: undefined | ets:tid(),			% ETS table reference which holds the sessions id
+	table_sessions_pid		= undefined :: undefined | ets:tid()			% ETS table reference which holds the sessions pid
 }).
 
 % includes
@@ -61,8 +66,15 @@ start_link(Options) when is_tuple(Options) ->
 	gen_server:start_link(?MODULE, Options, []).
 
 % start a session
-start_session(ServerRef, Req) ->
-	gen_server:call(ServerRef, {start_session, Req}).
+start_session(ServerRef, Cookies, Req) ->
+	% extract session id
+	SessionId = misultin_utility:get_key_value(?SESSION_HEADER_NAME, Cookies),
+	% call
+	gen_server:call(ServerRef, {start_session, SessionId, Req}).
+
+% return session cookie
+set_session_cookie(SessionId) ->
+	misultin_cookies:set_cookie(?SESSION_HEADER_NAME, SessionId, [{max_age, ?SESSION_EXPIRE_SEC}]).
 
 % ============================ /\ API ======================================================================
 
@@ -76,8 +88,10 @@ start_session(ServerRef, Req) ->
 init({}) ->
 	process_flag(trap_exit, true),
 	?LOG_DEBUG("starting session server with pid: ~p", [self()]),
-	% create ets tables to save open connections and websockets
-	TableSessions = ets:new(?TABLE_SESSIONS, [set, public]),
+	% create ets tables to save session data
+	TableSessions= ets:new(?TABLE_SESSIONS, [set, public]),
+	% start timer to expire sessions
+	erlang:send_after(0, self(), expire_sessions),
 	% return
 	{ok, #state{table_sessions = TableSessions}}.
 
@@ -89,19 +103,30 @@ init({}) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % start a session
-handle_call({start_session, Req}, _From, #state{table_sessions = TableSessions} = State) ->
-	?LOG_DEBUG("received start session request",[]),
-	% generate a session id
-	SessionId = generate_session_id(),
-	% start a process
-	spawn_link(fun() ->
-		% add to ets table
-		ets:insert(TableSessions, {SessionId, self(), Req#req.peer_addr, []}),
-		% loop
-		session_loop(SessionId, TableSessions, [])
-	end),
-	?LOG_DEBUG("generated new session process with id: ~p", [SessionId]),
-	{reply, SessionId, State};
+handle_call({start_session, undefined, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+	?LOG_DEBUG("generate a new session",[]),
+	Response = i_start_session(TableSessions, Req),
+	{reply, Response, State};
+handle_call({start_session, SessionId, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+	?LOG_DEBUG("received start session for ~p", [SessionId]),
+	case ets:lookup(TableSessions, SessionId) of
+		[] ->
+			?LOG_DEBUG("session with id ~p could not be found, start new one", [SessionId]),
+			Response = i_start_session(TableSessions, Req),
+			{reply, Response, State};
+		[{SessionId, VerifyInfo, _TSLastAccess, _Variables}] ->
+			?LOG_DEBUG("session id ~p found in table with verify info: ~p, start validity check", [SessionId, VerifyInfo]),
+			case is_session_valid(VerifyInfo, Req) of
+				true ->
+					?LOG_DEBUG("session is valid, return session id ~p", [SessionId]),
+					{reply, SessionId, State};
+				false ->
+					?LOG_DEBUG("session is not valid, killing session and generate new",[]),
+					i_remove_session(TableSessions, SessionId),
+					Response = i_start_session(TableSessions, Req),
+					{reply, Response, State}
+			end
+	end;
 
 % handle_call generic fallback
 handle_call(_Request, _From, State) ->
@@ -123,18 +148,17 @@ handle_cast(_Msg, State) ->
 % Description: Handling all non call/cast messages.
 % ----------------------------------------------------------------------------------------------------------
 
-% handle session process exits and crashes
-handle_info({'EXIT', _SessionPid, normal}, State) -> {noreply, State};	% normal exiting of a session process
-handle_info({'EXIT', SessionPid, _Reason}, #state{table_sessions = TableSessions} = State) ->
-	case ets:member(TableSessions, SessionPid) of
-		true ->
-			?LOG_ERROR("session process ~p has died with reason: ~p, removing from session table", [SessionPid, _Reason]),
-			ets:delete(TableSessions, SessionPid),
-			{noreply, State};
-		false ->
-			?LOG_WARNING("received info on a process ~p crash which is not a session process, with reason: ~p", [SessionPid, _Reason]),
-			{noreply, State}
-	end;
+% expire sessions
+handle_info(expire_sessions, #state{table_sessions = TableSessions} = State) ->
+	% avoid locking gen server
+	Self = self(),
+	spawn(fun() ->
+		% expire sessions
+		expire_sessions(TableSessions),
+		% start date build timer
+		erlang:send_after(?DATE_UPDATE_INTERVAL, Self, expire_sessions)
+	end),
+	{noreply, State};
 
 % handle_info generic fallback (ignore)
 handle_info(_Info, State) ->
@@ -148,7 +172,7 @@ handle_info(_Info, State) ->
 % ----------------------------------------------------------------------------------------------------------
 terminate(_Reason, #state{table_sessions = TableSessions}) ->
 	?LOG_DEBUG("shutting down session server with Pid ~p with reason: ~p", [self(), _Reason]),
-	% delete ETS tables
+	% delete ETS table
 	?LOG_DEBUG("removing ets table",[]),
 	ets:delete(TableSessions),
 	terminated.
@@ -165,23 +189,51 @@ code_change(_OldVsn, State, _Extra) ->
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
+% start a new session
+i_start_session(TableSessions, Req) ->
+	% build verify info
+	case get_ip_domain(Req#req.peer_addr) of
+		{error, _} ->
+			{error, could_not_start_session};
+		VerifyDomain ->
+			?LOG_DEBUG("build verify domain: ~p", [VerifyDomain]),
+			% generate a session id
+			SessionId = generate_session_id(),
+			?LOG_DEBUG("generated session id: ~p", [SessionId]),
+			% insert into ETS
+			VerifyInfo = {VerifyDomain},
+			Variables = [],
+			TSLastAccess = misultin_utility:get_unix_timestamp(),
+			ets:insert(TableSessions, {SessionId, VerifyInfo, TSLastAccess, Variables}),
+			% return SessionId
+			SessionId
+	end.
+
+% remove an existing session entry
+i_remove_session(TableSessions, SessionId) ->
+	ets:delete(TableSessions, SessionId).
+	
 % generate a session id string
 generate_session_id() ->
 	misultin_utility:hexstr(erlang:md5(crypto:rand_bytes(?RAND_BYTES_NUM))).
 
+% get domain
+get_ip_domain({A, B, C, _}) -> {A, B, C};	% ipv4
+get_ip_domain({A, B, C, D, E, F, G, _}) -> {A, B, C, D, E, F, G};	% ipv6
+get_ip_domain(_) -> {error, undefined_ip}.
 
-% session process
-session_loop(SessionId, TableSessions, Variables) ->
-	receive
-		
-		
-		
-		_Unknown ->
-			?LOG_DEBUG("received unknown message ~p, ignoring", [_Unknown]),
-			session_loop(SessionId, TableSessions, Variables)
-	after 15000 ->
-		?LOG_DEBUG("session id ~p has expired, shutting down session process and removing it from ets table", [SessionId]),
-		ets:delete(TableSessions, SessionId)
+% is session valid
+is_session_valid({VerifyDomain}, Req) ->
+	get_ip_domain(Req#req.peer_addr) =:= VerifyDomain.
+
+% expire sessions
+expire_sessions(TableSessions) ->
+	TS = misultin_utility:get_unix_timestamp(),
+	NumDeleted = ets:select_delete(TableSessions, [{{'_', '_', '$1', '_'}, [{'<', '$1', TS - ?SESSION_EXPIRE_SEC}], [true]}]),
+	case NumDeleted > 0 of
+		true -> ?LOG_DEBUG("removed ~p expired session(s)", [NumDeleted]);
+		_ -> true
 	end.
+
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

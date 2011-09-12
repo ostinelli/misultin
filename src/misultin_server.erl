@@ -127,7 +127,7 @@ init({MaxConnections}) ->
 	end,
 	update_datetable(TableDate),
 	% start date build timer
-	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), compute_rfc_date),
+	erlang:send_after(0, self(), compute_rfc_date),
 	% return
 	{ok, #state{
 		max_connections = MaxConnections,

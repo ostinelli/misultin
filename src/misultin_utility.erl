@@ -36,7 +36,7 @@
 -export([call/2, call/3, respond/2]).
 -export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
 -export([convert_ip_to_list/1]).
--export([hexstr/1]).
+-export([hexstr/1, get_unix_timestamp/0, get_unix_timestamp/1]).
 
 % macros
 -define(INTERNAL_TIMEOUT, 30000).
@@ -447,6 +447,11 @@ hexstr(<<N/integer, T/binary>>, Acc) ->
 	hexstr(T, [hex(N rem 16), hex(N div 16) | Acc]).
 hex(N) when N < 10 -> $0+N;
 hex(N) when N >= 10, N < 16 -> $a + (N-10).
+
+-spec get_unix_timestamp() -> TimeStamp::non_neg_integer().
+-spec get_unix_timestamp({MegaSecs::non_neg_integer(), Secs::non_neg_integer(), _MicroSecs::non_neg_integer()}) -> TimeStamp::non_neg_integer().
+get_unix_timestamp() -> get_unix_timestamp(erlang:now()).
+get_unix_timestamp({MegaSecs, Secs, _MicroSecs}) -> MegaSecs * 1000000 + Secs.
 
 % ============================ /\ API ======================================================================
 

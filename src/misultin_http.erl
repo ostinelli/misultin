@@ -40,7 +40,6 @@
 -define(MAX_HEADERS_COUNT, 100).
 -define(SUPPORTED_ENCODINGS, ["gzip", "deflate"]).
 -define(SERVER_VERSION_TAG, "misultin/0.8.1-dev").
--define(SESSION_HEADER_NAME, "misultin_session").
 
 % records
 -record(c, {
@@ -487,7 +486,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 		Loop(ReqT)
 	end),
 	% enter loop
-	socket_loop(C, Req, LoopPid, #req_options{}),
+	socket_loop(C, Req, LoopPid, #req_options{}, []),
 	% unlink
 	process_flag(trap_exit, false),
 	erlang:unlink(LoopPid),
@@ -495,8 +494,8 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
--spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}) -> ok | shutdown | ssl_closed | tcp_closed.
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+-spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}, AddHeaders::http_headers()) -> ok | shutdown | ssl_closed | tcp_closed.
+socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions, AddHeaders) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -514,14 +513,14 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			{CompressHeaders, BodyBinary} = compress_body(RequestHeaders, convert_to_binary(Body), Compress),
 			% encode headers
 			Headers = add_headers(Headers0, BodyBinary, C#c.table_date_ref, Req),			
-			Enc_headers = enc_headers(lists:append(CompressHeaders, Headers)),
+			Enc_headers = enc_headers(lists:append([CompressHeaders, AddHeaders, Headers])),
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			% info log
 			build_access_log(HttpCode, size(BodyBinary), Req, C#c.table_date_ref),
 			% send
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders);
 		{LoopPid, {reqinfo, ReqInfo}} ->
 			ReqResponse = case ReqInfo of
 				raw				-> Req;
@@ -541,17 +540,22 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			end,
 			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
 			misultin_utility:respond(LoopPid, ReqResponse),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders);
 			
 		
 		{LoopPid, {session_cmd, SessionCmd}} ->
-			SessionResponse = case SessionCmd of
-				start_session ->
-					% start new session process and get id
-					misultin_sessions:start_session(C#c.sessions_ref, Req)					
-			end,
-			misultin_utility:respond(LoopPid, SessionResponse),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
+			case SessionCmd of
+				{start_session, Cookies} ->
+					% start new session process or retrieve exiting one's id
+					SessionId = misultin_sessions:start_session(C#c.sessions_ref, Cookies, Req),
+					?LOG_DEBUG("computed session id: ~p", [SessionId]),
+					% respond with session id
+					misultin_utility:respond(LoopPid, SessionId),
+					% add session id cookie header
+					socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AddHeaders])
+
+			end;
 			
 			
 		
@@ -559,31 +563,31 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 		
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
-			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal});
+			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal}, AddHeaders);
 		{stream_head, HttpCode, Headers0} ->
 			?LOG_DEBUG("sending stream head", []),
 			Headers = add_output_header('Connection', {Headers0, Req}),
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders);
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
 			misultin_socket:send(Sock, Data, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders);
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders);
 		{stream_error, 404} ->
 			?LOG_ERROR("file not found", []),
 			misultin_socket:send(Sock, build_error_message(404, Req, C#c.table_date_ref), SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders);
 		{stream_error, _Reason} ->
 			?LOG_ERROR("error sending stream: ~p", [_Reason]),
 			misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders);
 		{tcp_closed, Sock} ->
 			?LOG_DEBUG("client closed socket",[]),
 			tcp_closed;
@@ -605,7 +609,7 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			misultin_socket:close(Sock, SocketMode);
 		_Else ->
 			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
-			socket_loop(C, Req, LoopPid, ReqOptions)
+			socket_loop(C, Req, LoopPid, ReqOptions, AddHeaders)
 	end.
 
 % Close socket and custom handling loop dependency
