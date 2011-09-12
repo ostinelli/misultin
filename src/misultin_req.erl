@@ -191,20 +191,6 @@ respond(HttpCode, Headers, Template, {misultin_req, SocketPid}) ->
 respond(HttpCode, Headers, Template, Vars, {misultin_req, SocketPid}) when is_list(Template) =:= true ->
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
 
-% set advanced options valid for a single request
--spec options(Options::gen_proplist(), reqt()) -> ok.
-options(Options, ReqT) when is_list(Options) ->
-	% loop options and apply
-	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
-% set to comet mode
--spec options_set(OptionName::atom(), OptionVal::term(), reqt()) -> term().
-options_set(comet, OptionVal, {misultin_req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
-	SocketPid ! {set_option, {comet, OptionVal}};
-options_set(_OptionTag, _OptionVal, _ReqT)	->
-	% ignore
-	?LOG_DEBUG("ignoring advanced option ~p", [{_OptionTag, _OptionVal}]),
-	ignore.
-
 % Chunked Transfer-Encoding.
 -spec chunk
 	(head | done, reqt()) -> term();
