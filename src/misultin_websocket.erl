@@ -61,7 +61,7 @@ connect(ServerRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket
 	Origin = misultin_utility:header_get_value('Origin', Headers),
 	Host = misultin_utility:header_get_value('Host', Headers),
 	% build handshake
-	VsnMod = list_to_atom("misultin_websocket_" ++ atom_to_list(Vsn)),
+	VsnMod = get_module_name_from_vsn(Vsn),
 	HandshakeServer = VsnMod:handshake(Req, Headers, {Path, Origin, Host}),
 	% send handshake back
 	misultin_socket:send(Socket, HandshakeServer, SocketMode),
@@ -147,7 +147,7 @@ behaviour_info(_) ->
 check_websockets([], _Headers) -> false;
 check_websockets([Vsn|T], Headers) ->
 	?LOG_DEBUG("testing for websocket protocol ~p", [Vsn]),
-	VsnMod = list_to_atom("misultin_websocket_" ++ atom_to_list(Vsn)),
+	VsnMod = get_module_name_from_vsn(Vsn),
 	case VsnMod:check_websocket(Headers) of
 		false -> check_websockets(T, Headers);
 		true -> {true, Vsn}
@@ -163,7 +163,7 @@ ws_loop(ServerRef, WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode 
 	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
 		{tcp, Socket, Data} ->
-			VsnMod = list_to_atom("misultin_websocket_" ++ atom_to_list(Vsn)),
+			VsnMod = get_module_name_from_vsn(Vsn),
 			case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
 				websocket_close ->
 					misultin_websocket:websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
@@ -174,7 +174,7 @@ ws_loop(ServerRef, WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode 
 					ws_loop(ServerRef, WsHandleLoopPid, Ws, NewState)
 			end;
 		{ssl, Socket, Data} ->
-			VsnMod = list_to_atom("misultin_websocket_" ++ atom_to_list(Vsn)),
+			VsnMod = get_module_name_from_vsn(Vsn),
 			case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
 				{command, websocket_close} ->
 					misultin_websocket:websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
@@ -217,7 +217,7 @@ ws_loop(ServerRef, WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode 
 			websocket_close(ServerRef, Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{send, Data} ->
 			?LOG_DEBUG("sending data to websocket: ~p", [Data]),
-			VsnMod = list_to_atom("misultin_websocket_" ++ atom_to_list(Vsn)),
+			VsnMod = get_module_name_from_vsn(Vsn),
 			misultin_socket:send(Socket, VsnMod:send_format(Data, State), SocketMode),
 			ws_loop(ServerRef, WsHandleLoopPid, Ws, State);
 		shutdown ->
@@ -229,4 +229,9 @@ ws_loop(ServerRef, WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode 
 			ws_loop(ServerRef, WsHandleLoopPid, Ws, State)
 	end.
 
+% convert websocket version to module name
+-spec get_module_name_from_vsn(Vsn::websocket_version()) -> atom().
+get_module_name_from_vsn(Vsn) ->
+	list_to_atom("misultin_websocket_" ++ atom_to_list(Vsn)).
+	
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
