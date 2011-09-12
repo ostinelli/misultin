@@ -57,7 +57,7 @@
 % Returns raw request content.
 -spec raw(reqt()) -> #req{}.
 raw({misultin_req, SocketPid}) ->
-	misultin_utility:call(SocketPid, raw).
+	misultin_http:get_reqinfo(SocketPid, raw).
 
 % Get request info.
 -spec get(ReqInfo::atom(), reqt()) -> term().
@@ -74,7 +74,8 @@ get(ReqInfo, {misultin_req, SocketPid}) when
 	ReqInfo =:= args;
 	ReqInfo =:= headers;
 	ReqInfo =:= body ->
-		misultin_utility:call(SocketPid, ReqInfo);
+		misultin_http:get_reqinfo(SocketPid, ReqInfo);
+		
 get(peer_addr, {misultin_req, SocketPid}) ->
 	Headers = get(headers, {misultin_req, SocketPid}),
 	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
@@ -87,11 +88,11 @@ get(peer_addr, {misultin_req, SocketPid}) ->
 	end,
 	case Host of
 		undefined ->
-			misultin_utility:call(SocketPid, peer_addr);
+			misultin_http:get_reqinfo(SocketPid, peer_addr);
 		_ ->
 			case inet_parse:address(Host) of
 				{error, _Reason} ->
-					misultin_utility:call(SocketPid, peer_addr);
+					misultin_http:get_reqinfo(SocketPid, peer_addr);
 				{ok, IpTuple} ->
 					IpTuple
 			end

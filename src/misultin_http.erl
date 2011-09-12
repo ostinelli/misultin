@@ -34,7 +34,7 @@
 -vsn("0.8.1-dev").
 
 % API
--export([handle_data/10, build_error_message/3]).
+-export([handle_data/10, build_error_message/3, get_reqinfo/2]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -112,6 +112,12 @@ build_error_message(HttpCode, Req, TableDateRef) ->
 	build_access_log(HttpCode, 0, Req, TableDateRef),
 	% build and send response
 	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
+
+
+% get request info from http process handler
+-spec get_reqinfo(SocketPid::pid(), ReqInfo::atom()) -> term().
+get_reqinfo(SocketPid, ReqInfo) ->
+	misultin_utility:call(SocketPid, {reqinfo, ReqInfo}).
 
 % ============================ /\ API ======================================================================
 
@@ -509,61 +515,26 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			% send
 			misultin_socket:send(Sock, Resp, SocketMode),
 			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, raw} ->
-			?LOG_DEBUG("received request info for: raw", []),
-			misultin_utility:respond(LoopPid, Req),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, socket} ->
-			?LOG_DEBUG("received request info for: socket", []),
-			misultin_utility:respond(LoopPid, Req#req.socket),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, socket_mode} ->
-			?LOG_DEBUG("received request info for: socket_mode", []),
-			misultin_utility:respond(LoopPid, Req#req.socket_mode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, peer_addr} ->
-			?LOG_DEBUG("received request info for: peer_addr", []),
-			misultin_utility:respond(LoopPid, Req#req.peer_addr),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, peer_port} ->
-			?LOG_DEBUG("received request info for: peer_port", []),
-			misultin_utility:respond(LoopPid, Req#req.peer_port),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, peer_cert} ->
-			?LOG_DEBUG("received request info for: peer_cert", []),
-			misultin_utility:respond(LoopPid, Req#req.peer_cert),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, connection} ->
-			?LOG_DEBUG("received request info for: connection", []),
-			misultin_utility:respond(LoopPid, Req#req.connection),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, content_length} ->
-			?LOG_DEBUG("received request info for: content_length", []),
-			misultin_utility:respond(LoopPid, Req#req.content_length),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, vsn} ->
-			?LOG_DEBUG("received request info for: vsn", []),
-			misultin_utility:respond(LoopPid, Req#req.vsn),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, method} ->
-			?LOG_DEBUG("received request info for: method", []),
-			misultin_utility:respond(LoopPid, Req#req.method),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, uri} ->
-			?LOG_DEBUG("received request info for: uri", []),
-			misultin_utility:respond(LoopPid, Req#req.uri),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, args} ->
-			?LOG_DEBUG("received request info for: args", []),
-			misultin_utility:respond(LoopPid, Req#req.args),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, headers} ->
-			?LOG_DEBUG("received request info for: headers", []),
-			misultin_utility:respond(LoopPid, Req#req.headers),
-			socket_loop(C, Req, LoopPid, ReqOptions);
-		{LoopPid, body} ->
-			?LOG_DEBUG("received request info for: body", []),
-			misultin_utility:respond(LoopPid, Req#req.body),
+		{LoopPid, {reqinfo, ReqInfo}} ->
+			ReqResponse = case ReqInfo of
+				raw				-> Req;
+				socket			-> Req#req.socket;
+				socket_mode		-> Req#req.socket_mode;
+				peer_addr		-> Req#req.peer_addr;
+				peer_port		-> Req#req.peer_port;
+				peer_cert		-> Req#req.peer_cert;
+				connection		-> Req#req.connection;
+				content_length	-> Req#req.content_length;
+				vsn				-> Req#req.vsn;
+				method			-> Req#req.method;
+				uri				-> Req#req.uri;
+				args			-> Req#req.args;
+				headers			-> Req#req.headers;
+				body			-> Req#req.body;
+				_				-> undefined			% fallback, should never happen
+			end,
+			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
+			misultin_utility:respond(LoopPid, ReqResponse),
 			socket_loop(C, Req, LoopPid, ReqOptions);
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
