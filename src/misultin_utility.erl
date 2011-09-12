@@ -36,6 +36,7 @@
 -export([call/2, call/3, respond/2]).
 -export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
 -export([convert_ip_to_list/1]).
+-export([hexstr/1]).
 
 % macros
 -define(INTERNAL_TIMEOUT, 30000).
@@ -435,6 +436,17 @@ convert_ip_to_list({A, B, C, D, E, F, G, H}) ->
 	lists:flatten(io_lib:format("~p.~p.~p.~p.~p.~p.~p.~p", [A, B, C, D, E, F, G, H]));
 convert_ip_to_list(_) ->
 	undefined.
+
+% convert binary to hex string
+-spec hexstr(binary()) -> list().
+hexstr(B) ->
+	hexstr(B, []).
+hexstr(<<>>, Acc) ->
+	lists:reverse(Acc);
+hexstr(<<N/integer, T/binary>>, Acc) ->
+	hexstr(T, [hex(N rem 16), hex(N div 16) | Acc]).
+hex(N) when N < 10 -> $0+N;
+hex(N) when N >= 10, N < 16 -> $a + (N-10).
 
 % ============================ /\ API ======================================================================
 

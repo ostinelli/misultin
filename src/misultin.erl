@@ -193,12 +193,14 @@ init([Options]) ->
 					},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
+					% define sessions supervisor
+					SessionsSpec = {sessions, {misultin_sessions, start_link, [{}]}, permanent, 60000, worker, [misultin_sessions]},
 					% define acceptors supervisor specs
 					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% ip address
 					?LOG_INFO("starting misultin server on address ~s and port ~p", [misultin_utility:convert_ip_to_list(Ip), Port]),
 					% spawn
-					{ok, {{one_for_all, 5, 30}, [ServerSpec, AcceptorSupSpec]}};
+					{ok, {{one_for_all, 5, 30}, [ServerSpec, SessionsSpec, AcceptorSupSpec]}};
 				Error ->
 					?LOG_ERROR("error starting misultin server: ~p", [Error]),
 					{error, Error}

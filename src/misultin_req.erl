@@ -41,7 +41,9 @@
 -export([raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
--export([raw/1, get/2, get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
+-export([raw/1, get/2]).
+-export([get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
+-export([start_session/1]).
 -export([uri_unquote/1, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
@@ -105,6 +107,8 @@ get(uri_unquoted, ReqT) ->
 get_variable(VarName, Variables, _ReqT) ->
 	misultin_utility:get_key_value(VarName, Variables).
 
+% ---------------------------- \/ Cookies ------------------------------------------------------------------
+
 % Get all cookies.
 -spec get_cookies(reqt()) -> gen_proplist().
 get_cookies(ReqT) ->
@@ -135,6 +139,33 @@ set_cookie(Key, Value, Options, _ReqT) ->
 -spec delete_cookie(Key::string(), reqt()) -> {http_header(), string()}.
 delete_cookie(Key, _ReqT) ->
 	misultin_cookies:delete_cookie(Key).
+
+% ---------------------------- /\ Cookies ------------------------------------------------------------------
+
+% ---------------------------- \/ Sessions -----------------------------------------------------------------
+
+start_session({misultin_req, SocketPid}) ->
+	misultin_http:session_cmd(SocketPid, start_session).
+
+% ---------------------------- /\ Sessions ------------------------------------------------------------------
+
+% ---------------------------- \/ Options ------------------------------------------------------------------
+
+% set advanced options valid for a single request
+-spec options(Options::gen_proplist(), reqt()) -> ok.
+options(Options, ReqT) when is_list(Options) ->
+	% loop options and apply
+	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
+% set to comet mode
+-spec options_set(OptionName::atom(), OptionVal::term(), reqt()) -> term().
+options_set(comet, OptionVal, {misultin_req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
+	SocketPid ! {set_option, {comet, OptionVal}};
+options_set(_OptionTag, _OptionVal, _ReqT)	->
+	% ignore
+	?LOG_DEBUG("ignoring advanced option ~p", [{_OptionTag, _OptionVal}]),
+	ignore.
+	
+% ---------------------------- /\ Options ------------------------------------------------------------------
 
 % Formats a 200 response.
 -spec ok(Template::list() | binary() | iolist(), reqt()) -> term().
@@ -174,20 +205,6 @@ raw_headers_respond(HttpCode, HeadersStr, Body, ReqT) ->
 	raw_headers_respond(HttpCode, [], HeadersStr, Body, ReqT).
 raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, SocketPid}) ->
 	SocketPid ! {response, HttpCode, {Headers, HeadersStr}, Body}.
-
-% set advanced options valid for a single request
--spec options(Options::gen_proplist(), reqt()) -> ok.
-options(Options, ReqT) when is_list(Options) ->
-	% loop options and apply
-	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
-% set to comet mode
--spec options_set(OptionName::atom(), OptionVal::term(), reqt()) -> term().
-options_set(comet, OptionVal, {misultin_req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
-	SocketPid ! {set_option, {comet, OptionVal}};
-options_set(_OptionTag, _OptionVal, _ReqT)	->
-	% ignore
-	?LOG_DEBUG("ignoring advanced option ~p", [{_OptionTag, _OptionVal}]),
-	ignore.
 
 % Chunked Transfer-Encoding.
 -spec chunk

@@ -34,16 +34,18 @@
 -vsn("0.8.1-dev").
 
 % API
--export([handle_data/10, build_error_message/3, get_reqinfo/2]).
+-export([handle_data/11, build_error_message/3, get_reqinfo/2, session_cmd/2]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
 -define(SUPPORTED_ENCODINGS, ["gzip", "deflate"]).
 -define(SERVER_VERSION_TAG, "misultin/0.8.1-dev").
+-define(SESSION_HEADER_NAME, "misultin_session").
 
 % records
 -record(c, {
 	server_ref			= undefined	:: undefined | pid(),
+	sessions_ref		= undefined	:: undefined | pid(),
 	table_date_ref		= undefined	:: undefined | ets:tid(),
 	sock				= undefined :: undefined | socket(),
 	socket_mode			= http :: socketmode(),
@@ -71,6 +73,7 @@
 % Callback from misultin_socket
 -spec handle_data(
 	ServerRef::pid(),
+	SessionsRef::pid(),
 	TableDateRef::ets:tid(),
 	Sock::socket(),
 	SocketMode::socketmode(),
@@ -80,10 +83,11 @@
 	PeerCert::term(),
 	RecvTimeout::non_neg_integer(),
 	CustomOpts::#custom_opts{}) -> ok | ignored | ssl_closed | tcp_closed | true.
-handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
+handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% build C record
 	C = #c{
 		server_ref = ServerRef,
+		sessions_ref = SessionsRef,
 		table_date_ref = TableDateRef,
 		sock = Sock,
 		socket_mode = SocketMode,
@@ -118,6 +122,15 @@ build_error_message(HttpCode, Req, TableDateRef) ->
 -spec get_reqinfo(SocketPid::pid(), ReqInfo::atom()) -> term().
 get_reqinfo(SocketPid, ReqInfo) ->
 	misultin_utility:call(SocketPid, {reqinfo, ReqInfo}).
+	
+
+
+
+session_cmd(SocketPid, SessionCmd) ->
+	misultin_utility:call(SocketPid, {session_cmd, SessionCmd}).
+	
+
+
 
 % ============================ /\ API ======================================================================
 
@@ -503,10 +516,10 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			Enc_headers = case Headers0 of
 				{HeadersList, HeadersStr} ->
 					Headers = add_headers(HeadersList, BodyBinary, C#c.table_date_ref, Req),
-					[HeadersStr|enc_headers(lists:flatten([CompressHeaders|Headers]))];
+					[HeadersStr|enc_headers(lists:concat([CompressHeaders, Headers]))];
 				_ ->
 					Headers = add_headers(Headers0, BodyBinary, C#c.table_date_ref, Req),
-					enc_headers(lists:flatten([CompressHeaders|Headers]))
+					enc_headers(lists:concat([CompressHeaders, Headers]))
 			end,
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
@@ -535,6 +548,21 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
 			misultin_utility:respond(LoopPid, ReqResponse),
 			socket_loop(C, Req, LoopPid, ReqOptions);
+			
+		
+		{LoopPid, {session_cmd, SessionCmd}} ->
+			SessionResponse = case SessionCmd of
+				start_session ->
+					% start new session process and get id
+					misultin_sessions:start_session(C#c.sessions_ref, Req)					
+			end,
+			misultin_utility:respond(LoopPid, SessionResponse),
+			socket_loop(C, Req, LoopPid, ReqOptions);
+			
+			
+		
+		
+		
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
 			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal});

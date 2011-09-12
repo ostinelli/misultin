@@ -74,7 +74,14 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 			?LOG_DEBUG("got misultin server pid: ~p", [ServerRef]),
 			% get rfc table ref
 			TableDateRef = misultin_server:get_table_date_ref(ServerRef),
-			acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			% get pid of sessions server
+			case lists:keyfind(sessions, 1, Childrens) of
+				{sessions, SessionsRef, _, _} ->
+					?LOG_DEBUG("got misultin sessions pid: ~p", [SessionsRef]),
+					acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+				_ ->
+					{error, could_not_get_sessionsref}
+			end;
 		_ ->
 			{error, could_not_get_serverref}
 	end.	
@@ -82,18 +89,19 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 % Starts the socket.
 -spec acceptor(
 	ServerRef::pid(),
+	SessionsRef::pid(),
 	TableDateRef::ets:tid(),
 	ListenSocket::socket(),
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
 	CustomOpts::misultin_option_server()) -> [].
-acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
+acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case catch misultin_socket:accept(ListenSocket, SocketMode) of
 		{ok, Sock} when SocketMode =:= http ->
 			?LOG_DEBUG("received a new http request, spawning a controlling process",[]),
 			Pid = spawn(fun() ->
-				activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts)
+				activate_controller_process(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts)
 			end),
 			% set controlling process
 			case misultin_socket:controlling_process(Sock, Pid, SocketMode) of
@@ -104,15 +112,15 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 					misultin_socket:close(Sock, SocketMode)
 			end,					
 			% get back to accept loop
-			acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{ok, Sock} ->
 			?LOG_DEBUG("received a new https request, spawning a controlling process",[]),
 			Pid = spawn(fun() ->
 				case ssl:ssl_accept(Sock, 60000) of
 					ok ->
-						activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+						activate_controller_process(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 					{ok, NewSock} ->
-						activate_controller_process(ServerRef, TableDateRef, NewSock, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+						activate_controller_process(ServerRef, SessionsRef, TableDateRef, NewSock, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 					{error, _Reason} ->
 						% could not negotiate a SSL transaction, leave process
 						?LOG_WARNING("could not negotiate a SSL transaction: ~p", [_Reason]),
@@ -128,11 +136,11 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 					misultin_socket:close(Sock, SocketMode)
 			end,
 			% get back to accept loop
-			acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{error, _Error} ->
 			?LOG_WARNING("accept failed with error: ~p", [_Error]),
 			% get back to accept loop
-			acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{'EXIT', Error} ->
 			?LOG_ERROR("accept exited with error: ~p, quitting process", [Error]),
 			exit({error, {accept_failed, Error}})
@@ -146,17 +154,18 @@ acceptor(ServerRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketM
 % activate the controller pid
 -spec activate_controller_process(
 	ServerRef::pid(),
+	SessionsRef::pid(),
 	TableDateRef::ets:tid(),
 	Sock::socket(),
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
 	CustomOpts::misultin_option_server()) -> ok.
-activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
+activate_controller_process(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	receive
 		set ->
 			?LOG_DEBUG("activated controlling process ~p", [self()]),
-			open_connections_switch(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts)
+			open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts)
 	after 60000 ->
 		?LOG_ERROR("timeout waiting for set in controlling process, closing socket", []),
 		misultin_socket:close(Sock, SocketMode)
@@ -165,13 +174,14 @@ activate_controller_process(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeo
 % manage open connection
 -spec open_connections_switch(
 	ServerRef::pid(),
+	SessionsRef::pid(),
 	TableDateRef::ets:tid(),
 	Sock::socket(),
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
 	CustomOpts::misultin_option_server()) -> ok.
-open_connections_switch(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
+open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
 		{ok, HttpMonRef} ->
 			% get peer address and port
@@ -182,7 +192,7 @@ open_connections_switch(ServerRef, TableDateRef, Sock, ListenPort, RecvTimeout, 
 			?LOG_DEBUG("remote peer certificate is ~p", [PeerCert]),
 			% jump to external callback
 			?LOG_DEBUG("jump to connection logic", []),
-			misultin_http:handle_data(ServerRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts),
+			misultin_http:handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts),
 			% remove pid reference and demonitor
 			misultin_server:http_pid_ref_remove(ServerRef, self(), HttpMonRef);
 		{error, _Reason} ->
