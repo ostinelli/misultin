@@ -38,7 +38,6 @@
 
 % API
 -export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5]).
--export([raw_headers_respond/2, raw_headers_respond/3, raw_headers_respond/4, raw_headers_respond/5]).
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
 -export([raw/1, get/2]).
@@ -192,19 +191,19 @@ respond(HttpCode, Headers, Template, {misultin_req, SocketPid}) ->
 respond(HttpCode, Headers, Template, Vars, {misultin_req, SocketPid}) when is_list(Template) =:= true ->
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
 
-% Allow to add already formatted headers, untouched
--spec raw_headers_respond(Body::binary(), reqt()) -> term().
--spec raw_headers_respond(HeadersStr::string(), Body::binary(), reqt()) -> term().
--spec raw_headers_respond(HttpCode::non_neg_integer(), HeadersStr::string(), Body::binary(), reqt()) -> term().
--spec raw_headers_respond(HttpCode::non_neg_integer(), Headers::http_headers(), HeadersStr::string(), Body::binary(), reqt()) -> term().
-raw_headers_respond(Body, ReqT) ->
-	raw_headers_respond(200, [], [], Body, ReqT).
-raw_headers_respond(HeadersStr, Body, ReqT) ->
-	raw_headers_respond(200, [], HeadersStr, Body, ReqT).
-raw_headers_respond(HttpCode, HeadersStr, Body, ReqT) ->
-	raw_headers_respond(HttpCode, [], HeadersStr, Body, ReqT).
-raw_headers_respond(HttpCode, Headers, HeadersStr, Body, {misultin_req, SocketPid}) ->
-	SocketPid ! {response, HttpCode, {Headers, HeadersStr}, Body}.
+% set advanced options valid for a single request
+-spec options(Options::gen_proplist(), reqt()) -> ok.
+options(Options, ReqT) when is_list(Options) ->
+	% loop options and apply
+	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
+% set to comet mode
+-spec options_set(OptionName::atom(), OptionVal::term(), reqt()) -> term().
+options_set(comet, OptionVal, {misultin_req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
+	SocketPid ! {set_option, {comet, OptionVal}};
+options_set(_OptionTag, _OptionVal, _ReqT)	->
+	% ignore
+	?LOG_DEBUG("ignoring advanced option ~p", [{_OptionTag, _OptionVal}]),
+	ignore.
 
 % Chunked Transfer-Encoding.
 -spec chunk

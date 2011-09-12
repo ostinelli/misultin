@@ -512,15 +512,9 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("sending normal response", []),
 			% build binary body & compress if necessary
 			{CompressHeaders, BodyBinary} = compress_body(RequestHeaders, convert_to_binary(Body), Compress),
-			% are there any raw headers?
-			Enc_headers = case Headers0 of
-				{HeadersList, HeadersStr} ->
-					Headers = add_headers(HeadersList, BodyBinary, C#c.table_date_ref, Req),
-					[HeadersStr|enc_headers(lists:concat([CompressHeaders, Headers]))];
-				_ ->
-					Headers = add_headers(Headers0, BodyBinary, C#c.table_date_ref, Req),
-					enc_headers(lists:concat([CompressHeaders, Headers]))
-			end,
+			% encode headers
+			Headers = add_headers(Headers0, BodyBinary, C#c.table_date_ref, Req),			
+			Enc_headers = enc_headers(lists:append(CompressHeaders, Headers)),
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			% info log
@@ -729,7 +723,7 @@ compress_body(RequestHeaders, BodyBinary, true) ->
 					{[], BodyBinary};
 				Encoding ->
 					?LOG_DEBUG("building binary body with ~p compression", [Encoding]),
-					{{'Content-Encoding', Encoding},
+					{[{'Content-Encoding', Encoding}],
 					encode(Encoding, BodyBinary)}
 			end
 	end;
