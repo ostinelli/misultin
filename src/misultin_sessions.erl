@@ -36,7 +36,7 @@
 
 % API
 -export([start_link/1]).
--export([start_session/3, set_session_cookie/1]).
+-export([set_session_cookie/1, session/3, save_session_state/4]).
 
 % internal
 -export([expire_sessions/1]).
@@ -65,16 +65,24 @@
 start_link(Options) when is_tuple(Options) ->
 	gen_server:start_link(?MODULE, Options, []).
 
-% start a session
-start_session(ServerRef, Cookies, Req) ->
-	% extract session id
-	SessionId = misultin_utility:get_key_value(?SESSION_HEADER_NAME, Cookies),
-	% call
-	gen_server:call(ServerRef, {start_session, SessionId, Req}).
-
 % return session cookie
 set_session_cookie(SessionId) ->
 	misultin_cookies:set_cookie(?SESSION_HEADER_NAME, SessionId, [{max_age, ?SESSION_EXPIRE_SEC}]).
+
+% retrieve session info and start a session if necessary.
+session(ServerRef, Cookies, Req) ->
+	% extract session id
+	SessionId = misultin_utility:get_key_value(?SESSION_HEADER_NAME, Cookies),
+	% call
+	gen_server:call(ServerRef, {session, SessionId, Req}).
+
+% save a session state
+save_session_state(ServerRef, SessionId, SessionState, Req) ->
+	% call
+	gen_server:call(ServerRef, {save_session_state, SessionId, SessionState, Req}).
+
+
+
 
 % ============================ /\ API ======================================================================
 
@@ -103,28 +111,51 @@ init({}) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % start a session
-handle_call({start_session, undefined, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+handle_call({session, undefined, Req}, _From, #state{table_sessions = TableSessions} = State) ->
 	?LOG_DEBUG("generate a new session",[]),
-	Response = i_start_session(TableSessions, Req),
-	{reply, Response, State};
-handle_call({start_session, SessionId, Req}, _From, #state{table_sessions = TableSessions} = State) ->
-	?LOG_DEBUG("received start session for ~p", [SessionId]),
+	SessionId = i_start_session(TableSessions, Req),
+	{reply, {SessionId, []}, State};
+handle_call({session, SessionId, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+	?LOG_DEBUG("starting or retrieving session ~p", [SessionId]),
 	case ets:lookup(TableSessions, SessionId) of
 		[] ->
 			?LOG_DEBUG("session with id ~p could not be found, start new one", [SessionId]),
-			Response = i_start_session(TableSessions, Req),
-			{reply, Response, State};
-		[{SessionId, VerifyInfo, _TSLastAccess, _Variables}] ->
+			NewSessionId = i_start_session(TableSessions, Req),
+			{reply, {NewSessionId, []}, State};
+		[{SessionId, VerifyInfo, _TSLastAccess, SessionState}] ->
 			?LOG_DEBUG("session id ~p found in table with verify info: ~p, start validity check", [SessionId, VerifyInfo]),
 			case is_session_valid(VerifyInfo, Req) of
 				true ->
-					?LOG_DEBUG("session is valid, return session id ~p", [SessionId]),
-					{reply, SessionId, State};
+					?LOG_DEBUG("session id ~p is valid, return id and state", [SessionId]),
+					% update session access data
+					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_utility:get_unix_timestamp(), SessionState}),
+					{reply, {SessionId, SessionState}, State};
 				false ->
 					?LOG_DEBUG("session is not valid, killing session and generate new",[]),
 					i_remove_session(TableSessions, SessionId),
-					Response = i_start_session(TableSessions, Req),
-					{reply, Response, State}
+					NewSessionId = i_start_session(TableSessions, Req),
+					{reply, {NewSessionId, []}, State}
+			end
+	end;
+
+% save session state
+handle_call({save_session_state, SessionId, SessionState, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+	?LOG_DEBUG("saving session ~p state ~p", [SessionId, SessionState]),
+	case ets:lookup(TableSessions, SessionId) of
+		[] ->
+			?LOG_DEBUG("session with id ~p could not be found, could not save", [SessionId]),
+			{reply, {error, invalid_session_id}, State};
+		[{SessionId, VerifyInfo, _TSLastAccess, _OldSessionState}] ->
+			?LOG_DEBUG("session id ~p found in table with verify info: ~p, start validity check", [SessionId, VerifyInfo]),
+			case is_session_valid(VerifyInfo, Req) of
+				true ->
+					?LOG_DEBUG("session id ~p is valid, set new state ~p", [SessionId, SessionState]),
+					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_utility:get_unix_timestamp(), SessionState}),
+					{reply, ok, State};
+				false ->
+					?LOG_DEBUG("session is not valid, killing session",[]),
+					i_remove_session(TableSessions, SessionId),
+					{reply, {error, invalid_session_id}, State}
 			end
 	end;
 
@@ -193,18 +224,19 @@ code_change(_OldVsn, State, _Extra) ->
 i_start_session(TableSessions, Req) ->
 	% build verify info
 	case get_ip_domain(Req#req.peer_addr) of
-		{error, _} ->
+		{error, _Error} ->
+			?LOG_DEBUG("could not start session: ~p", [_Error]),
 			{error, could_not_start_session};
 		VerifyDomain ->
 			?LOG_DEBUG("build verify domain: ~p", [VerifyDomain]),
 			% generate a session id
 			SessionId = generate_session_id(),
-			?LOG_DEBUG("generated session id: ~p", [SessionId]),
 			% insert into ETS
 			VerifyInfo = {VerifyDomain},
-			Variables = [],
+			SessionState = [],
 			TSLastAccess = misultin_utility:get_unix_timestamp(),
-			ets:insert(TableSessions, {SessionId, VerifyInfo, TSLastAccess, Variables}),
+			ets:insert(TableSessions, {SessionId, VerifyInfo, TSLastAccess, SessionState}),
+			?LOG_DEBUG("generated session id: ~p", [SessionId]),
 			% return SessionId
 			SessionId
 	end.

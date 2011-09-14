@@ -42,7 +42,7 @@
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
 -export([raw/1, get/2]).
 -export([get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
--export([start_session/1, start_session/2]).
+-export([session/1, session/2, save_session_state/3]).
 -export([uri_unquote/1, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
 
 % includes
@@ -143,11 +143,16 @@ delete_cookie(Key, _ReqT) ->
 
 % ---------------------------- \/ Sessions -----------------------------------------------------------------
 
-start_session(ReqT) ->
+session(ReqT) ->
 	Cookies = get_cookies(ReqT),
-	start_session(Cookies, ReqT).
-start_session(Cookies, {misultin_req, SocketPid}) ->
-	misultin_http:session_cmd(SocketPid, {start_session, Cookies}).
+	session(Cookies, ReqT).
+session(Cookies, {misultin_req, SocketPid}) ->
+	misultin_http:session_cmd(SocketPid, {session, Cookies}).
+
+
+save_session_state(SessionId, SessionState, {misultin_req, SocketPid}) ->
+	misultin_http:session_cmd(SocketPid, {save_session_state, SessionId, SessionState}).
+	
 
 % ---------------------------- /\ Sessions ------------------------------------------------------------------
 

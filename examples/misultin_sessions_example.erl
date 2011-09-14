@@ -47,9 +47,19 @@ handle_http(Req) ->
 	%	SessionId ->
 	%		Req:ok(["Session Id found: ", SessionId])
 	%end.
-	
-	SessionId = Req:start_session(),
-	Req:ok(["Hello New Session: \"", SessionId, "\""]).
+	{SessionId, SessionState} = Req:session(),	
+	Count = case SessionState of
+		[] ->
+			% no state set previously, init counter
+			1;
+		N ->
+			% increment counter
+			N + 1
+	end,
+	% save counter
+	Req:save_session_state(SessionId, Count),
+	% reply
+	Req:ok([], "Session Id is: ~p, counter is: ~p", [SessionId, Count]).
 	
 	
 	
