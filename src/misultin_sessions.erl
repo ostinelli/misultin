@@ -38,19 +38,18 @@
 -export([start_link/1]).
 -export([set_session_cookie/1, session/3, save_session_state/4]).
 
-% internal
--export([expire_sessions/1]).
-
 % macros
 -define(TABLE_SESSIONS, misultin_table_sessions).
 -define(RAND_BYTES_NUM, 128).
 -define(SESSION_HEADER_NAME, "misultin_session").
+-define(DEFAULT_SESSION_STATE, []).
 -define(SESSION_EXPIRE_SEC, 15).		% 600 = ten minutes of inactivity.
 -define(DATE_UPDATE_INTERVAL, 1000).	% compute table expired sessions every 1000ms = 1 sec
 
 % records
 -record(state, {
-	table_sessions			= undefined :: undefined | ets:tid()			% ETS table reference which holds the sessions
+	table_sessions			= undefined :: undefined | ets:tid(),			% ETS table reference which holds the sessions
+	table_date_ref		= undefined	:: undefined | ets:tid()				% ETS table reference owned by misultin_server which holds the date
 }).
 
 % includes
@@ -92,13 +91,14 @@ save_session_state(ServerRef, SessionId, SessionState, Req) ->
 % Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
 % Description: Initiates the server.
 % ----------------------------------------------------------------------------------------------------------
-init({}) ->
-	process_flag(trap_exit, true),
+init({MainSupRef}) ->
 	?LOG_DEBUG("starting session server with pid: ~p", [self()]),
 	% create ets tables to save session data
 	TableSessions= ets:new(?TABLE_SESSIONS, [set, public]),
+	% hack to retrieve misultin_server's TableDateRef
+	erlang:send_after(0, self(), {get_tabledate_ref, MainSupRef}),
 	% start timer to expire sessions
-	erlang:send_after(0, self(), expire_sessions),
+	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), expire_sessions),
 	% return
 	{ok, #state{table_sessions = TableSessions}}.
 
@@ -110,35 +110,35 @@ init({}) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % start a session
-handle_call({session, undefined, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+handle_call({session, undefined, Req}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
 	?LOG_DEBUG("generate a new session",[]),
-	SessionId = i_start_session(TableSessions, Req),
-	{reply, {SessionId, []}, State};
-handle_call({session, SessionId, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+	NewSessionId = i_start_session(TableSessions, TableDateRef, Req),
+	{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State};
+handle_call({session, SessionId, Req}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
 	?LOG_DEBUG("starting or retrieving session ~p", [SessionId]),
 	case ets:lookup(TableSessions, SessionId) of
 		[] ->
 			?LOG_DEBUG("session with id ~p could not be found, start new one", [SessionId]),
-			NewSessionId = i_start_session(TableSessions, Req),
-			{reply, {NewSessionId, []}, State};
+			NewSessionId = i_start_session(TableSessions, TableDateRef, Req),
+			{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State};
 		[{SessionId, VerifyInfo, _TSLastAccess, SessionState}] ->
 			?LOG_DEBUG("session id ~p found in table with verify info: ~p, start validity check", [SessionId, VerifyInfo]),
 			case is_session_valid(VerifyInfo, Req) of
 				true ->
 					?LOG_DEBUG("session id ~p is valid, return id and state", [SessionId]),
 					% update session access data
-					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_utility:get_unix_timestamp(), SessionState}),
+					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_server:get_timestamp(TableDateRef), SessionState}),
 					{reply, {SessionId, SessionState}, State};
 				false ->
 					?LOG_DEBUG("session is not valid, killing session and generate new",[]),
 					i_remove_session(TableSessions, SessionId),
-					NewSessionId = i_start_session(TableSessions, Req),
-					{reply, {NewSessionId, []}, State}
+					NewSessionId = i_start_session(TableSessions, TableDateRef, Req),
+					{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State}
 			end
 	end;
 
 % save session state
-handle_call({save_session_state, SessionId, SessionState, Req}, _From, #state{table_sessions = TableSessions} = State) ->
+handle_call({save_session_state, SessionId, SessionState, Req}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
 	?LOG_DEBUG("saving session ~p state ~p", [SessionId, SessionState]),
 	case ets:lookup(TableSessions, SessionId) of
 		[] ->
@@ -149,7 +149,7 @@ handle_call({save_session_state, SessionId, SessionState, Req}, _From, #state{ta
 			case is_session_valid(VerifyInfo, Req) of
 				true ->
 					?LOG_DEBUG("session id ~p is valid, set new state ~p", [SessionId, SessionState]),
-					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_utility:get_unix_timestamp(), SessionState}),
+					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_server:get_timestamp(TableDateRef), SessionState}),
 					{reply, ok, State};
 				false ->
 					?LOG_DEBUG("session is not valid, killing session",[]),
@@ -179,16 +179,34 @@ handle_cast(_Msg, State) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % expire sessions
-handle_info(expire_sessions, #state{table_sessions = TableSessions} = State) ->
+handle_info(expire_sessions, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
 	% avoid locking gen server
 	Self = self(),
-	spawn(fun() ->
+	spawn_link(fun() ->
 		% expire sessions
-		expire_sessions(TableSessions),
+		expire_sessions(TableSessions, TableDateRef),
 		% start date build timer
 		erlang:send_after(?DATE_UPDATE_INTERVAL, Self, expire_sessions)
 	end),
 	{noreply, State};
+
+% get tabledate ref just after init
+handle_info({get_tabledate_ref, MainSupRef}, State) ->
+	?LOG_DEBUG("getting misultin server's table_date reference",[]),
+	% get pid of misultin server
+	Childrens = supervisor:which_children(MainSupRef),
+	case lists:keyfind(server, 1, Childrens) of
+		{server, ServerRef, _, _} ->
+			?LOG_DEBUG("got misultin server pid: ~p", [ServerRef]),
+			% get rfc table ref
+			TableDateRef = misultin_server:get_table_date_ref(ServerRef),
+			?LOG_DEBUG("got misultin table date reference: ~p", [TableDateRef]),
+			% save in state
+			{noreply, State#state{table_date_ref = TableDateRef}};
+		_ ->
+			?LOG_ERROR("misultin session was unable to get server reference, shutting down", []),
+			{stop, {error, could_not_get_serverref}, State}
+	end;
 
 % handle_info generic fallback (ignore)
 handle_info(_Info, State) ->
@@ -220,8 +238,8 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % start a new session
--spec i_start_session(TableSessions::ets:tid(), Req::#req{}) -> SessionId::string() | {error, Reason::term()}.
-i_start_session(TableSessions, Req) ->
+-spec i_start_session(TableSessions::ets:tid(), TableDateRef::ets:tid(), Req::#req{}) -> SessionId::string() | {error, Reason::term()}.
+i_start_session(TableSessions, TableDateRef, Req) ->
 	% build verify info
 	case get_ip_domain(Req#req.peer_addr) of
 		{error, _Error} ->
@@ -233,9 +251,8 @@ i_start_session(TableSessions, Req) ->
 			SessionId = generate_session_id(),
 			% insert into ETS
 			VerifyInfo = {VerifyDomain},
-			SessionState = [],
-			TSLastAccess = misultin_utility:get_unix_timestamp(),
-			ets:insert(TableSessions, {SessionId, VerifyInfo, TSLastAccess, SessionState}),
+			TSLastAccess = misultin_server:get_timestamp(TableDateRef),
+			ets:insert(TableSessions, {SessionId, VerifyInfo, TSLastAccess, ?DEFAULT_SESSION_STATE}),
 			?LOG_DEBUG("generated session id: ~p", [SessionId]),
 			% return SessionId
 			SessionId
@@ -263,9 +280,9 @@ is_session_valid({VerifyDomain}, Req) ->
 	get_ip_domain(Req#req.peer_addr) =:= VerifyDomain.
 
 % expire sessions
--spec expire_sessions(TableSessions::ets:tid()) -> true.
-expire_sessions(TableSessions) ->
-	TS = misultin_utility:get_unix_timestamp(),
+-spec expire_sessions(TableSessions::ets:tid(), TableDateRef::ets:tid()) -> true.
+expire_sessions(TableSessions, TableDateRef) ->
+	TS = misultin_server:get_timestamp(TableDateRef),
 	NumDeleted = ets:select_delete(TableSessions, [{{'_', '_', '$1', '_'}, [{'<', '$1', TS - ?SESSION_EXPIRE_SEC}], [true]}]),
 	case NumDeleted > 0 of
 		true -> ?LOG_DEBUG("removed ~p expired session(s)", [NumDeleted]), true;

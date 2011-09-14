@@ -116,20 +116,15 @@ build_error_message(HttpCode, Req, TableDateRef) ->
 	% build and send response
 	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
 
-
 % get request info from http process handler
 -spec get_reqinfo(SocketPid::pid(), ReqInfo::atom()) -> term().
 get_reqinfo(SocketPid, ReqInfo) ->
 	misultin_utility:call(SocketPid, {reqinfo, ReqInfo}).
-	
 
-
-
+% send a session command to the http process handler
+-spec session_cmd(SocketPid::pid(), SessionCmd::term()) -> term().
 session_cmd(SocketPid, SessionCmd) ->
 	misultin_utility:call(SocketPid, {session_cmd, SessionCmd}).
-	
-
-
 
 % ============================ /\ API ======================================================================
 

@@ -39,7 +39,8 @@
 
 % API
 -export([start_link/1]).
--export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2, get_rfc_date/1, get_iso8601_date/1, get_table_date_ref/1]).
+-export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2]).
+-export([get_rfc_date/1, get_iso8601_date/1, get_timestamp/1, get_table_date_ref/1]).
 
 % macros
 -define(TABLE_PIDS_HTTP, misultin_table_pids_http).
@@ -97,6 +98,11 @@ get_rfc_date(TableDateRef) ->
 get_iso8601_date(TableDateRef) ->
 	ets:lookup_element(TableDateRef, iso_8601_date, 2).
 	
+% Retrieve computed timestamp
+-spec get_timestamp(TableDateRef::ets:tid()) -> non_neg_integer().
+get_timestamp(TableDateRef) ->
+	ets:lookup_element(TableDateRef, timestamp, 2).	
+
 % Retrieve table date reference.
 -spec get_table_date_ref(ServerRef::pid()) -> TableDateRef::ets:tid().
 get_table_date_ref(ServerRef) ->
@@ -278,7 +284,8 @@ update_datetable(TableDate) ->
 	{{Year,Month,Day},{Hour,Min,Sec}} = calendar:universal_time(),
 	ets:insert(TableDate, [
 		{rfc_date, httpd_util:rfc1123_date({{Year,Month,Day},{Hour,Min,Sec}})},
-		{iso_8601_date, lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B UTC", [Year, Month, Day, Hour, Min, Sec]))}
+		{iso_8601_date, lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B UTC", [Year, Month, Day, Hour, Min, Sec]))},
+		{timestamp, misultin_utility:get_unix_timestamp()}
 	]).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

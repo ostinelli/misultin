@@ -74,6 +74,7 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 			?LOG_DEBUG("got misultin server pid: ~p", [ServerRef]),
 			% get rfc table ref
 			TableDateRef = misultin_server:get_table_date_ref(ServerRef),
+			?LOG_DEBUG("got misultin table date reference: ~p", [TableDateRef]),
 			% get pid of sessions server
 			case lists:keyfind(sessions, 1, Childrens) of
 				{sessions, SessionsRef, _, _} ->
@@ -84,7 +85,7 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 			end;
 		_ ->
 			{error, could_not_get_serverref}
-	end.	
+	end.
 
 % Starts the socket.
 -spec acceptor(

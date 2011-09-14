@@ -194,7 +194,7 @@ init([Options]) ->
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
 					% define sessions supervisor
-					SessionsSpec = {sessions, {misultin_sessions, start_link, [{}]}, permanent, 60000, worker, [misultin_sessions]},
+					SessionsSpec = {sessions, {misultin_sessions, start_link, [{self()}]}, permanent, 60000, worker, [misultin_sessions]},
 					% define acceptors supervisor specs
 					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% ip address
