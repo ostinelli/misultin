@@ -32,7 +32,7 @@
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]).
+	misultin:start_link([{port, Port}, {sessions_expire, 60}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->

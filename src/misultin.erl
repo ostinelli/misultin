@@ -99,22 +99,23 @@ init([Options]) ->
 	OptionProps = [
 		% socket
 		{ip, {0, 0, 0, 0}, fun check_and_convert_string_to_ip/1, invalid_ip},
-		{port, 80, fun is_integer/1, port_not_integer},
-		{backlog, 128, fun is_integer/1, backlog_not_integer},
-		{acceptors_poolsize, 10, fun is_integer/1, invalid_acceptors_poolsize_option},
-		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer},
-		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
+		{port, 80, fun is_non_neg_integer/1, port_not_integer},
+		{backlog, 128, fun is_non_neg_integer/1, backlog_not_integer},
+		{acceptors_poolsize, 10, fun is_non_neg_integer/1, invalid_acceptors_poolsize_option},
+		{recv_timeout, 30*1000, fun is_non_neg_integer/1, recv_timeout_not_integer},
+		{max_connections, 1024, fun is_non_neg_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		{recbuf, default, fun check_recbuf/1, recbuf_not_integer},
 		% misultin
-		{post_max_size, 4*1024*1024, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
-		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
+		{post_max_size, 4*1024*1024, fun is_non_neg_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
+		{get_url_max_size, 2000, fun is_non_neg_integer/1, invalid_get_url_max_size_option},
 		{compress, false, fun is_boolean/1, invalid_compress_option},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{autoexit, true, fun is_boolean/1, invalid_autoexit_option},
 		{ws_loop, undefined, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
-		{ws_versions, ['draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified} % accepted values are 'draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'
+		{ws_versions, ['draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified}, % accepted values are 'draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'
+		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire}
 	],
 	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -138,6 +139,7 @@ init([Options]) ->
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
 			WsVersions = proplists:get_value(ws_versions, OptionsVerified),
 			RecBuf = proplists:get_value(recbuf, OptionsVerified),
+			SessionsExpireSec = proplists:get_value(sessions_expire, OptionsVerified),
 			% set additional options according to socket mode if necessary
 			Continue = case SslOptions0 of
 				false ->
@@ -194,7 +196,7 @@ init([Options]) ->
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
 					% define sessions supervisor
-					SessionsSpec = {sessions, {misultin_sessions, start_link, [{self()}]}, permanent, 60000, worker, [misultin_sessions]},
+					SessionsSpec = {sessions, {misultin_sessions, start_link, [{self(), SessionsExpireSec}]}, permanent, 60000, worker, [misultin_sessions]},
 					% define acceptors supervisor specs
 					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
 					% ip address
@@ -274,6 +276,11 @@ check_ws_version(WsVsn) ->
 		true -> OrderedVsn;
 		_ -> false
 	end.
+
+% check if a number is a non negative integer
+-spec is_non_neg_integer(term()) -> boolean().
+is_non_neg_integer(N) when is_integer(N), N >= 0 -> true;
+is_non_neg_integer(_) -> false.
 
 % Validate and get misultin options.
 -spec get_option({
