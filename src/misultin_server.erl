@@ -46,7 +46,7 @@
 -define(TABLE_PIDS_HTTP, misultin_table_pids_http).
 -define(TABLE_PIDS_WS, misultin_table_pids_ws).
 -define(TABLE_DATE, misultin_table_date).
--define(DATE_UPDATE_INTERVAL, 1000).	   % update interval in ms for RFC time [used in Date headers]
+-define(DATE_UPDATE_INTERVAL, 10000).	   % update interval in ms for RFC time [used in Date headers]
 
 % records
 -record(state, {

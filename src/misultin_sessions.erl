@@ -49,7 +49,7 @@
 % records
 -record(state, {
 	table_sessions			= undefined :: undefined | ets:tid(),			% ETS table reference which holds the sessions
-	table_date_ref		= undefined	:: undefined | ets:tid()				% ETS table reference owned by misultin_server which holds the date
+	table_date_ref			= undefined	:: undefined | ets:tid()			% ETS table reference owned by misultin_server which holds the date
 }).
 
 % includes
@@ -182,7 +182,7 @@ handle_cast(_Msg, State) ->
 handle_info(expire_sessions, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
 	% avoid locking gen server
 	Self = self(),
-	spawn_link(fun() ->
+	spawn(fun() ->
 		% expire sessions
 		expire_sessions(TableSessions, TableDateRef),
 		% start date build timer
