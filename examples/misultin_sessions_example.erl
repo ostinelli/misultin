@@ -51,14 +51,7 @@ handle_http(Req) ->
 			% increment counter
 			N + 1
 	end,
-	% save counter as session' state. a more complex state can easily be saved here, such as proplist()
+	% save counter as session's state. a more complex state can easily be saved here, such as proplist()
 	Req:save_session_state(SessionId, Count),
 	% reply
 	Req:ok([], "Session Id is: ~p, counter is: ~p", [SessionId, Count]).
-	
-	
-	
-	
-
-
-
