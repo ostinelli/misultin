@@ -50,8 +50,7 @@
 
 % records
 -record(state, {
-	table_sessions			= undefined :: undefined | ets:tid(),			% ETS table reference which holds the sessions id
-	table_sessions_pid		= undefined :: undefined | ets:tid()			% ETS table reference which holds the sessions pid
+	table_sessions			= undefined :: undefined | ets:tid()			% ETS table reference which holds the sessions
 }).
 
 % includes
