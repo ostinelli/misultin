@@ -541,8 +541,6 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
 			misultin_utility:respond(LoopPid, ReqResponse),
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
-			
-		
 		{LoopPid, {session_cmd, SessionCmd}} ->
 			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
 			case SessionCmd of
@@ -566,11 +564,6 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 					% loop
 					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders)
 			end;
-			
-			
-		
-		
-		
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
 			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal}, AppHeaders);

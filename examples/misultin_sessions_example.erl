@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Hello World.
+% MISULTIN - Sessions Example.
 %
 % >-|-|-(°>
 % 
@@ -40,14 +40,9 @@ stop() ->
 
 % callback on request received
 handle_http(Req) ->
-	%case Req:get_session_id() of
-	%	undefined ->	
-	%		NewSessionId = Req:start_session(),
-	%		Req:ok(["New Session Id set to: ", NewSessionId]);
-	%	SessionId ->
-	%		Req:ok(["Session Id found: ", SessionId])
-	%end.
-	{SessionId, SessionState} = Req:session(),	
+	% get session info
+	{SessionId, SessionState} = Req:session(),
+	% check state
 	Count = case SessionState of
 		[] ->
 			% no state set previously, init counter
@@ -56,7 +51,7 @@ handle_http(Req) ->
 			% increment counter
 			N + 1
 	end,
-	% save counter
+	% save counter as session' state. a more complex state can easily be saved here, such as proplist()
 	Req:save_session_state(SessionId, Count),
 	% reply
 	Req:ok([], "Session Id is: ~p, counter is: ~p", [SessionId, Count]).

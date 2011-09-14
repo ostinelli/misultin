@@ -143,16 +143,19 @@ delete_cookie(Key, _ReqT) ->
 
 % ---------------------------- \/ Sessions -----------------------------------------------------------------
 
+% get session id and state
+-spec session(ReqT::reqt()) -> {error, Reason::term()} | {SessionId::string(), SessionState::term()}.
+-spec session(Cookies::gen_proplist(), ReqT::reqt()) -> {error, Reason::term()} | {SessionId::string(), SessionState::term()}.
 session(ReqT) ->
 	Cookies = get_cookies(ReqT),
 	session(Cookies, ReqT).
 session(Cookies, {misultin_req, SocketPid}) ->
 	misultin_http:session_cmd(SocketPid, {session, Cookies}).
 
-
+% save session state
+-spec save_session_state(SessionId::string(), SessionState::term(), ReqT::reqt()) -> {error, Reason::term()} | ok.
 save_session_state(SessionId, SessionState, {misultin_req, SocketPid}) ->
 	misultin_http:session_cmd(SocketPid, {save_session_state, SessionId, SessionState}).
-	
 
 % ---------------------------- /\ Sessions ------------------------------------------------------------------
 

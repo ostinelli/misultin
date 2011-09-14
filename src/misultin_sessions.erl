@@ -66,10 +66,12 @@ start_link(Options) when is_tuple(Options) ->
 	gen_server:start_link(?MODULE, Options, []).
 
 % return session cookie
+-spec set_session_cookie(SessionId::string()) -> {http_header(), string()}.
 set_session_cookie(SessionId) ->
 	misultin_cookies:set_cookie(?SESSION_HEADER_NAME, SessionId, [{max_age, ?SESSION_EXPIRE_SEC}]).
 
 % retrieve session info and start a session if necessary.
+-spec session(ServerRef::pid(), Cookies::gen_proplist(), Req::#req{}) -> {SessionId::string(), SessionState::term()} | {error, Reason::term()}.
 session(ServerRef, Cookies, Req) ->
 	% extract session id
 	SessionId = misultin_utility:get_key_value(?SESSION_HEADER_NAME, Cookies),
@@ -77,12 +79,10 @@ session(ServerRef, Cookies, Req) ->
 	gen_server:call(ServerRef, {session, SessionId, Req}).
 
 % save a session state
+-spec save_session_state(ServerRef::pid(), SessionId::string(), SessionState::term(), Req::#req{}) -> ok | {error, Reason::term()}.
 save_session_state(ServerRef, SessionId, SessionState, Req) ->
 	% call
 	gen_server:call(ServerRef, {save_session_state, SessionId, SessionState, Req}).
-
-
-
 
 % ============================ /\ API ======================================================================
 
@@ -221,6 +221,7 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % start a new session
+-spec i_start_session(TableSessions::ets:tid(), Req::#req{}) -> SessionId::string() | {error, Reason::term()}.
 i_start_session(TableSessions, Req) ->
 	% build verify info
 	case get_ip_domain(Req#req.peer_addr) of
@@ -242,30 +243,34 @@ i_start_session(TableSessions, Req) ->
 	end.
 
 % remove an existing session entry
+-spec i_remove_session(TableSessions::ets:tid(), SessionId::string()) -> true.
 i_remove_session(TableSessions, SessionId) ->
 	ets:delete(TableSessions, SessionId).
 	
 % generate a session id string
+-spec generate_session_id() -> SessionId::string().
 generate_session_id() ->
 	misultin_utility:hexstr(erlang:md5(crypto:rand_bytes(?RAND_BYTES_NUM))).
 
 % get domain
+-spec get_ip_domain(IpAddress::inet:ip_address()) -> {0..255, 0..255, 0..255} | {0..16#FFFF, 0..16#FFFF, 0..16#FFFF, 0..16#FFFF, 0..16#FFFF, 0..16#FFFF, 0..16#FFFF} | {error, Reason::term()}.
 get_ip_domain({A, B, C, _}) -> {A, B, C};	% ipv4
 get_ip_domain({A, B, C, D, E, F, G, _}) -> {A, B, C, D, E, F, G};	% ipv6
 get_ip_domain(_) -> {error, undefined_ip}.
 
 % is session valid
+-spec is_session_valid(VerifyInfo::term(), Req::#req{}) -> boolean().
 is_session_valid({VerifyDomain}, Req) ->
 	get_ip_domain(Req#req.peer_addr) =:= VerifyDomain.
 
 % expire sessions
+-spec expire_sessions(TableSessions::ets:tid()) -> true.
 expire_sessions(TableSessions) ->
 	TS = misultin_utility:get_unix_timestamp(),
 	NumDeleted = ets:select_delete(TableSessions, [{{'_', '_', '$1', '_'}, [{'<', '$1', TS - ?SESSION_EXPIRE_SEC}], [true]}]),
 	case NumDeleted > 0 of
-		true -> ?LOG_DEBUG("removed ~p expired session(s)", [NumDeleted]);
+		true -> ?LOG_DEBUG("removed ~p expired session(s)", [NumDeleted]), true;
 		_ -> true
 	end.
-
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
