@@ -156,10 +156,10 @@ handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConn
 		true ->
 			{reply, {error, too_many_open_connections}, State};
 		false ->
-			% add monitor
-			HttpMonRef = erlang:monitor(process, HttpPid),
 			% add reference in ets table
 			ets:insert(TablePidsHttp, {HttpPid, none}),
+			% add monitor
+			HttpMonRef = erlang:monitor(process, HttpPid),
 			% reply and update status
 			{reply, {ok, HttpMonRef}, State#state{open_connections_count = OpenConnectionsCount + 1}}
 	end;
