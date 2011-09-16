@@ -72,7 +72,7 @@ API Documentation is available online on the Misultin's wiki: https://github.com
 CHANGELOG
 ==========================================================================================================
 
-0.8.1-dev:
+0.9-dev:
        - consistently improved memory usage by not copying by default to handler processes the full request or
          websocket record
        - added sessions state, persistent across requests

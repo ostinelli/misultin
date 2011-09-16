@@ -33,7 +33,7 @@
 % ==========================================================================================================
 -module('misultin_websocket_draft-hybi-10').
 -behaviour(misultin_websocket).
--vsn("0.8.1-dev").
+-vsn("0.9-dev").
 
 % API
 -export([check_websocket/1, handshake/3, handle_data/3, send_format/2]).

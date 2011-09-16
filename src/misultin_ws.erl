@@ -28,7 +28,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_ws).
--vsn("0.8.1-dev").
+-vsn("0.9-dev").
 
 % API
 -export([raw/1, get/2, get_cookies/1, get_cookie_value/3, send/2]).
