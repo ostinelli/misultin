@@ -103,7 +103,7 @@ init([Options]) ->
 		{backlog, 128, fun is_non_neg_integer/1, backlog_not_integer},
 		{acceptors_poolsize, 10, fun is_non_neg_integer/1, invalid_acceptors_poolsize_option},
 		{recv_timeout, 30*1000, fun is_non_neg_integer/1, recv_timeout_not_integer},
-		{max_connections, 1024, fun is_non_neg_integer/1, invalid_max_connections_option},
+		{max_connections, 4096, fun is_non_neg_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		{recbuf, default, fun check_recbuf/1, recbuf_not_integer},
 		% misultin

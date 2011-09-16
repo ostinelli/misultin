@@ -184,7 +184,7 @@ activate_controller_process(ServerRef, SessionsRef, TableDateRef, Sock, ListenPo
 	CustomOpts::misultin_option_server()) -> ok.
 open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
-		{ok, HttpMonRef} ->
+		ok ->
 			% get peer address and port
 			{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
 			?LOG_DEBUG("remote peer is ~p", [{PeerAddr, PeerPort}]),
@@ -193,9 +193,7 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 			?LOG_DEBUG("remote peer certificate is ~p", [PeerCert]),
 			% jump to external callback
 			?LOG_DEBUG("jump to connection logic", []),
-			misultin_http:handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts),
-			% remove pid reference and demonitor
-			misultin_server:http_pid_ref_remove(ServerRef, self(), HttpMonRef);
+			misultin_http:handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts);
 		{error, _Reason} ->
 			% too many open connections, send error and close [spawn to avoid locking]
 			?LOG_DEBUG("~p, refusing new request", [_Reason]),

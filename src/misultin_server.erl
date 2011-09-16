@@ -39,7 +39,7 @@
 
 % API
 -export([start_link/1]).
--export([http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2]).
+-export([http_pid_ref_add/2, ws_pid_ref_add/2]).
 -export([get_rfc_date/1, get_iso8601_date/1, get_timestamp/1, get_table_date_ref/1]).
 
 % macros
@@ -73,20 +73,10 @@ start_link(Options) when is_tuple(Options) ->
 http_pid_ref_add(ServerRef, HttpPid) ->
 	gen_server:call(ServerRef, {http_pid_ref_add, HttpPid}).
 
-% Remove a http pid reference from status
--spec http_pid_ref_remove(ServerRef::pid(), HttpPid::pid(), HttpMonRef::reference()) -> ok.
-http_pid_ref_remove(ServerRef, HttpPid, HttpMonRef) ->
-	gen_server:cast(ServerRef, {remove_http_pid, {HttpPid, HttpMonRef}}).
-
 % Adds a new websocket pid reference to status
 -spec ws_pid_ref_add(ServerRef::pid(), WsPid::pid()) -> ok.
 ws_pid_ref_add(ServerRef, WsPid) ->
 	gen_server:cast(ServerRef, {add_ws_pid, WsPid}).
-
-% Remove a websocket pid reference from status
--spec ws_pid_ref_remove(ServerRef::pid(), WsPid::pid()) -> ok.
-ws_pid_ref_remove(ServerRef, WsPid) ->
-	gen_server:cast(ServerRef, {remove_ws_pid, WsPid}).
 
 % Retrieve computed RFC date
 -spec get_rfc_date(TableDateRef::ets:tid()) -> string().
@@ -154,14 +144,19 @@ handle_call({http_pid_ref_add, HttpPid}, _From, #state{max_connections = MaxConn
 	?LOG_DEBUG("new accept connection request received by http process with pid ~p", [HttpPid]),
 	case OpenConnectionsCount >= MaxConnections of
 		true ->
+			?LOG_WARNING("too many open connections, refusing new one",[]),
+			% reply
 			{reply, {error, too_many_open_connections}, State};
 		false ->
 			% add reference in ets table
-			ets:insert(TablePidsHttp, {HttpPid, none}),
+			ets:insert(TablePidsHttp, {HttpPid}),
 			% add monitor
-			HttpMonRef = erlang:monitor(process, HttpPid),
-			% reply and update status
-			{reply, {ok, HttpMonRef}, State#state{open_connections_count = OpenConnectionsCount + 1}}
+			erlang:monitor(process, HttpPid),
+			% update counter
+			NewOpenConnectionCount = OpenConnectionsCount + 1,
+			?LOG_DEBUG("open connection count is ~p, http processes are: ~p, ws processes are: ~p", [NewOpenConnectionCount, ets:tab2list(TablePidsHttp), ets:tab2list(State#state.table_pids_ws)]),
+			% reply
+			{reply, ok, State#state{open_connections_count = NewOpenConnectionCount}}
 	end;
 
 % get table date reference
@@ -178,28 +173,14 @@ handle_call(_Request, _From, State) ->
 % Description: Handling cast messages.
 % ----------------------------------------------------------------------------------------------------------
 
-% remove http pid reference from server
-handle_cast({remove_http_pid, {HttpPid, HttpMonRef}}, #state{open_connections_count = OpenConnectionsCount, table_pids_http = TablePidsHttp} = State) ->
-	?LOG_DEBUG("removing http pid reference ~p", [HttpPid]),
-	% remove monitor
-	catch erlang:demonitor(HttpMonRef),
-	% remove pid from ets table
-	ets:delete(TablePidsHttp, HttpPid),
-	% return
-	{noreply, State#state{open_connections_count = OpenConnectionsCount - 1}};
-
 % add websocket pid reference to server
 handle_cast({add_ws_pid, WsPid}, #state{table_pids_ws = TablePidsWs, table_pids_http = TablePidsHttp} = State) ->
 	?LOG_DEBUG("adding ws pid reference ~p", [WsPid]),
-	ets:insert(TablePidsWs, {WsPid, none}),
+	% add to ws processes list
+	ets:insert(TablePidsWs, {WsPid}),
 	% remove from http processes list
 	ets:delete(TablePidsHttp, WsPid),
-	{noreply, State};
-
-% remove websocket pid reference from server
-handle_cast({remove_ws_pid, WsPid}, #state{table_pids_ws = TablePidsWs} = State) ->
-	?LOG_DEBUG("removing ws pid reference ~p", [WsPid]),
-	ets:delete(TablePidsWs, WsPid),
+	?LOG_DEBUG("open connection count is ~p, http processes are: ~p, ws processes are: ~p", [State#state.open_connections_count, ets:tab2list(TablePidsHttp), ets:tab2list(TablePidsWs)]),		
 	{noreply, State};
 
 % handle_cast generic fallback (ignore)
@@ -224,18 +205,42 @@ handle_info(compute_rfc_date, #state{table_date = TableDate} = State) ->
 	end),
 	{noreply, State};
 
-% Http process trapping
-handle_info({'DOWN', _Ref, process, _HttpPid, normal}, State) -> {noreply, State};	% normal exiting of an http process
-handle_info({'DOWN', _Ref, process, HttpPid, _Reason}, #state{table_pids_http = TablePidsHttp, table_pids_ws = TablePidsWs, open_connections_count = OpenConnectionsCount} = State) ->
-	case ets:member(TablePidsHttp, HttpPid) of
+% Http close/crash process trapping
+handle_info({'DOWN', _Ref, process, HttpOrWsPid, Reason}, #state{table_pids_http = TablePidsHttp, table_pids_ws = TablePidsWs, open_connections_count = OpenConnectionsCount} = State) ->
+	% check if pid is http process
+	case ets:member(TablePidsHttp, HttpOrWsPid) of
 		true ->
-			?LOG_ERROR("http process ~p has died with reason: ~p, removing from references of open connections and websockets", [HttpPid, _Reason]),
-			ets:delete(TablePidsHttp, HttpPid),
-			ets:delete(TablePidsWs, HttpPid),
-			{noreply, State#state{open_connections_count = OpenConnectionsCount - 1}};
+			% log
+			case Reason of
+				normal -> ?LOG_DEBUG("http process ~p died normally, removing from references of open connections", [HttpOrWsPid]);
+				_ -> ?LOG_ERROR("http process ~p has died with reason: ~p, removing from references of open connections", [HttpOrWsPid, Reason])
+			end,
+			% delete from ets
+			ets:delete(TablePidsHttp, HttpOrWsPid),
+			ets:delete(TablePidsWs, HttpOrWsPid),	% this is just being a little paranoid, should never happen
+			% decrease counter
+			NewOpenConnectionCount = OpenConnectionsCount - 1,
+			?LOG_DEBUG("open connection count is ~p, http processes are: ~p, ws processes are: ~p", [NewOpenConnectionCount, ets:tab2list(TablePidsHttp), ets:tab2list(TablePidsWs)]),		
+			{noreply, State#state{open_connections_count = NewOpenConnectionCount}};
 		false ->
-			?LOG_WARNING("received info on a process ~p crash which is not an http process, with reason: ~p", [HttpPid, _Reason]),
-			{noreply, State}
+			% check if is ws process
+			case ets:member(TablePidsWs, HttpOrWsPid) of
+				true ->
+					% log
+					case Reason of
+						normal -> ?LOG_DEBUG("ws process ~p died normally, removing from references of open websockets", [HttpOrWsPid]);
+						_ -> ?LOG_ERROR("ws process ~p has died with reason: ~p, removing from references of open websockets", [HttpOrWsPid, Reason])
+					end,
+					% delete from ets
+					ets:delete(TablePidsWs, HttpOrWsPid),
+					% decrease counter
+					NewOpenConnectionCount = OpenConnectionsCount - 1,
+					?LOG_DEBUG("open connection count is ~p, http processes are: ~p, ws processes are: ~p", [NewOpenConnectionCount, ets:tab2list(TablePidsHttp), ets:tab2list(TablePidsWs)]),		
+					{noreply, State#state{open_connections_count = NewOpenConnectionCount}};
+				false ->
+					?LOG_WARNING("received info on a process ~p crash which is not an http process, with reason: ~p", [HttpOrWsPid, Reason]),
+					{noreply, State}
+			end
 	end;
 
 % handle_info generic fallback (ignore)
