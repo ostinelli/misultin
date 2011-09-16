@@ -76,7 +76,7 @@ CHANGELOG
        - consistently improved memory usage by not copying by default to handler processes the full request or
          websocket record
        - added sessions state, persistent across requests
-       - added access log, which is now included as a log_info entry to the system logger
+       - added access log callback function, so that main application can log HTTP access
        - added support for websocket draft-hybi-10
        - added configuration option to set which websocket versions must be supported by the server
        - corrected minor bugs
