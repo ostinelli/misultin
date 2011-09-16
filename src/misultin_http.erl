@@ -46,8 +46,6 @@
 	server_ref			= undefined	:: undefined | pid(),
 	sessions_ref		= undefined	:: undefined | pid(),
 	table_date_ref		= undefined	:: undefined | ets:tid(),
-	sock				= undefined :: undefined | socket(),
-	socket_mode			= http :: socketmode(),
 	port				= undefined :: undefined | non_neg_integer(),
 	recv_timeout		= undefined :: undefined | non_neg_integer(),
 	post_max_size		= undefined :: undefined | non_neg_integer(),
@@ -88,8 +86,6 @@ handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, 
 		server_ref = ServerRef,
 		sessions_ref = SessionsRef,
 		table_date_ref = TableDateRef,
-		sock = Sock,
-		socket_mode = SocketMode,
 		port = ListenPort,
 		recv_timeout = RecvTimeout,
 		post_max_size = CustomOpts#custom_opts.post_max_size,
@@ -133,7 +129,7 @@ session_cmd(SocketPid, SessionCmd) ->
 
 % REQUEST: wait for a HTTP Request line. Transition to state headers if one is received.
 -spec request(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
-request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
+request(#c{recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_request, Method, {_, Uri} = Path, Version}} when length(Uri) > GetUrlMaxSize ->
@@ -179,11 +175,11 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 -spec headers(C::#c{}, Req::#req{}, H::http_headers(), HCount::non_neg_integer()) -> ok | ignored | ssl_closed | tcp_closed | true.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
-headers(#c{sock = Sock, socket_mode = SocketMode} = C, Req, _H, ?MAX_HEADERS_COUNT) ->
+headers(C, #req{socket = Sock, socket_mode = SocketMode} = Req, _H, ?MAX_HEADERS_COUNT) ->
 	?LOG_DEBUG("too many headers sent, bad request",[]),
 	misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref), SocketMode),
 	handle_keepalive(close, C, Req);
-headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
+headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, H, HeaderCount) ->
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_header, _, 'Content-Length', _, Val} = _Head} ->
@@ -224,7 +220,7 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 					case get_uri_and_args(Req#req{headers = Headers}) of
 						{error, HttpErrorCode} ->
 							?LOG_WARNING("error encountered when parsing uri and args: ~p", [HttpErrorCode]),
-							misultin_socket:send(C#c.sock, build_error_message(HttpErrorCode, Req, C#c.table_date_ref), SocketMode),
+							misultin_socket:send(Sock, build_error_message(HttpErrorCode, Req, C#c.table_date_ref), SocketMode),
 							handle_keepalive(Req#req.connection, C, Req);
 						Req0 ->
 							method_dispatch(C, Req0)
@@ -311,14 +307,14 @@ method_dispatch(C, #req{method = Method} = Req) when Method =:= 'TRACE' ->
 	% an entity-body is explicitly forbidden in TRACE requests <http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.8>
 	call_mfa(C, Req),
 	handle_keepalive(Req#req.connection, C, Req);
-method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, #req{method = _Method, connection = Connection} = Req) ->
+method_dispatch(C, #req{socket = Sock, socket_mode = SocketMode, method = _Method, connection = Connection} = Req) ->
 	?LOG_DEBUG("method not implemented: ~p", [_Method]),
 	misultin_socket:send(Sock, build_error_message(501, Req, C#c.table_date_ref), SocketMode),
 	handle_keepalive(Connection, C, Req).
 
 % read body and dispatch to mfa if ok
 -spec read_body_dispatch(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.	
-read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
+read_body_dispatch(C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	% read post body
 	case read_post_body(C, Req) of
 		{ok, Bin} ->
@@ -360,7 +356,7 @@ read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOu
 					case string:to_lower(TE) of
 						"chunked" ->
 							?LOG_DEBUG("chunked content being sent by the client, parsing body content and looping for additional chunks",[]),
-							read_post_body_chunk(C);
+							read_post_body_chunk(C, Req);
 					_ ->
 						NoContentNoChunkOutput
 				end
@@ -371,7 +367,7 @@ read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOu
 
 % Read body
 -spec i_read_post_body(C::#c{}, Req::#req{}, Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
-i_read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, post_max_size = PostMaxSize}, _Req, Len) ->
+i_read_post_body(#c{recv_timeout = RecvTimeout, post_max_size = PostMaxSize}, #req{socket = Sock, socket_mode = SocketMode} = _Req, Len) ->
 	% check if content length has been provided
 	case Len of
 		0 ->
@@ -394,22 +390,22 @@ i_read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTi
 	end.
 
 % Read body chunks
--spec read_post_body_chunk(C::#c{}) -> {ok, Body::binary()} | {error, Reason::term()}.
--spec read_post_body_chunk_headline(C::#c{}, Acc::binary()) -> {ok, Body::binary()} | {error, Reason::term()}.
--spec read_post_body_chunk_content(C::#c{}, Acc::binary(), Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
-read_post_body_chunk(C) ->
-	read_post_body_chunk_headline(C, <<>>).
-read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, Acc) when size(Acc) > PostMaxSize ->
+-spec read_post_body_chunk(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body_chunk_headline(C::#c{}, Req::#req{}, Acc::binary()) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body_chunk_content(C::#c{}, Req::#req{}, Acc::binary(), Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
+read_post_body_chunk(C, Req) ->
+	read_post_body_chunk_headline(C, Req, <<>>).
+read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, _Req, Acc) when size(Acc) > PostMaxSize ->
 	?LOG_DEBUG("total size of chunked parts of ~p bytes exceed limit of ~p bytes", [size(Acc), PostMaxSize]),
 	{error, post_max_size};
-read_post_body_chunk_headline(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = C, Acc) ->
+read_post_body_chunk_headline(#c{recv_timeout = RecvTimeout} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, Acc) ->
 	misultin_socket:setopts(Sock, [{packet, line}, {active, false}], SocketMode),
 	case misultin_socket:recv(Sock, 0, RecvTimeout, SocketMode) of
 		{ok, HeadLineBin} ->
 			?LOG_DEBUG("received a chunked headline: ~p", [HeadLineBin]),
 			case get_chunk_length(binary_to_list(HeadLineBin)) of			
 				{ok, Len} ->
-					read_post_body_chunk_content(C, Acc, Len);
+					read_post_body_chunk_content(C, Acc, Req, Len);
 				{error, Reason} ->
 					{error, Reason}
 			end;
@@ -418,7 +414,7 @@ read_post_body_chunk_headline(#c{sock = Sock, socket_mode = SocketMode, recv_tim
 		Other ->
 			{error, Other}
 	end.
-read_post_body_chunk_content(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = C, Acc, Len) ->
+read_post_body_chunk_content(#c{recv_timeout = RecvTimeout} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, Acc, Len) ->
 	?LOG_DEBUG("receiving a chunk of ~p bytes", [Len]),
 	misultin_socket:setopts(Sock, [{packet, raw}, {active, false}], SocketMode),
 	case misultin_socket:recv(Sock, Len + 2, RecvTimeout, SocketMode) of	% we need 2 more bytes for the chunked CRLF closing
@@ -431,7 +427,7 @@ read_post_body_chunk_content(#c{sock = Sock, socket_mode = SocketMode, recv_time
 				_ ->
 					% continue with next chunk
 					?LOG_DEBUG("waiting for next chunk", []),
-					read_post_body_chunk_headline(C, <<Acc/binary, Bin:Len/binary>>)
+					read_post_body_chunk_headline(C, Req, <<Acc/binary, Bin:Len/binary>>)
 			end;
 		{error, timeout} ->
 			{error, timeout};
@@ -461,9 +457,9 @@ get_chunk_length(HeadLine) ->
 
 % handle the request and get back to the request loop
 -spec handle_keepalive(http_connection(), C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
-handle_keepalive(close, #c{sock = Sock, socket_mode = SocketMode}, _Req) ->
+handle_keepalive(close, _C, #req{socket = Sock, socket_mode = SocketMode} = _Req) ->
 	misultin_socket:close(Sock, SocketMode);
-handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
+handle_keepalive(keep_alive, C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
 % Main dispatcher
@@ -490,7 +486,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 
 % socket loop
 -spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}, AppHeaders::http_headers()) -> ok | shutdown | ssl_closed | tcp_closed.
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions, AppHeaders) ->
+socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = SocketMode, headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions, AppHeaders) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
