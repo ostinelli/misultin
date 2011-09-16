@@ -120,7 +120,7 @@ send_to_browser(WsHandleLoopPid, Data) ->
 -spec get_wsinfo(SocketPid::pid(), WsInfo::atom()) -> term().
 get_wsinfo(SocketPid, WsInfo) ->
 	misultin_utility:call(SocketPid, {wsinfo, WsInfo}).
-	
+
 % ============================ /\ API ======================================================================
 
 

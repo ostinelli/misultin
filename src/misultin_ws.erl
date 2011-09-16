@@ -31,7 +31,7 @@
 -vsn("0.8.1-dev").
 
 % API
--export([raw/1, get/2, send/2]).
+-export([raw/1, get/2, get_cookies/1, get_cookie_value/3, send/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -82,11 +82,33 @@ get(peer_addr, {misultin_ws, SocketPid}) ->
 			end
 	end.
 
+% ---------------------------- \/ Cookies ------------------------------------------------------------------
+
+% Get all cookies.
+-spec get_cookies(wst()) -> gen_proplist().
+get_cookies(WsT) ->
+	Headers = get(headers, WsT),
+	case misultin_utility:get_key_value('Cookie', Headers) of
+		undefined -> [];
+		CookieContent ->
+			F = fun({Tag, Val}, Acc) ->
+				[{misultin_utility:unquote(Tag), misultin_utility:unquote(Val)}|Acc]
+			end,
+			lists:foldl(F, [], misultin_cookies:parse_cookie(CookieContent))
+	end.
+
+% Get the value of a single cookie
+-spec get_cookie_value(CookieTag::string(), Cookies::gen_proplist(), wst()) -> undefined | string().
+get_cookie_value(CookieTag, Cookies, _WsT) ->
+	misultin_utility:get_key_value(CookieTag, Cookies).
+
+% ---------------------------- /\ Cookies ------------------------------------------------------------------
+
 % send data
 -spec send(Data::list() | binary() | iolist(), wst()) -> term().
 send(Data, {misultin_ws, SocketPid}) ->
 	SocketPid ! {send, Data}.
-		
+
 % ============================ /\ API ======================================================================
 
 
