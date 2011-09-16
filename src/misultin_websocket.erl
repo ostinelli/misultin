@@ -74,11 +74,8 @@ connect(ServerRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket
 	misultin_socket:setopts(Socket, [{packet, 0}], SocketMode),
 	% add main websocket pid to misultin server reference
 	misultin_server:ws_pid_ref_add(ServerRef, self()),
-	% start listening for incoming data
-	ws_loop(WsHandleLoopPid, Ws#ws{headers = Req#req.headers, origin = Origin, host = Host}, undefined),
-	% unlink
-	process_flag(trap_exit, false),
-	erlang:unlink(WsHandleLoopPid).
+	% enter loop
+	enter_loop(WsHandleLoopPid, Ws, Req#req.headers, Origin, Host).
 
 % Check if headers correspond to headers requirements.
 -spec check_headers(Headers::http_headers(), RequiredHeaders::http_headers()) -> true | http_headers().
@@ -150,6 +147,15 @@ check_websockets([Vsn|T], Headers) ->
 		false -> check_websockets(T, Headers);
 		true -> {true, Vsn}
 	end.
+
+% enter loop
+-spec enter_loop(WsHandleLoopPid::pid(), Ws::#ws{}, Headers::http_headers(), Origin::string(), Host::string()) -> true.
+enter_loop(WsHandleLoopPid, Ws, Headers, Origin, Host) ->
+	% start listening for incoming data
+	ws_loop(WsHandleLoopPid, Ws#ws{headers = Headers, origin = Origin, host = Host}, undefined),
+	% unlink
+	process_flag(trap_exit, false),
+	erlang:unlink(WsHandleLoopPid).
 
 % Main Websocket loop
 -spec ws_loop(
