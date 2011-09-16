@@ -286,7 +286,6 @@ code_change(_OldVsn, State, _Extra) ->
 % compute RFC and ISO8601 dates and update ETS table
 -spec update_datetable(TableDate::ets:tid()) -> true.
 update_datetable(TableDate) ->
-	?LOG_DEBUG("updating tabledate",[]),
 	{{Year,Month,Day},{Hour,Min,Sec}} = calendar:universal_time(),
 	ets:insert(TableDate, [
 		{rfc_date, httpd_util:rfc1123_date({{Year,Month,Day},{Hour,Min,Sec}})},

@@ -108,7 +108,7 @@ build_error_message(HttpCode, Req, TableDateRef) ->
 	Headers = [{'Content-Length', 0}, {'Connection', Req#req.connection}],
 	Enc_headers = enc_headers(Headers),
 	% info log
-	build_access_log(HttpCode, 0, Req, TableDateRef),
+	build_access_log(Req, HttpCode, 0, TableDateRef),
 	% build and send response
 	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
 
@@ -508,7 +508,7 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
 			% info log
-			build_access_log(HttpCode, size(BodyBinary), Req, C#c.table_date_ref),
+			build_access_log(Req, HttpCode, size(BodyBinary), C#c.table_date_ref),
 			% send
 			misultin_socket:send(Sock, Resp, SocketMode),
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
@@ -785,24 +785,34 @@ list_to_number(L) ->
 	end.
 
 % build access log
--spec build_access_log(HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid()) -> ok.
-build_access_log(_HttpCode, _ContentLength, #req{uri = undefined} = _Req, _TableDateRef) ->
-	?LOG_INFO("~s - - [~s] \"-\" ~p ~p", [
-		misultin_utility:convert_ip_to_list(_Req#req.peer_addr),
-		misultin_server:get_iso8601_date(_TableDateRef),
-		_HttpCode,
-		_ContentLength
-	]);
-build_access_log(_HttpCode, _ContentLength, _Req, _TableDateRef) ->
-	{_Maj, _Min} = _Req#req.vsn,
-	?LOG_INFO("~s - - [~s] \"~s ~s HTTP/~p.~p\" ~p ~p", [
-		misultin_utility:convert_ip_to_list(_Req#req.peer_addr),
-		misultin_server:get_iso8601_date(_TableDateRef),
-		_Req#req.method,
-		misultin_req:uri_unquote(_Req#req.uri),
-		_Maj, _Min,
-		_HttpCode,
-		_ContentLength
-	]).
+-spec build_access_log(Req::#req{}, HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), TableDateRef::ets:tid()) -> ok.
+build_access_log(Req, HttpCode, ContentLength, TableDateRef) ->
+	{PeerAddr, DateTime, RequestLine, HttpCode, ContentLength} = build_access_data(Req, HttpCode, ContentLength, TableDateRef),
+	?LOG_INFO("~s - - [~s] \"~s\" ~p ~p", [PeerAddr, DateTime, RequestLine, HttpCode, ContentLength]),
+	ok.
+
+-spec build_access_data(Req::#req{}, HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), TableDateRef::ets:tid()) ->
+	{PeerAddr::string(), DateTime::string(), RequestLine::string(), HttpCode::non_neg_integer(), ContentLength::non_neg_integer()}.
+build_access_data(#req{uri = undefined} = Req, HttpCode, ContentLength, TableDateRef) ->
+	build_access_data_do(Req#req.peer_addr, "no-parsing-done", HttpCode, ContentLength, TableDateRef);
+build_access_data(Req, HttpCode, ContentLength, TableDateRef) ->
+	{Maj, Min} = Req#req.vsn,
+	FullUri = lists:flatten(io_lib:format("~s ~s HTTP/~p.~p", [Req#req.method, build_full_uri(misultin_req:uri_unquote(Req#req.uri), Req#req.args), Maj, Min])),
+	build_access_data_do(Req#req.peer_addr, FullUri, HttpCode, ContentLength, TableDateRef).
+
+-spec build_access_data_do(PeerAddr::inet:ip_address(), RequestLine::string(), HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), TableDateRef::ets:tid()) ->
+	{PeerAddr::string(), DateTime::string(), RequestLine::string(), HttpCode::non_neg_integer(), ContentLength::non_neg_integer()}.
+build_access_data_do(PeerAddr, RequestLine, HttpCode, ContentLength, TableDateRef) ->
+	{
+		misultin_utility:convert_ip_to_list(PeerAddr),		% ip peer address
+		misultin_server:get_iso8601_date(TableDateRef),		% datetime
+		RequestLine,										% request line
+		HttpCode,											% response code
+		ContentLength										% response length
+	}.
+	
+-spec build_full_uri(Uri::string(), Args::string()) -> string().
+build_full_uri(Uri, []) -> Uri;
+build_full_uri(Uri, Args) -> lists:concat([Uri, "?", Args]).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
