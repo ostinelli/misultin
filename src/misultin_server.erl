@@ -123,7 +123,7 @@ init({MaxConnections}) ->
 	end,
 	update_datetable(TableDate),
 	% start date build timer
-	erlang:send_after(0, self(), compute_rfc_date),
+	erlang:send_after(?DATE_UPDATE_INTERVAL, self(), compute_rfc_date),
 	% return
 	{ok, #state{
 		max_connections = MaxConnections,
@@ -256,8 +256,8 @@ handle_info(_Info, State) ->
 terminate(_Reason, #state{table_pids_http = TablePidsHttp, table_pids_ws = TablePidsWs, table_date = TableDate}) ->
 	?LOG_DEBUG("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
 	% build pid lists from ets tables
-	HttpPidList = [X || {X, _} <- ets:tab2list(TablePidsHttp)],
-	WsPidList = [X || {X, _} <- ets:tab2list(TablePidsWs)],
+	HttpPidList = [X || {X} <- ets:tab2list(TablePidsHttp)],
+	WsPidList = [X || {X} <- ets:tab2list(TablePidsWs)],
 	% send a shutdown message to all websockets, if any
 	?LOG_DEBUG("sending shutdown message to ~p websockets", [length(WsPidList)]),
 	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsPidList),
@@ -286,6 +286,7 @@ code_change(_OldVsn, State, _Extra) ->
 % compute RFC and ISO8601 dates and update ETS table
 -spec update_datetable(TableDate::ets:tid()) -> true.
 update_datetable(TableDate) ->
+	?LOG_DEBUG("updating tabledate",[]),
 	{{Year,Month,Day},{Hour,Min,Sec}} = calendar:universal_time(),
 	ets:insert(TableDate, [
 		{rfc_date, httpd_util:rfc1123_date({{Year,Month,Day},{Hour,Min,Sec}})},
