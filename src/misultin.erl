@@ -115,7 +115,8 @@ init([Options]) ->
 		{ws_loop, undefined, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
 		{ws_versions, ['draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified}, % accepted values are 'draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'
-		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire}
+		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire},
+		{access_log, undefined, fun check_access_log/1, invalid_access_log}
 	],
 	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -140,6 +141,7 @@ init([Options]) ->
 			WsVersions = proplists:get_value(ws_versions, OptionsVerified),
 			RecBuf = proplists:get_value(recbuf, OptionsVerified),
 			SessionsExpireSec = proplists:get_value(sessions_expire, OptionsVerified),
+			AccessLogFun = proplists:get_value(access_log, OptionsVerified),
 			% set additional options according to socket mode if necessary
 			Continue = case SslOptions0 of
 				false ->
@@ -191,7 +193,8 @@ init([Options]) ->
 						autoexit = AutoExit,
 						ws_loop = WsLoop,
 						ws_autoexit = WsAutoExit,
-						ws_versions = WsVersions
+						ws_versions = WsVersions,
+						access_log = AccessLogFun
 					},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
@@ -258,6 +261,12 @@ check_ssl_options(SslOptions) ->
 check_recbuf(default) -> default;
 check_recbuf(RecBuf) when is_integer(RecBuf), RecBuf > 0 -> true;
 check_recbuf(_RecBuf) -> false.
+
+% check if access log fun has been set
+-spec check_access_log(AccessLogFun::false | function()) -> boolean().
+check_access_log(undefined) -> true;
+check_access_log(AccessLogFun) when is_function(AccessLogFun) -> true;
+check_access_log(_AccessLogFun) -> false.
 
 % check if ws specified versions are implemented. order does matter so we build a list in proper order
 -spec check_ws_version([websocket_version()]) -> false | [websocket_version()].

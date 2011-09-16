@@ -144,7 +144,8 @@
 	autoexit			= true :: boolean(),							% shoud the http process be automatically killed?
 	ws_loop				= undefined :: undefined | function(),			% the loop handling websockets
 	ws_autoexit			= true :: boolean(),							% shoud the ws process be automatically killed?
-	ws_versions			= undefined :: [websocket_version()]			% list of supported ws versions
+	ws_versions			= undefined :: [websocket_version()],			% list of supported ws versions
+	access_log			= undefined :: undefined | function()			% access log function
 }).
 
 % Request

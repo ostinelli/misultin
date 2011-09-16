@@ -34,7 +34,7 @@
 -vsn("0.8.1-dev").
 
 % API
--export([handle_data/11, build_error_message/3, get_reqinfo/2, session_cmd/2]).
+-export([handle_data/11, build_error_message/4, get_reqinfo/2, session_cmd/2]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -55,7 +55,8 @@
 	autoexit			= true :: boolean(),
 	ws_loop				= undefined :: undefined | function(),
 	ws_autoexit			= true :: boolean(),
-	ws_versions			= undefined :: [websocket_version()]
+	ws_versions			= undefined :: [websocket_version()],
+	access_log			= undefined :: undefined | function()
 }).
 -record(req_options, {
 	comet				= false :: boolean()		% if comet =:= true, we will monitor client tcp close
@@ -95,20 +96,21 @@ handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, 
 		autoexit = CustomOpts#custom_opts.autoexit,
 		ws_loop = CustomOpts#custom_opts.ws_loop,
 		ws_autoexit = CustomOpts#custom_opts.ws_autoexit,
-		ws_versions = CustomOpts#custom_opts.ws_versions
+		ws_versions = CustomOpts#custom_opts.ws_versions,
+		access_log = CustomOpts#custom_opts.access_log
 	},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
 	request(C, Req).
 
 % build error message
--spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid()) -> iolist().
-build_error_message(HttpCode, Req, TableDateRef) ->
+-spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid(), AccessLogFun::function()) -> iolist().
+build_error_message(HttpCode, Req, TableDateRef, AccessLogFun) ->
 	% build headers
 	Headers = [{'Content-Length', 0}, {'Connection', Req#req.connection}],
 	Enc_headers = enc_headers(Headers),
 	% info log
-	build_access_log(Req, HttpCode, 0, TableDateRef),
+	build_access_log(Req, HttpCode, 0, TableDateRef, AccessLogFun),
 	% build and send response
 	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
 
@@ -134,7 +136,7 @@ request(#c{recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, #r
 	receive
 		{SocketMode, Sock, {http_request, Method, {_, Uri} = Path, Version}} when length(Uri) > GetUrlMaxSize ->
 			?LOG_WARNING("get url request uri of ~p exceed maximum length of ~p", [length(Uri), GetUrlMaxSize]),				
-			misultin_socket:send(Sock, build_error_message(414, Req#req{connection = close, vsn = Version, method = Method, uri = Path}, C#c.table_date_ref), SocketMode),
+			misultin_socket:send(Sock, build_error_message(414, Req#req{connection = close, vsn = Version, method = Method, uri = Path}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(close, C, Req);		
 		{SocketMode, Sock, {http_request, Method, Path, Version}} ->
 			?LOG_DEBUG("received full headers of a new HTTP packet", []),
@@ -151,7 +153,7 @@ request(#c{recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, #r
 			request(C, Req);
 		{http, Sock, {http_error, _Other}}  ->
 			?LOG_DEBUG("not the beginning of a request [maybe a ssl request while socket in http mode?]: ~p, sending bad request message and closing socket", [_Other]),
-			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref), SocketMode),
+			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			misultin_socket:close(Sock, SocketMode);
 		{tcp_closed, _Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
@@ -177,7 +179,7 @@ headers(C, Req, H) ->
 	headers(C, Req, H, 0).
 headers(C, #req{socket = Sock, socket_mode = SocketMode} = Req, _H, ?MAX_HEADERS_COUNT) ->
 	?LOG_DEBUG("too many headers sent, bad request",[]),
-	misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref), SocketMode),
+	misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 	handle_keepalive(close, C, Req);
 headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, H, HeaderCount) ->
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
@@ -187,7 +189,7 @@ headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock
 			case catch erlang:list_to_integer(Val) of
 				{'EXIT', _} ->
 					?LOG_DEBUG("no valid content length: ~p", [Val]),
-					misultin_socket:send(Sock, build_error_message(400, Req, C#c.table_date_ref), SocketMode),
+					misultin_socket:send(Sock, build_error_message(400, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 					handle_keepalive(Req#req.connection, C, Req);
 				ContentLength ->
 					headers(C, Req#req{content_length = ContentLength}, [{'Content-Length', Val}|H], HeaderCount + 1)
@@ -220,7 +222,7 @@ headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock
 					case get_uri_and_args(Req#req{headers = Headers}) of
 						{error, HttpErrorCode} ->
 							?LOG_WARNING("error encountered when parsing uri and args: ~p", [HttpErrorCode]),
-							misultin_socket:send(Sock, build_error_message(HttpErrorCode, Req, C#c.table_date_ref), SocketMode),
+							misultin_socket:send(Sock, build_error_message(HttpErrorCode, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 							handle_keepalive(Req#req.connection, C, Req);
 						Req0 ->
 							method_dispatch(C, Req0)
@@ -231,7 +233,7 @@ headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
-			misultin_socket:send(Sock, build_error_message(400, Req, C#c.table_date_ref), SocketMode),
+			misultin_socket:send(Sock, build_error_message(400, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(Req#req.connection, C, Req);
 		{tcp_closed, _Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
@@ -247,7 +249,7 @@ headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock
 			ignored
 	after RecvTimeout ->
 		?LOG_DEBUG("headers timeout, sending request timeout error", []),
-		misultin_socket:send(Sock, build_error_message(408, Req#req{connection = close}, C#c.table_date_ref), SocketMode),
+		misultin_socket:send(Sock, build_error_message(408, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 		handle_keepalive(close, C, Req)
 	end.
 
@@ -309,7 +311,7 @@ method_dispatch(C, #req{method = Method} = Req) when Method =:= 'TRACE' ->
 	handle_keepalive(Req#req.connection, C, Req);
 method_dispatch(C, #req{socket = Sock, socket_mode = SocketMode, method = _Method, connection = Connection} = Req) ->
 	?LOG_DEBUG("method not implemented: ~p", [_Method]),
-	misultin_socket:send(Sock, build_error_message(501, Req, C#c.table_date_ref), SocketMode),
+	misultin_socket:send(Sock, build_error_message(501, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 	handle_keepalive(Connection, C, Req).
 
 % read body and dispatch to mfa if ok
@@ -324,15 +326,15 @@ read_body_dispatch(C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 			handle_keepalive(Req#req.connection, C, Req0);
 		{error, timeout} ->
 			?LOG_WARNING("request timeout, sending error", []),
-			misultin_socket:send(Sock, build_error_message(408, Req, C#c.table_date_ref), SocketMode),
+			misultin_socket:send(Sock, build_error_message(408, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(close, C, Req);			
 		{error, post_max_size} ->	
 			?LOG_WARNING("post request entity too large", []),				
-			misultin_socket:send(Sock, build_error_message(413, Req#req{connection = close}, C#c.table_date_ref), SocketMode),
+			misultin_socket:send(Sock, build_error_message(413, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(close, C, Req);
 		{error, Reason} ->
 			?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [Reason]),
-			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref), SocketMode),
+			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(close, C, Req)
 	end.
 
@@ -477,16 +479,25 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 		Loop(ReqT)
 	end),
 	% enter loop
-	socket_loop(C, Req, LoopPid, #req_options{}, []),
+	{HttpCode, SizeSent} = socket_loop(C, Req, LoopPid, #req_options{}, [], none, 0),
 	% unlink
 	process_flag(trap_exit, false),
 	erlang:unlink(LoopPid),
+	% build access log
+	case HttpCode of
+		none ->
+			% do nothing
+			ok;
+		_ ->
+			% build access log
+			build_access_log(Req, HttpCode, SizeSent, C#c.table_date_ref, C#c.access_log)
+	end,
 	% close http loop or send message to LoopPid
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
--spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}, AppHeaders::http_headers()) -> ok | shutdown | ssl_closed | tcp_closed.
-socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = SocketMode, headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions, AppHeaders) ->
+-spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}, AppHeaders::http_headers(), HttpCodeSent::non_neg_integer() | none, SizeSent::non_neg_integer()) -> {HttpCode::non_neg_integer() | none, SizeSent::non_neg_integer()}.
+socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = SocketMode, headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions, AppHeaders, HttpCodeSent, SizeSent) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -507,11 +518,10 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			Enc_headers = enc_headers(lists:append([CompressHeaders, AppHeaders, Headers])),
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
-			% info log
-			build_access_log(Req, HttpCode, size(BodyBinary), C#c.table_date_ref),
 			% send
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
+			% loop and save sent status
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCode, size(BodyBinary));
 		{LoopPid, {reqinfo, ReqInfo}} ->
 			ReqResponse = case ReqInfo of
 				raw				-> Req;
@@ -531,7 +541,7 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			end,
 			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
 			misultin_utility:respond(LoopPid, ReqResponse),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
 		{LoopPid, {session_cmd, SessionCmd}} ->
 			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
 			case SessionCmd of
@@ -546,64 +556,72 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 							% respond with session id
 							misultin_utility:respond(LoopPid, SessionInfo),
 							% add session id cookie header
-							socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AppHeaders])
+							socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AppHeaders], HttpCodeSent, SizeSent)
 					end;
 				{save_session_state, SessionId, SessionState} ->
 					% save session state
 					Response = misultin_sessions:save_session_state(C#c.sessions_ref, SessionId, SessionState, Req),
 					misultin_utility:respond(LoopPid, Response),
 					% loop
-					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders)
+					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
 			end;
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
-			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal}, AppHeaders);
+			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal}, AppHeaders, HttpCodeSent, SizeSent);
 		{stream_head, HttpCode, Headers0} ->
 			?LOG_DEBUG("sending stream head", []),
 			Headers = add_output_header('Connection', {Headers0, Req}),
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
+			% respond
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
+			% loop and set HttpCode
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCode, SizeSent);
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
+			% respond
 			misultin_socket:send(Sock, Data, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
+			% loop and add to size sent
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent + erlang:iolist_size(Data));
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
 		{stream_error, 404} ->
 			?LOG_ERROR("file not found", []),
-			misultin_socket:send(Sock, build_error_message(404, Req, C#c.table_date_ref), SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
+			misultin_socket:send(Sock, build_error_message(404, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+			% we already build an access log so reset HttpCodeSent & SizeSent
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, none, 0);
 		{stream_error, _Reason} ->
 			?LOG_ERROR("error sending stream: ~p", [_Reason]),
-			misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref), SocketMode),
+			misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders);
+			% we already build an access log so reset HttpCodeSent & SizeSent
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, none, 0);
 		{tcp_closed, Sock} ->
 			?LOG_DEBUG("client closed socket",[]),
-			tcp_closed;
+			{HttpCodeSent, SizeSent};
 		{ssl_closed, Sock} ->
 			?LOG_DEBUG("client closed ssl socket",[]),
-			ssl_closed;
+			{HttpCodeSent, SizeSent};
 		shutdown ->
 			?LOG_DEBUG("shutdown message received from server",[]),
-			shutdown;			
+			{HttpCodeSent, SizeSent};			
 		{'EXIT', LoopPid, normal} ->
 			?LOG_DEBUG("normal finishing of custom loop",[]),
-			ok;
+			{HttpCodeSent, SizeSent};
 		{'EXIT', LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
-			misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref), SocketMode);
+			misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+			{none, 0};
 		{SocketMode, Sock, _HttpData} ->
 			?LOG_WARNING("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
-			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref), SocketMode),
-			misultin_socket:close(Sock, SocketMode);
+			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
+			misultin_socket:close(Sock, SocketMode),
+			{none, 0};
 		_Else ->
 			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
-			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders)
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
 	end.
 
 % Close socket and custom handling loop dependency
@@ -785,30 +803,33 @@ list_to_number(L) ->
 	end.
 
 % build access log
--spec build_access_log(Req::#req{}, HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), TableDateRef::ets:tid()) -> ok.
-build_access_log(Req, HttpCode, ContentLength, TableDateRef) ->
-	{PeerAddr, DateTime, RequestLine, HttpCode, ContentLength} = build_access_data(Req, HttpCode, ContentLength, TableDateRef),
+-spec build_access_log(Req::#req{}, HttpCode::non_neg_integer() | atom(), ContentLength::non_neg_integer() | atom(), TableDateRef::ets:tid(), AccessLogFun::function()) -> ok.
+build_access_log(Req, HttpCode, ContentLength, TableDateRef, AccessLogFun) ->
+	{PeerAddr, DateTime, RequestLine} = build_access_data(Req, TableDateRef),
+	case AccessLogFun of
+		false -> ok;
+		_ ->
+			AccessInfo = {PeerAddr, DateTime, RequestLine, HttpCode, ContentLength},
+			?LOG_DEBUG("sending access log information to access log fun: ~p", [AccessInfo]),
+			AccessLogFun(AccessInfo)
+	end,
 	?LOG_INFO("~s - - [~s] \"~s\" ~p ~p", [PeerAddr, DateTime, RequestLine, HttpCode, ContentLength]),
 	ok.
 
--spec build_access_data(Req::#req{}, HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), TableDateRef::ets:tid()) ->
-	{PeerAddr::string(), DateTime::string(), RequestLine::string(), HttpCode::non_neg_integer(), ContentLength::non_neg_integer()}.
-build_access_data(#req{uri = undefined} = Req, HttpCode, ContentLength, TableDateRef) ->
-	build_access_data_do(Req#req.peer_addr, "no-parsing-done", HttpCode, ContentLength, TableDateRef);
-build_access_data(Req, HttpCode, ContentLength, TableDateRef) ->
+-spec build_access_data(Req::#req{}, TableDateRef::ets:tid()) -> {PeerAddr::string(), DateTime::string(), RequestLine::string()}.
+build_access_data(#req{uri = undefined} = Req, TableDateRef) ->
+	build_access_data_do(Req#req.peer_addr, "no-parsing-done", TableDateRef);
+build_access_data(Req, TableDateRef) ->
 	{Maj, Min} = Req#req.vsn,
 	FullUri = lists:flatten(io_lib:format("~s ~s HTTP/~p.~p", [Req#req.method, build_full_uri(misultin_req:uri_unquote(Req#req.uri), Req#req.args), Maj, Min])),
-	build_access_data_do(Req#req.peer_addr, FullUri, HttpCode, ContentLength, TableDateRef).
+	build_access_data_do(Req#req.peer_addr, FullUri, TableDateRef).
 
--spec build_access_data_do(PeerAddr::inet:ip_address(), RequestLine::string(), HttpCode::non_neg_integer(), ContentLength::non_neg_integer(), TableDateRef::ets:tid()) ->
-	{PeerAddr::string(), DateTime::string(), RequestLine::string(), HttpCode::non_neg_integer(), ContentLength::non_neg_integer()}.
-build_access_data_do(PeerAddr, RequestLine, HttpCode, ContentLength, TableDateRef) ->
+-spec build_access_data_do(PeerAddr::inet:ip_address(), RequestLine::string(), TableDateRef::ets:tid()) -> {PeerAddr::string(), DateTime::string(), RequestLine::string()}.
+build_access_data_do(PeerAddr, RequestLine, TableDateRef) ->
 	{
 		misultin_utility:convert_ip_to_list(PeerAddr),		% ip peer address
 		misultin_server:get_iso8601_date(TableDateRef),		% datetime
-		RequestLine,										% request line
-		HttpCode,											% response code
-		ContentLength										% response length
+		RequestLine											% request line
 	}.
 	
 -spec build_full_uri(Uri::string(), Args::string()) -> string().

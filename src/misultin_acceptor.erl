@@ -198,7 +198,7 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 			% too many open connections, send error and close [spawn to avoid locking]
 			?LOG_DEBUG("~p, refusing new request", [_Reason]),
 			{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
-			Msg = misultin_http:build_error_message(503, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef),
+			Msg = misultin_http:build_error_message(503, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef, CustomOpts#custom_opts.access_log),
 			misultin_socket:send(Sock, Msg, SocketMode),
 			misultin_socket:close(Sock, SocketMode)
 	end.
