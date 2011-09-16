@@ -52,7 +52,7 @@
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> {ok, Pid::pid()}.
+	CustomOpts::#custom_opts{}) -> {ok, Pid::pid()}.
 start_link(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	Pid = proc_lib:spawn_link(?MODULE, init, [MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts]),
 	{ok, Pid}.
@@ -64,7 +64,7 @@ start_link(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, Custom
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> {error, Reason::term()}.
+	CustomOpts::#custom_opts{}) -> {error, Reason::term()}.
 init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	?LOG_DEBUG("starting new acceptor with pid ~p", [self()]),
 	% get pid of misultin server
@@ -96,7 +96,7 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> [].
+	CustomOpts::#custom_opts{}) -> [].
 acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case catch misultin_socket:accept(ListenSocket, SocketMode) of
 		{ok, Sock} when SocketMode =:= http ->
@@ -161,7 +161,7 @@ acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTim
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> ok.
+	CustomOpts::#custom_opts{}) -> ok.
 activate_controller_process(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	receive
 		set ->
@@ -181,7 +181,7 @@ activate_controller_process(ServerRef, SessionsRef, TableDateRef, Sock, ListenPo
 	ListenPort::non_neg_integer(),
 	RecvTimeout::non_neg_integer(),
 	SocketMode::socketmode(),
-	CustomOpts::misultin_option_server()) -> ok.
+	CustomOpts::#custom_opts{}) -> ok.
 open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
 		ok ->
@@ -193,7 +193,8 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 			?LOG_DEBUG("remote peer certificate is ~p", [PeerCert]),
 			% jump to external callback
 			?LOG_DEBUG("jump to connection logic", []),
-			misultin_http:handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts);
+			misultin_http:handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts),
+			ok;
 		{error, _Reason} ->
 			% too many open connections, send error and close [spawn to avoid locking]
 			?LOG_DEBUG("~p, refusing new request", [_Reason]),
