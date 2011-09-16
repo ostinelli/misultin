@@ -73,12 +73,12 @@ CHANGELOG
 ==========================================================================================================
 
 0.8.1-dev:
+       - consistently improved memory usage by not copying by default to handler processes the full request or
+         websocket record
+       - added sessions state, persistent across requests
+       - added access log, which is now included as a log_info entry to the system logger
        - added support for websocket draft-hybi-10
        - added configuration option to set which websocket versions must be supported by the server
-       - improved memory usage by not copying by default to handler processes the full request or
-         websocket record
-       - added access log, which is now included as a log_info entry to the system logger
-       - added basic sessions
        - corrected minor bugs
 
 0.8:   - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
