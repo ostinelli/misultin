@@ -1,34 +1,19 @@
-EBIN_DIR := ebin
-SRC_DIR := src
-EXAMPLES_DIR := examples
-INCLUDE_DIR := include
-ERLC := erlc
-ERLC_FLAGS := -W -I $(INCLUDE_DIR) -o $(EBIN_DIR)
+EXAMPLES_DIR:=examples
+REBAR_CONFIG:=$(PWD)/rebar.config
 
 all: compile
 
 compile:
 	@rebar compile
-	
-debug: 
-	@rebar debug_info=true compile
 
 clean:
 	@rebar clean
-	@find . -name "erl_crash\.dump" | xargs rm -f
-
-dialyzer: check-plt
-	@rebar dialyze
-
-check-plt: compile
-	@rebar check-plt
-
-build-plt: compile
-	@rebar build-plt
-
-example: compile
-	$(ERLC) $(ERLC_FLAGS) $(EXAMPLES_DIR)/*.erl
+	@find $(PWD)/. -name "erl_crash\.dump" | xargs rm -f
 
 tests: compile
-	@mkdir -p $(PWD)/test/results
-	@ct_run -suite $(PWD)/misultin_SUITE -pa $(PWD)/ebin -logdir $(PWD)/test/results
+	@rebar ct
+
+debug: clean
+	@echo {erl_opts, [{d, log_debug}]}. > $(REBAR_CONFIG)
+	@rebar debug_info=true compile
+	@rm $(REBAR_CONFIG)
