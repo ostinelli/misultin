@@ -405,7 +405,7 @@ read_post_body_chunk_headline(#c{recv_timeout = RecvTimeout} = C, #req{socket = 
 			?LOG_DEBUG("received a chunked headline: ~p", [HeadLineBin]),
 			case get_chunk_length(binary_to_list(HeadLineBin)) of			
 				{ok, Len} ->
-					read_post_body_chunk_content(C, Acc, Req, Len);
+					read_post_body_chunk_content(C, Req, Acc, Len);
 				{error, Reason} ->
 					{error, Reason}
 			end;

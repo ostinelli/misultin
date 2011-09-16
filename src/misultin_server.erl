@@ -69,7 +69,7 @@ start_link(Options) when is_tuple(Options) ->
 	gen_server:start_link(?MODULE, Options, []).
 
 % Accepts the connection if the connection count is not over quota, and add monitor
--spec http_pid_ref_add(ServerRef::pid(), HttpPid::pid()) -> {ok, HttpMonRef::reference()} | {error, too_many_open_connections}.
+-spec http_pid_ref_add(ServerRef::pid(), HttpPid::pid()) -> ok | {error, too_many_open_connections}.
 http_pid_ref_add(ServerRef, HttpPid) ->
 	gen_server:call(ServerRef, {http_pid_ref_add, HttpPid}).
 
