@@ -79,6 +79,7 @@ CHANGELOG
        - added access log callback function, so that main application can log HTTP access
        - added support for websocket draft-hybi-10
        - added configuration option to set which websocket versions must be supported by the server
+       - rebar-ized makefile
        - corrected minor bugs
 
 0.8:   - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
