@@ -807,7 +807,7 @@ list_to_number(L) ->
 build_access_log(Req, HttpCode, ContentLength, TableDateRef, AccessLogFun) ->
 	{PeerAddr, DateTime, RequestLine} = build_access_data(Req, TableDateRef),
 	case AccessLogFun of
-		false -> ok;
+		undefined -> ok;
 		_ ->
 			AccessInfo = {PeerAddr, DateTime, RequestLine, HttpCode, ContentLength},
 			?LOG_DEBUG("sending access log information to access log fun: ~p", [AccessInfo]),
