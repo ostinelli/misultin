@@ -1,4 +1,3 @@
-EXAMPLES_DIR:=examples
 REBAR_CONFIG:=$(PWD)/rebar.config
 
 all: compile
