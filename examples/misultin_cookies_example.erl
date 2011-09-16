@@ -45,8 +45,9 @@ handle_http(Req) ->
 	case Req:get_cookie_value("misultin_test_cookie", Cookies) of
 		undefined ->
 			% no cookies preexists, create one that will expire in 365 days
-			Req:ok([Req:set_cookie("misultin_test_cookie", "value of the test cookie", [{max_age, 365*24*3600}])], "A cookie has been set. Refresh the browser to see it.");
+			Req:set_cookie("misultin_test_cookie", "value of the test cookie", [{max_age, 365*24*3600}]),
+			Req:ok("A cookie has been set. Refresh the browser to see it.");
 		CookieVal ->
-			Req:ok([Req:delete_cookie("misultin_test_cookie")], ["The set cookie value was set to \"", CookieVal,"\", and has now been removed. Refresh the browser to see this."])
+			Req:delete_cookie("misultin_test_cookie"),
+			Req:ok(["The set cookie value was set to \"", CookieVal,"\", and has now been removed. Refresh the browser to see this."])
 	end.
-

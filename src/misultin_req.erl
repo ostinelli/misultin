@@ -127,17 +127,19 @@ get_cookie_value(CookieTag, Cookies, _ReqT) ->
 	misultin_utility:get_key_value(CookieTag, Cookies).
 
 % set cookie
--spec set_cookie(Key::string(), Value::string(), reqt()) -> {http_header(), string()}.
--spec set_cookie(Key::string(), Value::string(), Options::cookies_options(), reqt()) -> {http_header(), string()}.
+-spec set_cookie(Key::string(), Value::string(), reqt()) -> ok.
+-spec set_cookie(Key::string(), Value::string(), Options::cookies_options(), reqt()) -> ok.
 set_cookie(Key, Value, _ReqT) ->
 	set_cookie(Key, Value, [], _ReqT).
-set_cookie(Key, Value, Options, _ReqT) ->
-	misultin_cookies:set_cookie(Key, Value, Options).
+set_cookie(Key, Value, Options, {misultin_req, SocketPid}) ->
+	SocketPid ! {set_cookie, misultin_cookies:set_cookie(Key, Value, Options)},
+	ok.		% retro-compatibility: 'ok' atom gets ignored by enc_headers/1 in case set_cookie is used inside Req headers
 
 % delete cookie
--spec delete_cookie(Key::string(), reqt()) -> {http_header(), string()}.
-delete_cookie(Key, _ReqT) ->
-	misultin_cookies:delete_cookie(Key).
+-spec delete_cookie(Key::string(), reqt()) -> ok.
+delete_cookie(Key, {misultin_req, SocketPid}) ->
+	SocketPid ! {set_cookie, misultin_cookies:delete_cookie(Key)},
+	ok.		% retro-compatibility: 'ok' atom gets ignored by enc_headers/1 in case set_cookie is used inside Req headers
 
 % ---------------------------- /\ Cookies ------------------------------------------------------------------
 

@@ -565,6 +565,10 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 					% loop
 					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
 			end;
+		{set_cookie, CookieHeader} ->
+			?LOG_DEBUG("received a cookie: ~p", [CookieHeader]),
+			% add cookie header
+			socket_loop(C, Req, LoopPid, ReqOptions, [CookieHeader|AppHeaders], HttpCodeSent, SizeSent);
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
 			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal}, AppHeaders, HttpCodeSent, SizeSent);
@@ -698,7 +702,7 @@ connection_str(keep_alive) -> "Keep-Alive";
 connection_str(close) -> "Close".
 
 % Encode headers
--spec enc_headers(http_headers()) -> string().
+-spec enc_headers(http_headers() | term()) -> string().
 enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
 	[atom_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([{Tag, Val}|T]) when is_list(Tag) ->
@@ -706,7 +710,11 @@ enc_headers([{Tag, Val}|T]) when is_list(Tag) ->
 enc_headers([{Tag, Val}|T]) when is_binary(Tag) ->
 	[binary_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([]) ->
-	[].
+	[];
+enc_headers([_Other|T]) ->
+	% not a tuple format, ignore
+	enc_headers(T).
+-spec enc_header_val(Val::atom() | integer() | string()) -> string().
 enc_header_val(Val) when is_atom(Val) ->
 	atom_to_list(Val);
 enc_header_val(Val) when is_integer(Val) ->
