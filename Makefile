@@ -1,4 +1,6 @@
 REBAR_CONFIG:=$(PWD)/rebar.config
+INCLUDE_DIR:=include
+SRC_DIR:=src
 
 all: compile
 
@@ -18,3 +20,6 @@ debug:
 	@rebar debug_info=true compile
 	@rm $(REBAR_CONFIG)
 	@if test -f $(REBAR_CONFIG).bak; then mv $(REBAR_CONFIG).bak $(REBAR_CONFIG); fi;
+
+dialyze:
+	@dialyzer -n -I $(INCLUDE_DIR) --src $(SRC_DIR)/*.erl
