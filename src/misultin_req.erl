@@ -34,7 +34,7 @@
 -vsn("0.8").
 
 % macros
--define(FILE_READ_BUFFER, 64*1012).
+-define(FILE_READ_BUFFER, 64*1024).
 
 % API
 -export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5]).
@@ -336,8 +336,9 @@ file_send(FilePath, Headers, ReqT) ->
 		{ok, FileInfo} ->
 			% get filesize
 			FileSize = FileInfo#file_info.size,
+                        FileModifiedTime = FileInfo#file_info.mtime,
 			% do the gradual sending
-			case file_open_and_send(FilePath, FileSize, Headers, ReqT) of
+			case file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) of
 				{error, Reason} ->
 					stream({error, Reason}, ReqT);
 				ok ->
@@ -348,14 +349,16 @@ file_send(FilePath, Headers, ReqT) ->
 			% file not found or other errors
 			stream({error, 404}, ReqT)
 	end.
--spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), Headers::http_headers(), reqt()) -> term().
-file_open_and_send(FilePath, FileSize, Headers, ReqT) ->
+-spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), FileModifiedTime::file:date_time(), Headers::http_headers(), reqt()) -> term().
+file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) ->
 	case file:open(FilePath, [read, binary]) of
 		{error, Reason} ->
 			{error, Reason};
 		{ok, IoDevice} ->
 			% send headers
-			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize} | Headers],
+			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)},
+                                       {'Content-Length', FileSize},
+                                       {'Last-Modified', httpd_util:rfc1123_date(FileModifiedTime)} | Headers],
 			stream(head, HeadersFull, ReqT),
 			% read portions
 			case file_read_and_send(IoDevice, 0, ReqT) of
