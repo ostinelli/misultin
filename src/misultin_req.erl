@@ -336,20 +336,27 @@ file_send(FilePath, Headers, ReqT) ->
 		{ok, FileInfo} ->
 			% get filesize
 			FileSize = FileInfo#file_info.size,
-                        FileModifiedTime = FileInfo#file_info.mtime,
-			% do the gradual sending
-			case file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) of
-				{error, Reason} ->
-					stream({error, Reason}, ReqT);
-				ok ->
-					% sending successful
-					ok
+			FileModifiedTime = httpd_util:rfc1123_date(FileInfo#file_info.mtime),
+			IfModifiedSince = misultin_utility:get_key_value('If-Modified-Since', get(headers, ReqT)),
+			if
+				IfModifiedSince =/= FileModifiedTime ->
+					% do the gradual sending
+					case file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) of
+						{error, Reason} ->
+							stream({error, Reason}, ReqT);
+						ok ->
+							% sending successful
+							ok
+					end;
+				true ->
+					% not modified
+					stream(head, 304, [], ReqT)
 			end;
 		{error, _Reason} ->
 			% file not found or other errors
 			stream({error, 404}, ReqT)
 	end.
--spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), FileModifiedTime::file:date_time(), Headers::http_headers(), reqt()) -> term().
+-spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), FileModifiedTime::string(), Headers::http_headers(), reqt()) -> term().
 file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) ->
 	case file:open(FilePath, [read, binary]) of
 		{error, Reason} ->
@@ -357,8 +364,9 @@ file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) ->
 		{ok, IoDevice} ->
 			% send headers
 			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)},
-                                       {'Content-Length', FileSize},
-                                       {'Last-Modified', httpd_util:rfc1123_date(FileModifiedTime)} | Headers],
+					{'Content-Length', FileSize},
+					{'Last-Modified', FileModifiedTime},
+					{'Expires', httpd_util:rfc1123_date()} | Headers],
 			stream(head, HeadersFull, ReqT),
 			% read portions
 			case file_read_and_send(IoDevice, 0, ReqT) of
