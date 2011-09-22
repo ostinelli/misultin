@@ -170,8 +170,8 @@ ws_loop(WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMod
 			case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
 				websocket_close ->
 					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-				{websocket_close, Data} ->
-					misultin_socket:send(Socket, Data, SocketMode),
+				{websocket_close, CloseData} ->
+					misultin_socket:send(Socket, CloseData, SocketMode),
 					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 				NewState ->
 					ws_loop(WsHandleLoopPid, Ws, NewState)
