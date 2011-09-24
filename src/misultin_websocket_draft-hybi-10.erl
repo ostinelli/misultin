@@ -149,6 +149,8 @@ send_format(Data, OpCode, _State) ->
 
 % handle incomed data
 -spec i_handle_data(Data::binary(), State::undefined | term(), {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | {websocket_close, binary()} | term().
+i_handle_data(Data, #state{buffer = Buffer} = State, {Socket, SocketMode, WsHandleLoopPid}) when is_binary(Buffer) ->
+    i_handle_data(<<Buffer/binary, Data/binary>>, State#state{buffer = none}, {Socket, SocketMode, WsHandleLoopPid});
 i_handle_data(<<Fin:1, 0:3, Opcode:4, 1:1, PayloadLen:7, MaskKey:4/binary, PayloadData/binary>>, State, {Socket, SocketMode, WsHandleLoopPid}) when PayloadLen < 126 andalso PayloadLen =< size(PayloadData) ->
 	handle_frame(Fin, Opcode, PayloadLen, MaskKey, PayloadData, State#state{mask_key = MaskKey}, {Socket, SocketMode, WsHandleLoopPid});
 i_handle_data(<<Fin:1, 0:3, Opcode:4, 1:1, 126:7, PayloadLen:16, MaskKey:4/binary, PayloadData/binary>>, State, {Socket, SocketMode, WsHandleLoopPid}) when PayloadLen =< size(PayloadData) ->
@@ -159,9 +161,7 @@ i_handle_data(<<_Fin:1, 0:3, _Opcode:4, 0:1, _PayloadLen:7, _Data/binary>>, _Sta
 	?LOG_DEBUG("client to server message was not sent masked, close websocket",[]),
 	{websocket_close, websocket_close_data()};
 i_handle_data(Data, #state{buffer = none} = State, {_Socket, _SocketMode, _WsHandleLoopPid}) ->
-	State#state{buffer = Data};
-i_handle_data(Data, #state{buffer = Buffer} = State, {Socket, SocketMode, WsHandleLoopPid}) ->
-	i_handle_data(<<Buffer/binary, Data/binary>>, State#state{buffer = none}, {Socket, SocketMode, WsHandleLoopPid}).
+	State#state{buffer = Data}.
 
 % handle frames
 -spec handle_frame(
