@@ -300,7 +300,7 @@ get_uri_and_args(Req) ->
 
 % dispatch operations according to defined method
 -spec method_dispatch(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
-method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:= 'POST'; Method =:= 'HEAD'; Method =:= 'PUT'; Method =:= 'DELETE'; Method =:= 'CONNECT' ->
+method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:= 'POST'; Method =:= 'HEAD'; Method =:= 'PUT'; Method =:= 'DELETE'; Method =:= 'CONNECT'; Method =:= 'OPTIONS' ->
 	?LOG_DEBUG("~p request received", [Method]),
 	% read body & dispatch
 	read_body_dispatch(C, Req);
