@@ -43,7 +43,7 @@
 -export([raw/1, get/2]).
 -export([get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
 -export([session/1, session/2, save_session_state/3]).
--export([uri_unquote/1, parse_qs/1, parse_post/1, file/2, file/3, file/4, resource/2]).
+-export([uri_unquote/1, parse_qs/1, parse_qs/2, parse_post/1, parse_post/2, file/2, file/3, file/4, resource/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -290,14 +290,20 @@ uri_unquote(_) ->
 	undefined.
 
 % Parse QueryString
--spec parse_qs(reqt()) -> string().
+-spec parse_qs(reqt()) -> [{Key::string(), Value::string()}].
+-spec parse_qs(Option::utf8 | unicode, reqt()) -> [{Key::string(), Value::string()}].
 parse_qs(ReqT) ->
+	parse_qs(utf8, ReqT).
+parse_qs(Option, ReqT) ->
 	Args = get(args, ReqT),
-	misultin_utility:parse_qs(Args).
+	misultin_utility:parse_qs(Args, Option).
 
 % Parse Post
 -spec parse_post(reqt()) -> binary() | [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
+-spec parse_post(Option::utf8 | unicode, reqt()) -> binary() | [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
 parse_post(ReqT) ->
+	parse_post(utf8, ReqT).
+parse_post(Option, ReqT) ->
 	% get header confirmation
 	Headers = get(headers, ReqT),
 	case misultin_utility:header_get_value('Content-Type', Headers) of
@@ -310,7 +316,7 @@ parse_post(ReqT) ->
 			        get(body, ReqT);
 				"application/x-www-form-urlencoded" ->
 					Body = get(body, ReqT),
-					misultin_utility:parse_qs(Body);
+					misultin_utility:parse_qs(Body, Option);
 				"multipart/form-data" ->
 					[Modificator0] = Modificator,
 					"boundary=" ++ Boundary = string:strip(Modificator0),

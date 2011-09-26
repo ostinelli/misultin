@@ -397,16 +397,13 @@ respond(ReqPid, Term) ->
 %% @spec parse_qs(string() | binary()) -> [{Key, Value}]
 %% @doc Parse a query string or application/x-www-form-urlencoded.
 -spec parse_qs(string() | binary()) -> [{Key::string(), Value::string()}].
-parse_qs(Binary) when is_binary(Binary) ->
-	parse_qs(binary_to_list(Binary));
-parse_qs(String) ->
-	parse_qs(String, []).
-parse_qs([], Acc) ->
-	lists:reverse(Acc);
-parse_qs(String, Acc) ->
-	{Key, Rest} = parse_qs_key(String),
-	{Value, Rest1} = parse_qs_value(Rest),
-	parse_qs(Rest1, [{Key, Value} | Acc]).
+-spec parse_qs(Data::string() | binary(), Option::unicode | utf8) -> [{Key::string(), Value::string()}].
+parse_qs(Data) ->
+	parse_qs(Data, utf8).
+parse_qs(Binary, Option) when is_binary(Binary) ->
+	parse_qs(binary_to_list(Binary), Option);
+parse_qs(String, Option) when Option =:= utf8; Option =:= unicode ->
+	i_parse_qs(String, [], Option).
 	
 % unquote
 -spec unquote(binary() | string()) -> string().
@@ -459,6 +456,20 @@ get_unix_timestamp({MegaSecs, Secs, _MicroSecs}) -> MegaSecs * 1000000 + Secs.
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % parse querystring & post
+-spec i_parse_qs(String::string(), Acc::[{Key::string(), Value::string()}], Option::unicode | utf8) -> [{Key::string(), Value::string()}].
+i_parse_qs([], Acc, _Option) ->
+	lists:reverse(Acc);
+i_parse_qs(String, Acc, Option) ->
+	{Key, Rest} = parse_qs_key(String),
+	{Value, Rest1} = parse_qs_value(Rest),
+	case Option of
+		unicode ->
+			i_parse_qs(Rest1, [{unicode:characters_to_list(list_to_binary(Key)), unicode:characters_to_list(list_to_binary(Value))} | Acc], Option);
+		_ ->
+			i_parse_qs(Rest1, [{Key, Value} | Acc], Option)
+	end.
+
+% parse key & value
 -spec parse_qs_key(String::string()) -> {Key::string(), Rest::string()}.
 parse_qs_key(String) ->
 	parse_qs_key(String, []).

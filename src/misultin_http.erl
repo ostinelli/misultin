@@ -320,7 +320,7 @@ read_body_dispatch(C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	% read post body
 	case read_post_body(C, Req) of
 		{ok, Bin} ->
-			?LOG_DEBUG("body read, proceed to handle the request",[]),
+			?LOG_DEBUG("body read: ~p", [Bin]),
 			Req0 = Req#req{body = Bin},
 			call_mfa(C, Req0),
 			handle_keepalive(Req#req.connection, C, Req0);
