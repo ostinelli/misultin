@@ -32,25 +32,25 @@
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req, Port) end}]).
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
 	misultin:stop().
 
 % callback function called on incoming http request
-handle_http(Req, Port) ->
+handle_http(Req) ->
 	% dispatch to rest
-	handle(Req:get(method), Req:resource([lowercase, urldecode]), Req, Port).
+	handle(Req:get(method), Req:resource([lowercase, urldecode]), Req).
 
 % handle a GET on /
-handle('GET', [], Req, Port) ->
+handle('GET', [], Req) ->
 	Req:ok([{"Content-Type", "text/html"}], ["<html>
 <head>
 	<meta http-equiv=\"content-type\" content=\"text/html; charset=UTF-8\">
 </head>
 <body>
-	<form action=\"http://localhost:", integer_to_list(Port), "/\" method=\"post\">
+	<form action=\"/\" method=\"post\">
 		<input type=\"hidden\" name=\"data\" value=\"こんにちは\">
 		<input type=\"submit\" value=\"GO!\">
 	</form>
@@ -58,7 +58,7 @@ handle('GET', [], Req, Port) ->
 </html>"]);
 
 % handle POST submit on /
-handle('POST', [], Req, _Port) ->
+handle('POST', [], Req) ->
 	Args = Req:parse_post(unicode),
 	case Req:get_variable("data", Args) of
 		undefined ->
@@ -77,6 +77,6 @@ handle('POST', [], Req, _Port) ->
 	end;
 	
 % handle the 404 page not found
-handle(_, _, Req, _Port) ->
+handle(_, _, Req) ->
 	Req:ok("Page not found.").
 
