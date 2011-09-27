@@ -149,7 +149,8 @@
 	ws_loop				= undefined :: undefined | function(),			% the loop handling websockets
 	ws_autoexit			= true :: boolean(),							% shoud the ws process be automatically killed?
 	ws_versions			= undefined :: [websocket_version()],			% list of supported ws versions
-	access_log			= undefined :: undefined | function()			% access log function
+	access_log			= undefined :: undefined | function(),			% access log function
+	ws_force_ssl		= false :: boolean()							% if we are deployed behind stunnel, or other ssl proxy
 }).
 
 % Request
@@ -166,7 +167,8 @@
 	uri				= undefined :: undefined | http_uri(),
 	args			= "" :: list(),									% Part of URI after ?
 	headers			= [] :: http_headers(),
-	body			= <<>> :: binary()
+	body			= <<>> :: binary(),
+	ws_force_ssl	= false :: boolean()							% if we are deployed behind stunnel, or other ssl proxy
 }).
 
 % Websocket Request
