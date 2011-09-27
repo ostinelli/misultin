@@ -69,7 +69,7 @@ check_websocket(Headers) ->
 % Description: Callback to build handshake data.
 % ----------------------------------------------------------------------------------------------------------
 -spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
-handshake(#req{socket = Sock, socket_mode = SocketMode}, Headers, {Path, Origin, Host}) ->
+handshake(#req{socket = Sock, socket_mode = SocketMode, external_ssl = ExternalSsl}, Headers, {Path, Origin, Host}) ->
 	% build data
 	Key1 = misultin_utility:header_get_value('Sec-WebSocket-Key1', Headers),
 	Key2 = misultin_utility:header_get_value('Sec-WebSocket-Key2', Headers),
@@ -88,7 +88,8 @@ handshake(#req{socket = Sock, socket_mode = SocketMode}, Headers, {Path, Origin,
 	% prepare handhsake response
 	WsMode = case SocketMode of
 		ssl -> "wss";
-		_ -> "ws"
+		http when ExternalSsl =:= true  -> "wss"; % behind stunnel or similar, client is using ssl
+		http when ExternalSsl =:= false -> "ws"
 	end,
 	% build challenge
 	Ikey1 = [D || D <- Key1, $0 =< D, D =< $9],
