@@ -150,7 +150,7 @@
 	ws_autoexit			= true :: boolean(),							% shoud the ws process be automatically killed?
 	ws_versions			= undefined :: [websocket_version()],			% list of supported ws versions
 	access_log			= undefined :: undefined | function(),			% access log function
-	external_ssl		= false :: boolean()							% if we are deployed behind stunnel, or other ssl proxy
+	ws_force_ssl		= false :: boolean()							% if we are deployed behind stunnel, or other ssl proxy
 }).
 
 % Request
@@ -168,7 +168,7 @@
 	args			= "" :: list(),									% Part of URI after ?
 	headers			= [] :: http_headers(),
 	body			= <<>> :: binary(),
-	external_ssl	= false :: boolean()							% if we are deployed behind stunnel, or other ssl proxy
+	ws_force_ssl	= false :: boolean()							% if we are deployed behind stunnel, or other ssl proxy
 }).
 
 % Websocket Request

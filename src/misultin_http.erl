@@ -57,7 +57,7 @@
 	ws_autoexit			= true :: boolean(),
 	ws_versions			= undefined :: [websocket_version()],
 	access_log			= undefined :: undefined | function(),
-	external_ssl		= false :: boolean()
+	ws_force_ssl		= false :: boolean()
 }).
 -record(req_options, {
 	comet				= false :: boolean()		% if comet =:= true, we will monitor client tcp close
@@ -99,7 +99,7 @@ handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, 
 		ws_autoexit = CustomOpts#custom_opts.ws_autoexit,
 		ws_versions = CustomOpts#custom_opts.ws_versions,
 		access_log = CustomOpts#custom_opts.access_log,
-		external_ssl = CustomOpts#custom_opts.external_ssl
+		ws_force_ssl = CustomOpts#custom_opts.ws_force_ssl
 	},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
@@ -231,7 +231,7 @@ headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(C#c.server_ref, Req#req{headers = Headers, external_ssl = C#c.external_ssl}, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, Req#req{headers = Headers, ws_force_ssl = C#c.ws_force_ssl}, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),

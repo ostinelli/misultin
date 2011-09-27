@@ -66,12 +66,12 @@ check_websocket(Headers) ->
 % Description: Callback to build handshake data.
 % ----------------------------------------------------------------------------------------------------------
 -spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
-handshake(#req{socket_mode = SocketMode, external_ssl = ExternalSsl} = _Req, _Headers, {Path, Origin, Host}) ->
+handshake(#req{socket_mode = SocketMode, ws_force_ssl = WsForceSsl} = _Req, _Headers, {Path, Origin, Host}) ->
 	% prepare handhsake response
 	WsMode = case SocketMode of
 		ssl -> "wss";
-		http when ExternalSsl =:= true  -> "wss"; % behind stunnel or similar, client is using ssl
-		http when ExternalSsl =:= false -> "ws"
+		http when WsForceSsl =:= true  -> "wss"; % behind stunnel or similar, client is using ssl
+		http when WsForceSsl =:= false -> "ws"
 	end,
 	["HTTP/1.1 101 Web Socket Protocol Handshake\r\n",
 		"Upgrade: WebSocket\r\n",
