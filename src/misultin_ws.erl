@@ -62,9 +62,9 @@ get(WsInfo, {misultin_ws, SocketPid}) when
 		misultin_websocket:get_wsinfo(SocketPid, WsInfo);
 get(peer_addr, {misultin_ws, SocketPid}) ->
 	Headers = get(headers, {misultin_ws, SocketPid}),
-	Host = case misultin_utility:get_key_value("X-Real-Ip", Headers) of
+	Host = case misultin_utility:header_get_value('X-Real-Ip', Headers) of
 		undefined ->
-			case misultin_utility:get_key_value("X-Forwarded-For", Headers) of
+			case misultin_utility:header_get_value('X-Forwarded-For', Headers) of
 				undefined -> undefined;
 				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
 			end;
