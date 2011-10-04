@@ -359,7 +359,7 @@ header_get_value(Tag, Headers) when is_atom(Tag) ->
 	case lists:keyfind(Tag, 1, Headers) of
 		false ->
 			% header not found, test also conversion to string -> convert all string tags to lowercase (HTTP tags are case insensitive)
-			F =	 fun({HTag, HValue}) -> 
+			F =	fun({HTag, HValue}) -> 
 				case is_atom(HTag) of
 					true -> {HTag, HValue};
 					false -> {string:to_lower(HTag), HValue}
