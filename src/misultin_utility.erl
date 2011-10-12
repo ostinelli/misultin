@@ -179,7 +179,8 @@ get_content_type(FileName) ->
 		".mpeg" -> "video/mpeg";
 		".mpg" -> "video/mpeg";
 		".mov" -> "video/quicktime";
-		".avi" -> "video/x-msvideo";	
+		".avi" -> "video/x-msvideo";
+		".xml" -> "text/xml";
 		% less common last
 		".evy" -> "application/envoy";
 		".fif" -> "application/fractals";
