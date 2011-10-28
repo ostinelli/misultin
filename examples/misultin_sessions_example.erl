@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Hello World SSL.
+% MISULTIN - Sessions Example.
 %
 % >-|-|-(°>
 % 
@@ -27,25 +27,31 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ssl).
+-module(misultin_sessions_example).
 -export([start/1, stop/0]).
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end},
-		{ssl, [
-			{certfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_certificate.pem"])},
-			{keyfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_privkey.pem"])},
-			{password, "misultin"}
-		]}
-	]).
+	misultin:start_link([{port, Port}, {sessions_expire, 60}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
 	misultin:stop().
 
 % callback on request received
-handle_http(Req) ->	
-	% output
-	Req:ok("Hello World SSL.").
-
+handle_http(Req) ->
+	% get session info
+	{SessionId, SessionState} = Req:session(),
+	% check state
+	Count = case SessionState of
+		[] ->
+			% no state set previously, init counter
+			1;
+		N ->
+			% increment counter
+			N + 1
+	end,
+	% save counter as session's state. a more complex state can easily be saved here, such as proplist()
+	Req:save_session_state(SessionId, Count),
+	% reply
+	Req:ok([], "Session Id is: ~p, counter is: ~p", [SessionId, Count]).

@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Hello World SSL.
+% MISULTIN - Example: File Upload.
 %
 % >-|-|-(°>
 % 
@@ -27,25 +27,67 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ssl).
+-module(misultin_file_upload).
 -export([start/1, stop/0]).
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end},
-		{ssl, [
-			{certfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_certificate.pem"])},
-			{keyfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_privkey.pem"])},
-			{password, "misultin"}
-		]}
-	]).
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
 	misultin:stop().
 
 % callback on request received
-handle_http(Req) ->	
-	% output
-	Req:ok("Hello World SSL.").
+handle_http(Req) ->
+	% dispatch to rest
+	handle(Req:get(method), Req:resource([lowercase, urldecode]), Req).
+	
+% ---------------------------- \/ handle rest --------------------------------------------------------------
 
+% handle a GET on /
+handle('GET', [], Req) ->
+	DestPath = get_destination_path(),
+	Req:ok([{"Content-Type", "text/html"}], ["<html>
+	<head>
+		<title>Misultin File Upload</title>
+	</head>
+	<body>
+		<p>
+			Upload a File. This file will be saved in \"", DestPath, "\", please ensure that the appropriate writing permissions have been set.
+		</p>
+		<form action=\"/\" method=\"POST\" enctype=\"multipart/form-data\">
+			<input type=\"file\" name=\"file\">
+			<input type=\"submit\">
+		</form>
+	</body>
+</html>"]);
+
+% handle a POST on / -> file received
+handle('POST', [], Req) ->
+	case Req:parse_post() of
+		[{_Tag, Attributes, FileData}] ->
+			% build destination file path
+			DestPath = get_destination_path(),
+			FileName = misultin_utility:get_key_value("filename", Attributes),
+			DestFile = filename:join(DestPath, FileName),
+			% save file
+			case file:write_file(DestFile, FileData) of
+				ok ->
+					Req:ok(["File has been successfully saved to \"", DestFile, "\"."]);
+				{error, _Reason} ->
+					Req:respond(500)
+			end;
+		_ ->
+			Req:respond(500)
+	end;
+	
+% handle the 404 page not found
+handle(_, _, Req) ->
+	Req:ok([{"Content-Type", "text/plain"}], "Page not found.").
+	
+% ---------------------------- /\ handle rest --------------------------------------------------------------
+
+% gets the destination path
+get_destination_path() ->
+	filename:dirname(code:which(?MODULE)).

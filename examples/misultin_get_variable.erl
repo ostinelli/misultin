@@ -42,7 +42,7 @@ stop() ->
 handle_http(Req) ->
 	% get params
 	Args = Req:parse_qs(),
-	case misultin_utility:get_key_value("value", Args) of
+	case Req:get_variable("value", Args) of
 		undefined ->
 			Req:ok([{"Content-Type", "text/xml"}], "<misultin_test><error>no value specified</error></misultin_test>");
 		Value ->

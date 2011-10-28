@@ -31,32 +31,36 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_http).
--vsn("0.7.1").
+-vsn("0.9-dev").
 
 % API
--export([handle_data/9]).
+-export([handle_data/11, build_error_message/4, get_reqinfo/2, session_cmd/2]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
 -define(SUPPORTED_ENCODINGS, ["gzip", "deflate"]).
+-define(SERVER_VERSION_TAG, "misultin/0.9-dev").
 
 % records
 -record(c, {
-	server_ref,
-	sock,
-	socket_mode,
-	port,
-	recv_timeout,
-	post_max_size,
-	get_url_max_size,
-	compress,
-	loop,
-	autoexit,
-	ws_loop,
-	ws_autoexit
+	server_ref			= undefined	:: undefined | pid(),
+	sessions_ref		= undefined	:: undefined | pid(),
+	table_date_ref		= undefined	:: undefined | ets:tid(),
+	port				= undefined :: undefined | non_neg_integer(),
+	recv_timeout		= undefined :: undefined | non_neg_integer(),
+	post_max_size		= undefined :: undefined | non_neg_integer(),
+	get_url_max_size	= undefined :: undefined | non_neg_integer(),
+	compress			= false :: boolean(),
+	loop				= undefined :: undefined | function(),
+	autoexit			= true :: boolean(),
+	ws_loop				= undefined :: undefined | function(),
+	ws_autoexit			= true :: boolean(),
+	ws_versions			= undefined :: [websocket_version()],
+	access_log			= undefined :: undefined | function(),
+	ws_force_ssl		= false :: boolean()
 }).
 -record(req_options, {
-	comet = false		% if comet =:= true, we will monitor client tcp close
+	comet				= false :: boolean()		% if comet =:= true, we will monitor client tcp close
 }).
 
 % includes
@@ -66,14 +70,24 @@
 % ============================ \/ API ======================================================================
 
 % Callback from misultin_socket
-handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
-	% add pid reference
-	HttpMonRef = misultin:http_pid_ref_add(ServerRef, self()),
+-spec handle_data(
+	ServerRef::pid(),
+	SessionsRef::pid(),
+	TableDateRef::ets:tid(),
+	Sock::socket(),
+	SocketMode::socketmode(),
+	ListenPort::non_neg_integer(),
+	PeerAddr::inet:ip_address(),
+	PeerPort::non_neg_integer(),
+	PeerCert::term(),
+	RecvTimeout::non_neg_integer(),
+	CustomOpts::#custom_opts{}) -> ok | ignored | ssl_closed | tcp_closed | true.
+handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts) ->
 	% build C record
 	C = #c{
 		server_ref = ServerRef,
-		sock = Sock,
-		socket_mode = SocketMode,
+		sessions_ref = SessionsRef,
+		table_date_ref = TableDateRef,
 		port = ListenPort,
 		recv_timeout = RecvTimeout,
 		post_max_size = CustomOpts#custom_opts.post_max_size,
@@ -82,26 +96,49 @@ handle_data(ServerRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCer
 		loop = CustomOpts#custom_opts.loop,
 		autoexit = CustomOpts#custom_opts.autoexit,
 		ws_loop = CustomOpts#custom_opts.ws_loop,
-		ws_autoexit = CustomOpts#custom_opts.ws_autoexit
+		ws_autoexit = CustomOpts#custom_opts.ws_autoexit,
+		ws_versions = CustomOpts#custom_opts.ws_versions,
+		access_log = CustomOpts#custom_opts.access_log,
+		ws_force_ssl = CustomOpts#custom_opts.ws_force_ssl
 	},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
-	request(C, Req),
-	% remove pid reference
-	misultin:http_pid_ref_remove(ServerRef, self(), HttpMonRef).
+	request(C, Req).
+
+% build error message
+-spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid(), AccessLogFun::function()) -> iolist().
+build_error_message(HttpCode, Req, TableDateRef, AccessLogFun) ->
+	% build headers
+	Headers = [{'Content-Length', 0}, {'Connection', Req#req.connection}],
+	Enc_headers = enc_headers(Headers),
+	% info log
+	build_access_log(Req, HttpCode, 0, TableDateRef, AccessLogFun),
+	% build and send response
+	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
+
+% get request info from http process handler
+-spec get_reqinfo(SocketPid::pid(), ReqInfo::atom()) -> term().
+get_reqinfo(SocketPid, ReqInfo) ->
+	misultin_utility:call(SocketPid, {reqinfo, ReqInfo}).
+
+% send a session command to the http process handler
+-spec session_cmd(SocketPid::pid(), SessionCmd::term()) -> term().
+session_cmd(SocketPid, SessionCmd) ->
+	misultin_utility:call(SocketPid, {session_cmd, SessionCmd}).
 
 % ============================ /\ API ======================================================================
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% REQUEST: wait for a HTTP Request line. Transition to state headers if one is received. 
-request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, Req) ->
+% REQUEST: wait for a HTTP Request line. Transition to state headers if one is received.
+-spec request(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
+request(#c{recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	misultin_socket:setopts(Sock, [{active, once}, {packet, http}], SocketMode),
 	receive
-		{SocketMode, Sock, {http_request, _Method, {_, Uri} = _Path, _Version}} when length(Uri) > GetUrlMaxSize ->
+		{SocketMode, Sock, {http_request, Method, {_, Uri} = Path, Version}} when length(Uri) > GetUrlMaxSize ->
 			?LOG_WARNING("get url request uri of ~p exceed maximum length of ~p", [length(Uri), GetUrlMaxSize]),				
-			misultin_socket:send(Sock, build_error_message(414, close), SocketMode),
+			misultin_socket:send(Sock, build_error_message(414, Req#req{connection = close, vsn = Version, method = Method, uri = Path}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(close, C, Req);		
 		{SocketMode, Sock, {http_request, Method, Path, Version}} ->
 			?LOG_DEBUG("received full headers of a new HTTP packet", []),
@@ -118,14 +155,17 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 			request(C, Req);
 		{http, Sock, {http_error, _Other}}  ->
 			?LOG_DEBUG("not the beginning of a request [maybe a ssl request while socket in http mode?]: ~p, sending bad request message and closing socket", [_Other]),
-			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			misultin_socket:close(Sock, SocketMode);
 		{tcp_closed, _Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
-			ok;
+			tcp_closed;
 		{ssl_closed, _Socket} ->
 			?LOG_DEBUG("ssl tcp connection was closed, exit", []),
-			ok;
+			ssl_closed;
+		shutdown ->
+			?LOG_DEBUG("shutdown message received from server, exit", []),
+			misultin_socket:close(Sock, SocketMode);
 		_Other ->
 			?LOG_WARNING("tcp error on incoming request: ~p, closing socket and exiting", [_Other]),
 			misultin_socket:close(Sock, SocketMode)
@@ -135,18 +175,27 @@ request(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ge
 	end.
 
 % HEADERS: collect HTTP headers. After the end of header marker transition to body state.
+-spec headers(C::#c{}, Req::#req{}, H::http_headers()) -> ok | ignored | ssl_closed | tcp_closed | true.
+-spec headers(C::#c{}, Req::#req{}, H::http_headers(), HCount::non_neg_integer()) -> ok | ignored | ssl_closed | tcp_closed | true.
 headers(C, Req, H) ->
 	headers(C, Req, H, 0).
-headers(#c{sock = Sock, socket_mode = SocketMode} = C, Req, _H, ?MAX_HEADERS_COUNT) ->
+headers(C, #req{socket = Sock, socket_mode = SocketMode} = Req, _H, ?MAX_HEADERS_COUNT) ->
 	?LOG_DEBUG("too many headers sent, bad request",[]),
-	misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+	misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 	handle_keepalive(close, C, Req);
-headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, Req, H, HeaderCount) ->
+headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, H, HeaderCount) ->
 	misultin_socket:setopts(Sock, [{active, once}], SocketMode),
 	receive
 		{SocketMode, Sock, {http_header, _, 'Content-Length', _, Val} = _Head} ->
-			?LOG_DEBUG("received header: ~p", [_Head]),
-			headers(C, Req#req{content_length = Val}, [{'Content-Length', Val}|H], HeaderCount + 1);
+			?LOG_DEBUG("received content-length header: ~p", [_Head]),
+			case catch erlang:list_to_integer(Val) of
+				{'EXIT', _} ->
+					?LOG_DEBUG("no valid content length: ~p", [Val]),
+					misultin_socket:send(Sock, build_error_message(400, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+					handle_keepalive(Req#req.connection, C, Req);
+				ContentLength ->
+					headers(C, Req#req{content_length = ContentLength}, [{'Content-Length', Val}|H], HeaderCount + 1)
+			end;
 		{SocketMode, Sock, {http_header, _, 'Connection', _, Val} = _Head} ->
 			?LOG_DEBUG("received header: ~p", [_Head]),
 			headers(C, Req#req{connection = keep_alive(Req#req.vsn, Val)}, [{'Connection', Val}|H], HeaderCount + 1);
@@ -165,8 +214,8 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 			{_PathType, Path} = Req#req.uri,
 			% check if it's a websocket request
 			CheckWs = case WsLoop of
-				none -> false;
-				_Function -> misultin_websocket:check(Path, Headers)
+				undefined -> false;
+				_Function -> misultin_websocket:check(C#c.ws_versions, Path, Headers)
 			end,
 			case CheckWs of
 				false ->
@@ -175,33 +224,44 @@ headers(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, ws
 					case get_uri_and_args(Req#req{headers = Headers}) of
 						{error, HttpErrorCode} ->
 							?LOG_WARNING("error encountered when parsing uri and args: ~p", [HttpErrorCode]),
-							misultin_socket:send(C#c.sock, build_error_message(HttpErrorCode, Req#req.connection), SocketMode),
+							misultin_socket:send(Sock, build_error_message(HttpErrorCode, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 							handle_keepalive(Req#req.connection, C, Req);
 						Req0 ->
 							method_dispatch(C, Req0)
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(C#c.server_ref, Req, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, headers = Headers, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, Req#req{headers = Headers, ws_force_ssl = C#c.ws_force_ssl}, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
-			misultin_socket:send(Sock, build_error_message(400, Req#req.connection), SocketMode),
+			misultin_socket:send(Sock, build_error_message(400, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(Req#req.connection, C, Req);
+		{tcp_closed, _Socket} ->
+			?LOG_DEBUG("tcp connection was closed, exit", []),
+			tcp_closed;
+		{ssl_closed, _Socket} ->
+			?LOG_DEBUG("ssl tcp connection was closed, exit", []),
+			ssl_closed;
+		shutdown ->
+			?LOG_DEBUG("shutdown message received from server, exit", []),
+			misultin_socket:close(Sock, SocketMode);
 		_Other ->
 			?LOG_DEBUG("received unknown message: ~p, ignoring", [_Other]),
 			ignored
 	after RecvTimeout ->
 		?LOG_DEBUG("headers timeout, sending request timeout error", []),
-		misultin_socket:send(Sock, build_error_message(408, close), SocketMode),
+		misultin_socket:send(Sock, build_error_message(408, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 		handle_keepalive(close, C, Req)
 	end.
 
 % default connection
+-spec default_connection(http_version()) -> http_connection().
 default_connection({1,1}) -> keep_alive;
 default_connection(_) -> close.
 
 % Shall we keep the connection alive? Default case for HTTP/1.1 is yes, default for HTTP/1.0 is no.
+-spec keep_alive(http_version(), string()) -> http_connection().
 keep_alive({1,1}, "close")		-> close;
 keep_alive({1,1}, "Close")		-> close;
 % string:to_upper is used only as last resort.
@@ -219,14 +279,17 @@ keep_alive({1,0}, Head) ->
 keep_alive({0,9}, _)	-> close;
 keep_alive(_Vsn, _KA)	-> close.
 
-% Function -> Req | {error, HttpErrorNum}
-% Description: Build uri & args in Req
+% Build uri & args in Req
+-spec get_uri_and_args(Req::#req{}) -> #req{} | {error, non_neg_integer()}.
 get_uri_and_args(Req) ->
 	case Req#req.uri of
 		{abs_path, Path} ->
 			{F, Args} = split_at_q_mark(Path, []),
 			Req#req{args = Args, uri = {abs_path, F}};
 		{absoluteURI, http, _Host, _, Path} ->
+			{F, Args} = split_at_q_mark(Path, []),
+			Req#req{args = Args, uri = {absoluteURI, F}};
+		{absoluteURI, https, _Host, _, Path} ->
 			{F, Args} = split_at_q_mark(Path, []),
 			Req#req{args = Args, uri = {absoluteURI, F}};
 		{absoluteURI, _Other_method, _Host, _, _Path} ->
@@ -238,7 +301,8 @@ get_uri_and_args(Req) ->
 	end.
 
 % dispatch operations according to defined method
-method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:= 'POST'; Method =:= 'HEAD'; Method =:= 'PUT'; Method =:= 'DELETE'; Method =:= 'CONNECT' ->
+-spec method_dispatch(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
+method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:= 'POST'; Method =:= 'HEAD'; Method =:= 'PUT'; Method =:= 'DELETE'; Method =:= 'CONNECT'; Method =:= 'OPTIONS' ->
 	?LOG_DEBUG("~p request received", [Method]),
 	% read body & dispatch
 	read_body_dispatch(C, Req);
@@ -247,13 +311,14 @@ method_dispatch(C, #req{method = Method} = Req) when Method =:= 'TRACE' ->
 	% an entity-body is explicitly forbidden in TRACE requests <http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.8>
 	call_mfa(C, Req),
 	handle_keepalive(Req#req.connection, C, Req);
-method_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, #req{method = _Method, connection = Connection} = Req) ->
+method_dispatch(C, #req{socket = Sock, socket_mode = SocketMode, method = _Method, connection = Connection} = Req) ->
 	?LOG_DEBUG("method not implemented: ~p", [_Method]),
-	misultin_socket:send(Sock, build_error_message(501, Connection), SocketMode),
+	misultin_socket:send(Sock, build_error_message(501, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 	handle_keepalive(Connection, C, Req).
 
-% read body and dispatch to mfa if ok	
-read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
+% read body and dispatch to mfa if ok
+-spec read_body_dispatch(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.	
+read_body_dispatch(C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	% read post body
 	case read_post_body(C, Req) of
 		{ok, Bin} ->
@@ -263,24 +328,21 @@ read_body_dispatch(#c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
 			handle_keepalive(Req#req.connection, C, Req0);
 		{error, timeout} ->
 			?LOG_WARNING("request timeout, sending error", []),
-			misultin_socket:send(Sock, build_error_message(408, Req#req.connection), SocketMode),
-			handle_keepalive(close, C, Req);
-		{error, no_valid_content_specs} ->	
-			?LOG_DEBUG("no valid content length specified or not a chunked request",[]),
-			misultin_socket:send(Sock, build_error_message(411, Req#req.connection), SocketMode),
-			handle_keepalive(Req#req.connection, C, Req);			
+			misultin_socket:send(Sock, build_error_message(408, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+			handle_keepalive(close, C, Req);			
 		{error, post_max_size} ->	
 			?LOG_WARNING("post request entity too large", []),				
-			misultin_socket:send(Sock, build_error_message(413, close), SocketMode),
+			misultin_socket:send(Sock, build_error_message(413, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(close, C, Req);
 		{error, Reason} ->
 			?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [Reason]),
-			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
+			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
 			handle_keepalive(close, C, Req)
 	end.
 
-% Function -> {ok, Bin} | {error, Reason}
-% Description: Read the post body according to headers
+% Read the post body according to headers
+-spec read_post_body(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body(C::#c{}, Req::#req{}, Out::{error, no_valid_content_specs} | {ok, <<>>}) -> {ok, Body::binary()} | {error, Reason::term()}.
 read_post_body(C, #req{method = Method} = Req) when Method =:= 'POST'; Method =:= 'PUT' ->
 	% on PUT and POST require content length or transfer encoding headers
 	read_post_body(C, Req, {error, no_valid_content_specs});
@@ -298,24 +360,18 @@ read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOu
 					case string:to_lower(TE) of
 						"chunked" ->
 							?LOG_DEBUG("chunked content being sent by the client, parsing body content and looping for additional chunks",[]),
-							read_post_body_chunk(C);
+							read_post_body_chunk(C, Req);
 					_ ->
 						NoContentNoChunkOutput
 				end
 			end;
-		StrLen ->
-			case catch erlang:list_to_integer(StrLen) of
-				{'EXIT', _} ->
-					?LOG_DEBUG("no valid content length: ~p", [StrLen]),
-					{error, no_valid_content_specs};
-				Len ->
-					i_read_post_body(C, Req, Len)
-			end
+		Len ->
+			i_read_post_body(C, Req, Len)
 	end.
 
-% Function -> {ok, Bin} | {error, Reason}
-% Description: Read body
-i_read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout, post_max_size = PostMaxSize}, _Req, Len) ->
+% Read body
+-spec i_read_post_body(C::#c{}, Req::#req{}, Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
+i_read_post_body(#c{recv_timeout = RecvTimeout, post_max_size = PostMaxSize}, #req{socket = Sock, socket_mode = SocketMode} = _Req, Len) ->
 	% check if content length has been provided
 	case Len of
 		0 ->
@@ -337,21 +393,23 @@ i_read_post_body(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTi
 			{error, post_max_size}
 	end.
 
-% Function -> {ok, Bin} | {error, Reason}
-% Description: Read body chunks
-read_post_body_chunk(C) ->
-	read_post_body_chunk_headline(C, <<>>).
-read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, Acc) when size(Acc) > PostMaxSize ->
+% Read body chunks
+-spec read_post_body_chunk(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body_chunk_headline(C::#c{}, Req::#req{}, Acc::binary()) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body_chunk_content(C::#c{}, Req::#req{}, Acc::binary(), Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
+read_post_body_chunk(C, Req) ->
+	read_post_body_chunk_headline(C, Req, <<>>).
+read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, _Req, Acc) when size(Acc) > PostMaxSize ->
 	?LOG_DEBUG("total size of chunked parts of ~p bytes exceed limit of ~p bytes", [size(Acc), PostMaxSize]),
 	{error, post_max_size};
-read_post_body_chunk_headline(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = C, Acc) ->
+read_post_body_chunk_headline(#c{recv_timeout = RecvTimeout} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, Acc) ->
 	misultin_socket:setopts(Sock, [{packet, line}, {active, false}], SocketMode),
 	case misultin_socket:recv(Sock, 0, RecvTimeout, SocketMode) of
 		{ok, HeadLineBin} ->
 			?LOG_DEBUG("received a chunked headline: ~p", [HeadLineBin]),
 			case get_chunk_length(binary_to_list(HeadLineBin)) of			
 				{ok, Len} ->
-					read_post_body_chunk_content(C, Acc, Len);
+					read_post_body_chunk_content(C, Req, Acc, Len);
 				{error, Reason} ->
 					{error, Reason}
 			end;
@@ -360,7 +418,7 @@ read_post_body_chunk_headline(#c{sock = Sock, socket_mode = SocketMode, recv_tim
 		Other ->
 			{error, Other}
 	end.
-read_post_body_chunk_content(#c{sock = Sock, socket_mode = SocketMode, recv_timeout = RecvTimeout} = C, Acc, Len) ->
+read_post_body_chunk_content(#c{recv_timeout = RecvTimeout} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, Acc, Len) ->
 	?LOG_DEBUG("receiving a chunk of ~p bytes", [Len]),
 	misultin_socket:setopts(Sock, [{packet, raw}, {active, false}], SocketMode),
 	case misultin_socket:recv(Sock, Len + 2, RecvTimeout, SocketMode) of	% we need 2 more bytes for the chunked CRLF closing
@@ -373,7 +431,7 @@ read_post_body_chunk_content(#c{sock = Sock, socket_mode = SocketMode, recv_time
 				_ ->
 					% continue with next chunk
 					?LOG_DEBUG("waiting for next chunk", []),
-					read_post_body_chunk_headline(C, <<Acc/binary, Bin:Len/binary>>)
+					read_post_body_chunk_headline(C, Req, <<Acc/binary, Bin:Len/binary>>)
 			end;
 		{error, timeout} ->
 			{error, timeout};
@@ -381,8 +439,8 @@ read_post_body_chunk_content(#c{sock = Sock, socket_mode = SocketMode, recv_time
 			{error, Other}
 	end.
 
-% Function -> {ok, Len} | done | {error, Reason}
-% Description: Get length of the next chunk.
+% Get length of the next chunk.
+-spec get_chunk_length(HeadLine::string()) -> {ok, Len::non_neg_integer()} | {error, Reason::term()}.
 get_chunk_length(HeadLine) ->
 	% take away CRLF
 	HeadLine0 = case string:rchr(HeadLine, $\r) of
@@ -402,13 +460,15 @@ get_chunk_length(HeadLine) ->
 	end.
 
 % handle the request and get back to the request loop
-handle_keepalive(close, #c{sock = Sock, socket_mode = SocketMode}, _Req) ->
-	catch misultin_socket:close(Sock, SocketMode);
-handle_keepalive(keep_alive, #c{sock = Sock, socket_mode = SocketMode} = C, Req) ->
+-spec handle_keepalive(http_connection(), C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.
+handle_keepalive(close, _C, #req{socket = Sock, socket_mode = SocketMode} = _Req) ->
+	misultin_socket:close(Sock, SocketMode);
+handle_keepalive(keep_alive, C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
-% Description: Main dispatcher
-call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
+% Main dispatcher
+-spec call_mfa(C::#c{}, Req::#req{}) -> closed | true.
+call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 	% spawn_link custom loop
 	Self = self(),
 	% trap exit
@@ -416,20 +476,30 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Request) ->
 	% spawn
 	LoopPid = spawn_link(fun() ->
 		% create request
-		Req = {misultin_req, Request, Self},
+		ReqT = {misultin_req, Self},
 		% start custom loop
-		Loop(Req)
+		Loop(ReqT)
 	end),
 	% enter loop
-	socket_loop(C, Request, LoopPid, #req_options{}),
+	{HttpCode, SizeSent} = socket_loop(C, Req, LoopPid, #req_options{}, [], none, 0),
 	% unlink
 	process_flag(trap_exit, false),
 	erlang:unlink(LoopPid),
+	% build access log
+	case HttpCode of
+		none ->
+			% do nothing
+			ok;
+		_ ->
+			% build access log
+			build_access_log(Req, HttpCode, SizeSent, C#c.table_date_ref, C#c.access_log)
+	end,
 	% close http loop or send message to LoopPid
 	loop_close(LoopPid, AutoExit).
 
 % socket loop
-socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, #req{headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions) ->
+-spec socket_loop(C::#c{}, Req::#req{}, LoopPid::pid(), #req_options{}, AppHeaders::http_headers(), HttpCodeSent::non_neg_integer() | none, SizeSent::non_neg_integer()) -> {HttpCode::non_neg_integer() | none, SizeSent::non_neg_integer()}.
+socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = SocketMode, headers = RequestHeaders} = Req, LoopPid, #req_options{comet = Comet} = ReqOptions, AppHeaders, HttpCodeSent, SizeSent) ->
 	% are we trapping client tcp close events?
 	case Comet of
 		true ->
@@ -445,70 +515,123 @@ socket_loop(#c{sock = Sock, socket_mode = SocketMode, compress = Compress} = C, 
 			?LOG_DEBUG("sending normal response", []),
 			% build binary body & compress if necessary
 			{CompressHeaders, BodyBinary} = compress_body(RequestHeaders, convert_to_binary(Body), Compress),
-			% are there any raw headers?
-			Enc_headers = case Headers0 of
-				{HeadersList, HeadersStr} ->
-					Headers1 = add_output_header('Content-Length', {HeadersList, BodyBinary}),
-					Headers = add_output_header('Connection', {Headers1, Req}),
-					[HeadersStr|enc_headers(lists:flatten([CompressHeaders|Headers]))];
-				_ ->
-					Headers1 = add_output_header('Content-Length', {Headers0, BodyBinary}),
-					Headers = add_output_header('Connection', {Headers1, Req}),
-					enc_headers(lists:flatten([CompressHeaders|Headers]))
-			end,
+			% encode headers & extra headers
+			Headers = add_headers(Headers0, BodyBinary, C#c.table_date_ref, Req),			
+			Enc_headers = enc_headers(lists:append([CompressHeaders, AppHeaders, Headers])),
 			% build and send response
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
+			% send
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			% loop and save sent status
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCode, size(BodyBinary));
+		{LoopPid, {reqinfo, ReqInfo}} ->
+			ReqResponse = case ReqInfo of
+				raw				-> Req;
+				socket			-> Req#req.socket;
+				socket_mode		-> Req#req.socket_mode;
+				peer_addr		-> Req#req.peer_addr;
+				peer_port		-> Req#req.peer_port;
+				peer_cert		-> Req#req.peer_cert;
+				connection		-> Req#req.connection;
+				content_length	-> Req#req.content_length;
+				vsn				-> Req#req.vsn;
+				method			-> Req#req.method;
+				uri				-> Req#req.uri;
+				args			-> Req#req.args;
+				headers			-> Req#req.headers;
+				body			-> Req#req.body
+			end,
+			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
+			misultin_utility:respond(LoopPid, ReqResponse),
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
+		{LoopPid, {session_cmd, SessionCmd}} ->
+			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
+			case SessionCmd of
+				{session, Cookies} ->
+					% start new session process or retrieve exiting one's id
+					case misultin_sessions:session(C#c.sessions_ref, Cookies, Req) of
+						{error, Reason} ->
+							?LOG_DEBUG("error getting/creating session: ~p", [Reason]),
+							misultin_utility:respond(LoopPid, {error, Reason});
+						{SessionId, _SessionVars} = SessionInfo ->
+							?LOG_DEBUG("got session info: ~p", [SessionInfo]),
+							% respond with session id
+							misultin_utility:respond(LoopPid, SessionInfo),
+							% add session id cookie header
+							socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AppHeaders], HttpCodeSent, SizeSent)
+					end;
+				{save_session_state, SessionId, SessionState} ->
+					% save session state
+					Response = misultin_sessions:save_session_state(C#c.sessions_ref, SessionId, SessionState, Req),
+					misultin_utility:respond(LoopPid, Response),
+					% loop
+					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
+			end;
+		{set_cookie, CookieHeader} ->
+			?LOG_DEBUG("received a cookie: ~p", [CookieHeader]),
+			% add cookie header
+			socket_loop(C, Req, LoopPid, ReqOptions, [CookieHeader|AppHeaders], HttpCodeSent, SizeSent);
 		{set_option, {comet, OptionVal}} ->
 			?LOG_DEBUG("setting request option comet to ~p", [OptionVal]),
-			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal});
+			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal}, AppHeaders, HttpCodeSent, SizeSent);
 		{stream_head, HttpCode, Headers0} ->
 			?LOG_DEBUG("sending stream head", []),
 			Headers = add_output_header('Connection', {Headers0, Req}),
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
+			% respond
 			misultin_socket:send(Sock, Resp, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			% loop and set HttpCode
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCode, SizeSent);
 		{stream_data, Data} ->
 			?LOG_DEBUG("sending stream data", []),
+			% respond
 			misultin_socket:send(Sock, Data, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			% loop and add to size sent
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent + erlang:iolist_size(Data));
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
 		{stream_error, 404} ->
 			?LOG_ERROR("file not found", []),
-			misultin_socket:send(Sock, build_error_message(404, Req#req.connection), SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			misultin_socket:send(Sock, build_error_message(404, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+			% we already build an access log so reset HttpCodeSent & SizeSent
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, none, 0);
 		{stream_error, _Reason} ->
 			?LOG_ERROR("error sending stream: ~p", [_Reason]),
-			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode),
+			misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
 			misultin_socket:close(Sock, SocketMode),
-			socket_loop(C, Req, LoopPid, ReqOptions);
+			% we already build an access log so reset HttpCodeSent & SizeSent
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, none, 0);
 		{tcp_closed, Sock} ->
 			?LOG_DEBUG("client closed socket",[]),
-			tcp_closed;
+			{HttpCodeSent, SizeSent};
 		{ssl_closed, Sock} ->
 			?LOG_DEBUG("client closed ssl socket",[]),
-			ssl_closed;
+			{HttpCodeSent, SizeSent};
+		shutdown ->
+			?LOG_DEBUG("shutdown message received from server",[]),
+			{HttpCodeSent, SizeSent};			
 		{'EXIT', LoopPid, normal} ->
 			?LOG_DEBUG("normal finishing of custom loop",[]),
-			ok;
+			{HttpCodeSent, SizeSent};
 		{'EXIT', LoopPid, _Reason} ->
 			?LOG_ERROR("error in custom loop: ~p serving request: ~p", [_Reason, Req]),
-			misultin_socket:send(Sock, build_error_message(500, Req#req.connection), SocketMode);
+			misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+			{none, 0};
 		{SocketMode, Sock, _HttpData} ->
 			?LOG_WARNING("received http data from client when running a comet application [client should normally not send messages]: ~p, sending error and closing socket", [_HttpData]),
-			misultin_socket:send(Sock, build_error_message(400, close), SocketMode),
-			misultin_socket:close(Sock, SocketMode);
+			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
+			misultin_socket:close(Sock, SocketMode),
+			{none, 0};
 		_Else ->
 			?LOG_WARNING("received unexpected message in socket_loop: ~p, ignoring", [_Else]),
-			socket_loop(C, Req, LoopPid, ReqOptions)
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
 	end.
-	
+
 % Close socket and custom handling loop dependency
+-spec loop_close(LoopPid::pid(), AutoExit::boolean()) -> closed | true.
 loop_close(LoopPid, AutoExit) ->
 	case AutoExit of
 		true ->
@@ -521,44 +644,79 @@ loop_close(LoopPid, AutoExit) ->
 			LoopPid ! closed
 	end.
 
-% Description: Ensure Body is binary.
-convert_to_binary(Body) when is_list(Body) ->
-	list_to_binary(lists:flatten(Body));
+% Ensure Body is binary.
+-spec convert_to_binary(list() | binary() | atom()) -> binary().
 convert_to_binary(Body) when is_binary(Body) ->
 	Body;
+convert_to_binary(Body) when is_list(Body) ->
+	list_to_binary(lists:flatten(Body));
 convert_to_binary(Body) when is_atom(Body) ->
 	list_to_binary(atom_to_list(Body)).
 
-% Description: Add necessary Content-Length Header
+% add necessary headers
+-spec add_headers(http_headers(), BodyBinary::binary(), TableDateRef::ets:tid(), Req::#req{}) -> http_headers().
+add_headers(OriginalHeaders, BodyBinary, TableDateRef, Req) ->
+	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
+	Headers1 = add_output_header('Connection', {Headers0, Req}),
+	Headers2 = add_output_header('Server', Headers1),
+	add_output_header('Date', {Headers2, TableDateRef}).
+
+% Add necessary Content-Length Header
+-spec add_output_header(http_header(), term()) -> http_headers().
 add_output_header('Content-Length', {Headers, Body}) ->
 	case misultin_utility:get_key_value('Content-Length', Headers) of
 		undefined ->
 			[{'Content-Length', size(Body)}|Headers];
-		_ExistingContentLength ->
+		_ ->
 			Headers
 	end;
-
-% Description: Add necessary Connection Header
+% Add necessary Connection Header
 add_output_header('Connection', {Headers, Req}) ->
 	% echo
 	case misultin_utility:get_key_value('Connection', Headers) of
 		undefined ->
 			[{'Connection', connection_str(Req#req.connection)}|Headers];
-		_ExistingConnectionHeaderValue ->
+		_ ->
+			Headers
+	end;
+% Add necessary Server header
+add_output_header('Server', Headers) ->
+	case misultin_utility:get_key_value('Server', Headers) of
+		undefined ->
+			[{'Server', ?SERVER_VERSION_TAG}|Headers];
+		_ ->
+			Headers
+	end;
+% Add necessary Date header
+add_output_header('Date', {Headers, TableDateRef}) ->
+	case misultin_utility:get_key_value('Date', Headers) of
+		undefined ->
+			% get header from gen_server
+			RfcDate = misultin_server:get_rfc_date(TableDateRef),
+			[{'Date', RfcDate}|Headers];
+		_ ->
 			Headers
 	end.
 
 % Helper to Connection string
+-spec connection_str(http_connection()) -> string().
 connection_str(keep_alive) -> "Keep-Alive";
 connection_str(close) -> "Close".
 
-% Description: Encode headers
+% Encode headers
+-spec enc_headers(http_headers() | term()) -> string().
 enc_headers([{Tag, Val}|T]) when is_atom(Tag) ->
 	[atom_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([{Tag, Val}|T]) when is_list(Tag) ->
 	[Tag, ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
+enc_headers([{Tag, Val}|T]) when is_binary(Tag) ->
+	[binary_to_list(Tag), ": ", enc_header_val(Val), "\r\n"|enc_headers(T)];
 enc_headers([]) ->
-	[].
+	[];
+enc_headers([_Other|T]) ->
+	% not a tuple format, ignore
+	enc_headers(T).
+-spec enc_header_val(Val::atom() | integer() | string()) -> string().
 enc_header_val(Val) when is_atom(Val) ->
 	atom_to_list(Val);
 enc_header_val(Val) when is_integer(Val) ->
@@ -567,6 +725,7 @@ enc_header_val(Val) ->
 	Val.
 
 % Split the path at the ?
+-spec split_at_q_mark(string(), Acc::string()) -> {H::string(), T::string()}.
 split_at_q_mark([$?|T], Acc) ->
 	{lists:reverse(Acc), T};
 split_at_q_mark([H|T], Acc) ->
@@ -574,8 +733,8 @@ split_at_q_mark([H|T], Acc) ->
 split_at_q_mark([], Acc) ->
 	{lists:reverse(Acc), []}.
 
-% Function: -> {EncodingHeader, binary()}
-% Description: Compress body depending on Request Headers and misultin supported encodings.
+% Compress body depending on Request Headers and misultin supported encodings.
+-spec compress_body(RequestHeaders::http_headers(), BodyBinary::binary(), boolean()) -> {EncodingHeaders::http_headers(), CompressedBody::binary()}.
 compress_body(RequestHeaders, BodyBinary, true) ->
 	case misultin_utility:get_key_value('Accept-Encoding', RequestHeaders) of
 		undefined ->
@@ -590,22 +749,23 @@ compress_body(RequestHeaders, BodyBinary, true) ->
 					{[], BodyBinary};
 				Encoding ->
 					?LOG_DEBUG("building binary body with ~p compression", [Encoding]),
-					{{'Content-Encoding', Encoding}, encode(Encoding, BodyBinary)}
+					{[{'Content-Encoding', Encoding}],
+					encode(Encoding, BodyBinary)}
 			end
 	end;
 compress_body(_RequestHeaders, BodyBinary, false) ->
 	?LOG_DEBUG("building binary body without compression", []),
 	{[], BodyBinary}.
 			
-% Function: -> binary()
-% Description: Compress body.
+% Compress body.
+-spec encode(EncodeType::http_supported_encoding(), Body::binary()) -> CompressedBody::binary().
 encode(deflate, BodyBinary) ->
 	zlib:compress(BodyBinary);
 encode(gzip, BodyBinary) ->
 	zlib:gzip(BodyBinary).
 
-% Function: -> atom() | none
-% Description: Set encoding name depending on Request Headers and supported misultin encodings.
+% Set encoding name depending on Request Headers and supported misultin encodings.
+-spec set_encoding(AcceptEncodingHeader::string()) -> http_supported_encoding() | none.
 set_encoding(AcceptEncodingHeader) ->
 	% get request accepted encodings
 	RequestEncodings = get_accepted_encodings(AcceptEncodingHeader),
@@ -618,8 +778,8 @@ set_encoding(AcceptEncodingHeader) ->
 		[{Enc, _Q}|_T] -> list_to_atom(Enc)
 	end.
 
-% Function: -> [{Encoding, Q},...]
-% Description: Get accepted encodings and quality, sorted by quality.
+% Get accepted encodings and quality, sorted by quality.
+-spec get_accepted_encodings(AcceptEncodingHeader::string()) -> gen_proplist().
 get_accepted_encodings(AcceptEncodingHeader) ->
 	% take away empty spaces
 	Header = lists:filter(fun(E) -> case E of $\s -> false; _ -> true end end, AcceptEncodingHeader),
@@ -640,8 +800,8 @@ get_accepted_encodings(AcceptEncodingHeader) ->
 	% sort
 	lists:sort(fun({_E1, Q1}, {_E2, Q2}) -> Q1 > Q2 end, Encodings0).
 			
-% Function: -> number() | not_a_number
-% Description: Converts a list to a number.		
+% Converts a list to a number.
+-spec list_to_number(list()) -> integer() | not_a_number.
 list_to_number(L) ->
 	case catch list_to_float(L) of
 		{'EXIT', _} ->
@@ -652,12 +812,38 @@ list_to_number(L) ->
 		Value -> Value
 	end.
 
-% build error message
-build_error_message(HttpCode, Connection) ->
-	% build headers
-	Headers = [{'Content-Length', 0}, {'Connection', Connection}],
-	Enc_headers = enc_headers(Headers),
-	% build and send response
-	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
+% build access log
+-spec build_access_log(Req::#req{}, HttpCode::non_neg_integer() | atom(), ContentLength::non_neg_integer() | atom(), TableDateRef::ets:tid(), AccessLogFun::function()) -> ok.
+build_access_log(Req, HttpCode, ContentLength, TableDateRef, AccessLogFun) ->
+	{PeerAddr, DateTime, RequestLine} = build_access_data(Req, TableDateRef),
+	case AccessLogFun of
+		undefined -> ok;
+		_ ->
+			AccessInfo = {PeerAddr, DateTime, RequestLine, HttpCode, ContentLength},
+			?LOG_DEBUG("sending access log information to access log fun: ~p", [AccessInfo]),
+			AccessLogFun(AccessInfo)
+	end,
+	?LOG_INFO("~s - - [~s] \"~s\" ~p ~p", [PeerAddr, DateTime, RequestLine, HttpCode, ContentLength]),
+	ok.
+
+-spec build_access_data(Req::#req{}, TableDateRef::ets:tid()) -> {PeerAddr::string(), DateTime::string(), RequestLine::string()}.
+build_access_data(#req{uri = undefined} = Req, TableDateRef) ->
+	build_access_data_do(Req#req.peer_addr, "no-parsing-done", TableDateRef);
+build_access_data(Req, TableDateRef) ->
+	{Maj, Min} = Req#req.vsn,
+	FullUri = lists:flatten(io_lib:format("~s ~s HTTP/~p.~p", [Req#req.method, build_full_uri(misultin_req:uri_unquote(Req#req.uri), Req#req.args), Maj, Min])),
+	build_access_data_do(Req#req.peer_addr, FullUri, TableDateRef).
+
+-spec build_access_data_do(PeerAddr::inet:ip_address(), RequestLine::string(), TableDateRef::ets:tid()) -> {PeerAddr::string(), DateTime::string(), RequestLine::string()}.
+build_access_data_do(PeerAddr, RequestLine, TableDateRef) ->
+	{
+		misultin_utility:convert_ip_to_list(PeerAddr),		% ip peer address
+		misultin_server:get_iso8601_date(TableDateRef),		% datetime
+		RequestLine											% request line
+	}.
 	
+-spec build_full_uri(Uri::string(), Args::string()) -> string().
+build_full_uri(Uri, []) -> Uri;
+build_full_uri(Uri, Args) -> lists:concat([Uri, "?", Args]).
+
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

@@ -72,8 +72,33 @@ API Documentation is available online on the Misultin's wiki: https://github.com
 CHANGELOG
 ==========================================================================================================
 
-0.7.1:
-       - considerably improved stability under heavy load
+0.9-dev:
+       - consistently improved memory usage by not copying by default to handler processes the full request or
+         websocket record
+       - added sessions state, persistent across requests
+       - added access log callback function, so that main application can log HTTP access
+       - added support for websocket draft-hybi-10
+       - added configuration option to set which websocket versions must be supported by the server
+       - rebar-ized makefile
+       - corrected minor bugs
+
+0.8:   - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
+         compliant
+       - added Cookie support
+       - added preliminary support multipart/form-data and a file upload example [thanks to Max Lapshin]
+       - added Date and Server headers
+       - added support for headers being specified as binaries [thanks to akaspin]
+       - added an example on how to properly embed misultin in your application
+       - Req:get(peer_addr) now properly extracts peer information from headers "X-Real-Ip" or
+         "X-Forwarded-For" if these are available [thanks to Max Lapshin]
+       - solved bug on large data being sent over via websockets [thanks to omarkj]
+       - corrected binary sending bug in websockets which would fail binaries on io_lib format [thanks to
+         normanb]
+       - added recbuf advanced option [issue #40]
+       - added preliminary test suite
+       - various optimizations using binary when needed
+
+0.7.1: - considerably improved stability under heavy load
        - misultin now accepts incoming connections with a pool of acceptors instead of a single one
        - Misultin can now be used both with parametrized modules and with pure erlang code too [thanks to
          yrashk, nox and essen]

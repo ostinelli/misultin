@@ -1,9 +1,9 @@
 % ==========================================================================================================
-% MISULTIN - Main
+% MISULTIN - Main Supervisor
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>, Sean Hinde.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
 % All rights reserved.
 %
 % Code portions from Sean Hinde have been originally taken under BSD license from Trapexit at the address:
@@ -31,38 +31,17 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin).
--behaviour(gen_server).
--vsn("0.7.1").
-
-% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-behaviour(supervisor).
+-vsn("0.9-dev").
 
 % API
 -export([start_link/1, stop/0, stop/1]).
--export([get_open_connections_count/1, http_pid_ref_add/2, http_pid_ref_remove/3, ws_pid_ref_add/2, ws_pid_ref_remove/2]).
+
+% supervisor callbacks
+-export([init/1]).
 
 % macros
 -define(SERVER, ?MODULE).
--define(APPLICATION_START_RETRYAFTER, 1000).	% ms to check that a required application has been started
--define(APPLICATION_START_RETRYCOUNT, 10).		% retry count to check that a required application has been started
-
-% records
--record(state, {
-	% tcp
-	listen_socket,
-	socket_mode,
-	port,
-	options,
-	acceptors = [],
-	acceptors_poolsize,
-	recv_timeout,
-	max_connections = 1024,			% maximum allowed simultaneous connections
-	open_connections_count = 0,
-	http_pid_ref = [],
-	ws_pid_ref = [],
-	% misultin
-	custom_opts
-}).
 
 % includes
 -include("../include/misultin.hrl").
@@ -70,9 +49,10 @@
 
 % ============================ \/ API ======================================================================
 
-% Function: {ok, Pid} | ignore | {error, Error}
-% Description: Starts the server.
+% Starts the server.
+-spec start_link(Options::gen_proplist()) -> {ok, Pid::pid()} | {error, Reason::term()}.
 start_link(Options) when is_list(Options) ->
+	?LOG_DEBUG("starting misultin server",[]),
 	% check if name option has been specified, otherwise default to 'misultin' as regname
 	case get_option({name, ?SERVER, fun is_atom/1, invalid_misultin_process_name}, Options) of
 		{error, Reason} ->
@@ -82,75 +62,62 @@ start_link(Options) when is_list(Options) ->
 		{name, false} ->
 			% start misultin without name
 			?LOG_DEBUG("starting misultin without a registered name",[]),
-			gen_server:start_link(?MODULE, [Options], []);
+			supervisor:start_link(?MODULE, [Options]);
 		{name, Value} ->
 			% start misultin with specified name
 			?LOG_DEBUG("starting misultin with registered name ~p", [Value]),
-			gen_server:start_link({local, Value}, ?MODULE, [Options], [])
+			Options0 = lists:keyreplace(name, 1, Options, {name, Value}),
+			supervisor:start_link({local, Value}, ?MODULE, [Options0])
 	end.
 
-% Function: -> ok
-% Description: Manually stops the server.
+% Manually stops the server.
+-spec stop() -> true.
+-spec stop(SupRef::atom() | pid()) -> true.
 stop() ->
 	stop(?SERVER).
-stop(ServerRef) ->
-	gen_server:cast(ServerRef, stop).
-
-% Function -> integer()
-% Description: Gets the count of the current open connections
-get_open_connections_count(ServerRef) ->
-	gen_server:call(ServerRef, get_open_connections_count).
-
-% Function -> ok
-% Description: Adds a new http pid reference to status
-http_pid_ref_add(ServerRef, HttpPid) ->
-	gen_server:cast(ServerRef, {add_http_pid, HttpPid}).
-
-% Function -> ok
-% Description: Remove a http pid reference from status
-http_pid_ref_remove(ServerRef, HttpPid, HttpMonRef) ->
-	gen_server:cast(ServerRef, {remove_http_pid, {HttpPid, HttpMonRef}}).
-
-% Function -> ok
-% Description: Adds a new websocket pid reference to status
-ws_pid_ref_add(ServerRef, WsPid) ->
-	gen_server:cast(ServerRef, {add_ws_pid, WsPid}).
-
-% Function -> ok
-% Description: Remove a websocket pid reference from status
-ws_pid_ref_remove(ServerRef, WsPid) ->
-	gen_server:cast(ServerRef, {remove_ws_pid, WsPid}).
+stop(undefined) ->
+	true;
+stop(SupName) when is_atom(SupName) ->
+	stop(whereis(SupName));
+stop(SupPid) when is_pid(SupPid) ->
+	?LOG_INFO("shutting down misultin server",[]),
+	exit(SupPid, normal).
 
 % ============================ /\ API ======================================================================
 
 
-% ============================ \/ GEN_SERVER CALLBACKS =====================================================
+% ============================ \/ SUPERVISOR CALLBACKS =====================================================
 
 % ----------------------------------------------------------------------------------------------------------
-% Function: -> {ok, State} | {ok, State, Timeout} | ignore | {stop, Reason}
-% Description: Initiates the server.
-% ----------------------------------------------------------------------------------------------------------
+% Function: -> {ok,  {SupFlags,  [ChildSpec]}} | ignore | {error, Reason}
+% Description: Starts the supervisor
+% ----------------------------------------------------------------------------------------------------------å
+-spec init(Options::gen_proplist()) -> {ok, term()} | {error, Reason::term()}.
 init([Options]) ->
-	process_flag(trap_exit, true),
-	?LOG_INFO("starting with Pid: ~p", [self()]),
+	?LOG_DEBUG("starting server with pid: ~p", [self()]),
 	% test and get options
 	OptionProps = [
 		% socket
 		{ip, {0, 0, 0, 0}, fun check_and_convert_string_to_ip/1, invalid_ip},
-		{port, 80, fun is_integer/1, port_not_integer},
-		{backlog, 128, fun is_integer/1, backlog_not_integer},
-		{acceptors_poolsize, 10, fun is_integer/1, invalid_acceptors_poolsize_option},
-		{recv_timeout, 30*1000, fun is_integer/1, recv_timeout_not_integer},
-		{max_connections, 1024, fun is_integer/1, invalid_max_connections_option},
+		{port, 80, fun is_non_neg_integer/1, port_not_integer},
+		{backlog, 128, fun is_non_neg_integer/1, backlog_not_integer},
+		{acceptors_poolsize, 10, fun is_non_neg_integer/1, invalid_acceptors_poolsize_option},
+		{recv_timeout, 30*1000, fun is_non_neg_integer/1, recv_timeout_not_integer},
+		{max_connections, 4096, fun is_non_neg_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
+		{ws_force_ssl, false, fun is_boolean/1, invalid_ssl_external},
+		{recbuf, default, fun check_recbuf/1, recbuf_not_integer},
 		% misultin
-		{post_max_size, 4*1012*1012, fun is_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
-		{get_url_max_size, 2000, fun is_integer/1, invalid_get_url_max_size_option},
+		{post_max_size, 4*1024*1024, fun is_non_neg_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
+		{get_url_max_size, 2000, fun is_non_neg_integer/1, invalid_get_url_max_size_option},
 		{compress, false, fun is_boolean/1, invalid_compress_option},
 		{loop, {error, undefined_loop}, fun is_function/1, loop_not_function},
 		{autoexit, true, fun is_boolean/1, invalid_autoexit_option},
-		{ws_loop, none, fun is_function/1, ws_loop_not_function},
-		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option}
+		{ws_loop, undefined, fun is_function/1, ws_loop_not_function},
+		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
+		{ws_versions, ['draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified}, % accepted values are 'draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'
+		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire},
+		{access_log, undefined, fun check_access_log/1, invalid_access_log}
 	],
 	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -164,6 +131,7 @@ init([Options]) ->
 			RecvTimeout = proplists:get_value(recv_timeout, OptionsVerified),
 			MaxConnections = proplists:get_value(max_connections, OptionsVerified),
 			SslOptions0 = proplists:get_value(ssl, OptionsVerified),
+			WsForceSsl = proplists:get_value(ws_force_ssl, OptionsVerified),
 			% misultin options
 			PostMaxSize = proplists:get_value(post_max_size, OptionsVerified),
 			GetUrlMaxSize = proplists:get_value(get_url_max_size, OptionsVerified),
@@ -172,8 +140,10 @@ init([Options]) ->
 			AutoExit = proplists:get_value(autoexit, OptionsVerified),
 			WsLoop = proplists:get_value(ws_loop, OptionsVerified),
 			WsAutoExit = proplists:get_value(ws_autoexit, OptionsVerified),
-			% ipv6 support
-			?LOG_DEBUG("ip address is: ~p", [Ip]),
+			WsVersions = proplists:get_value(ws_versions, OptionsVerified),
+			RecBuf = proplists:get_value(recbuf, OptionsVerified),
+			SessionsExpireSec = proplists:get_value(sessions_expire, OptionsVerified),
+			AccessLogFun = proplists:get_value(access_log, OptionsVerified),
 			% set additional options according to socket mode if necessary
 			Continue = case SslOptions0 of
 				false ->
@@ -211,157 +181,51 @@ init([Options]) ->
 			case Continue of
 				true ->
 					% set options
-					OptionsTcp = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
+					OptionsTcp0 = [binary, {packet, raw}, {ip, Ip}, {reuseaddr, true}, {active, false}, {backlog, Backlog}|AdditionalOptions],
+					OptionsTcp = case RecBuf of
+						default -> OptionsTcp0;
+						_ -> [{recbuf, RecBuf}|OptionsTcp0]
+					end,							
 					% build custom_opts
-					CustomOpts = #custom_opts{post_max_size = PostMaxSize, get_url_max_size = GetUrlMaxSize, compress = Compress, loop = Loop, autoexit = AutoExit, ws_loop = WsLoop, ws_autoexit = WsAutoExit},
-					% create listening socket and acceptor
-					case create_listener_and_acceptors(Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts) of
-						{ok, ListenSocket, AcceptorPids} ->
-							?LOG_DEBUG("listening socket and acceptors succesfully started",[]),
-							{ok, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, options = OptionsTcp, acceptors = AcceptorPids, acceptors_poolsize = AcceptorsPoolsize, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts}};
-						{error, Reason} ->
-							?LOG_ERROR("error starting listener socket: ~p", [Reason]),
-							{stop, Reason}
-					end;
+					CustomOpts = #custom_opts{
+						post_max_size = PostMaxSize,
+						get_url_max_size = GetUrlMaxSize,
+						compress = Compress,
+						loop = Loop,
+						autoexit = AutoExit,
+						ws_loop = WsLoop,
+						ws_autoexit = WsAutoExit,
+						ws_versions = WsVersions,
+						access_log = AccessLogFun,
+						ws_force_ssl = WsForceSsl
+					},
+					% define misultin_server supervisor specs
+					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
+					% define sessions supervisor
+					SessionsSpec = {sessions, {misultin_sessions, start_link, [{self(), SessionsExpireSec}]}, permanent, 60000, worker, [misultin_sessions]},
+					% define acceptors supervisor specs
+					AcceptorSupSpec = {acceptors_sup, {misultin_acceptors_sup, start_link, [self(), Port, OptionsTcp, AcceptorsPoolsize, RecvTimeout, SocketMode, CustomOpts]}, permanent, infinity, supervisor, [misultin_acceptors_sup]},
+					% ip address
+					?LOG_INFO("starting misultin server on address ~s and port ~p", [misultin_utility:convert_ip_to_list(Ip), Port]),
+					% spawn
+					{ok, {{one_for_all, 5, 30}, [ServerSpec, SessionsSpec, AcceptorSupSpec]}};
 				Error ->
-					{stop, Error}
+					?LOG_ERROR("error starting misultin server: ~p", [Error]),
+					{error, Error}
 			end;
 		Reason ->
 			% error found in options
-			{stop, Reason}
+			?LOG_ERROR("option error starting misultin server: ~p", [Reason]),
+			{error, Reason}
 	end.
 
-% ----------------------------------------------------------------------------------------------------------
-% Function: handle_call(Request, From, State) -> {reply, Reply, State} | {reply, Reply, State, Timeout} |
-%									   {noreply, State} | {noreply, State, Timeout} |
-%									   {stop, Reason, Reply, State} | {stop, Reason, State}
-% Description: Handling call messages.
-% ----------------------------------------------------------------------------------------------------------
-
-% current open connections count
-handle_call(get_open_connections_count, _From, #state{open_connections_count = OpenConnectionsCount} = State) ->
-	{reply, OpenConnectionsCount, State};
-
-% handle_call generic fallback
-handle_call(_Request, _From, State) ->
-	{reply, undefined, State}.
-
-% ----------------------------------------------------------------------------------------------------------
-% Function: handle_cast(Msg, State) -> {noreply, State} | {noreply, State, Timeout} | {stop, Reason, State}
-% Description: Handling cast messages.
-% ----------------------------------------------------------------------------------------------------------
-
-% manual shutdown
-handle_cast(stop, State) ->
-	?LOG_INFO("manual shutdown..", []),
-	{stop, normal, State};
-
-% add a new http pid reference to status
-handle_cast({add_http_pid, HttpPid}, #state{open_connections_count = OpenConnectionsCount, http_pid_ref = HttpPidRef} = State) ->
-	?LOG_DEBUG("adding http pid reference ~p", [HttpPid]),
-	% add monitor
-	erlang:monitor(process, HttpPid),
-	% return
-	{noreply, State#state{open_connections_count = OpenConnectionsCount + 1, http_pid_ref = [HttpPid|HttpPidRef]}};
-
-% remove http pid reference from server
-handle_cast({remove_http_pid, {HttpPid, HttpMonRef}}, #state{open_connections_count = OpenConnectionsCount, http_pid_ref = HttpPidRef} = State) ->
-	?LOG_DEBUG("removing http pid reference ~p", [HttpPid]),
-	% remove monitor
-	catch erlang:demonitor(HttpMonRef),	
-	% return
-	{noreply, State#state{open_connections_count = OpenConnectionsCount - 1, http_pid_ref = lists:delete(HttpPid, HttpPidRef)}};
-
-% add websocket pid reference to server
-handle_cast({add_ws_pid, WsPid}, #state{ws_pid_ref = WsPidRef} = State) ->
-	?LOG_DEBUG("adding ws pid reference ~p", [WsPid]),
-	{noreply, State#state{ws_pid_ref = [WsPid|WsPidRef]}};
-
-% remove websocket pid reference from server
-handle_cast({remove_ws_pid, WsPid}, #state{ws_pid_ref = WsPidRef} = State) ->
-	?LOG_DEBUG("removing ws pid reference ~p", [WsPid]),
-	{noreply, State#state{ws_pid_ref = lists:delete(WsPid, WsPidRef)}};
-	
-% handle_cast generic fallback (ignore)
-handle_cast(_Msg, State) ->
-	?LOG_WARNING("received unknown cast message: ~p", [_Msg]),
-	{noreply, State}.
-
-% ----------------------------------------------------------------------------------------------------------
-% Function: handle_info(Info, State) -> {noreply, State} | {noreply, State, Timeout} | {stop, Reason, State}
-% Description: Handling all non call/cast messages.
-% ----------------------------------------------------------------------------------------------------------
-
-% EXIT signal received: possibly one acceptor has died
-% -> shutdown in progress, ignore
-handle_info({'EXIT', _Pid, {error, {{accept_failed, {shutdown, _}}}}}, State) -> {noreply, State};
-% -> respawn acceptor
-handle_info({'EXIT', Pid, _Reason}, #state{listen_socket = ListenSocket, socket_mode = SocketMode, port = Port, acceptors = AcceptorPids, recv_timeout = RecvTimeout, max_connections = MaxConnections, custom_opts = CustomOpts} = State) ->
-	case lists:member(Pid, AcceptorPids) of
-		true ->
-			?LOG_ERROR("the acceptor ~p has died with reason: ~p, respawning", [Pid, _Reason]),
-			AcceptorPid = misultin_socket:acceptor_start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts),
-			{noreply, State#state{acceptors = [AcceptorPid|lists:delete(Pid, AcceptorPids)]}};
-		false ->
-			?LOG_WARNING("received info on a process ~p crash which is not an acceptor process, with reason: ~p, ignoring", [Pid, _Reason]),
-			{noreply, State}
-	end;
-
-% Http process trapping
-handle_info({'DOWN', _Ref, process, _HttpPid, normal}, State) -> {noreply, State};	% normal exiting of an http process
-handle_info({'DOWN', _Ref, process, HttpPid, _Reason}, #state{open_connections_count = OpenConnectionsCount, http_pid_ref = HttpPidRef, ws_pid_ref = WsPidRef} = State) ->
-	State0 = case lists:member(HttpPid, HttpPidRef) of
-		true ->
-			?LOG_ERROR("http process ~p has died with reason: ~p, removing from references of open connections", [HttpPid, _Reason]),
-			State#state{open_connections_count = OpenConnectionsCount - 1, http_pid_ref = lists:delete(HttpPid, HttpPidRef)};
-		false ->
-			?LOG_WARNING("received info on a process ~p crash which is not an http process, with reason: ~p", [HttpPid, _Reason]),
-			State
-	end,
-	% no checking done to improve performance
-	?LOG_DEBUG("open references are: ~p, count is now ~p, trying to remove from websocket open references", [State0#state.http_pid_ref, State0#state.open_connections_count]),
-	{noreply, State0#state{ws_pid_ref = lists:delete(HttpPid, WsPidRef)}};
-
-% handle_info generic fallback (ignore)
-handle_info(_Info, State) ->
-	?LOG_WARNING("received unknown info message: ~p", [_Info]),
-	{noreply, State}.
-
-% ----------------------------------------------------------------------------------------------------------
-% Function: terminate(Reason, State) -> void()
-% Description: This function is called by a gen_server when it is about to terminate. When it returns,
-% the gen_server terminates with Reason. The return value is ignored.
-% ----------------------------------------------------------------------------------------------------------
-terminate(_Reason, #state{listen_socket = ListenSocket, socket_mode = SocketMode, acceptors = AcceptorPids, http_pid_ref = HttpPidRef, ws_pid_ref = WsPidRef}) ->
-	?LOG_INFO("shutting down server with Pid ~p with reason: ~p", [self(), _Reason]),
-	% kill acceptors
-	?LOG_DEBUG("sending kill signal to acceptors: ~p", [AcceptorPids]),
-	lists:foreach(fun(AcceptorPid) -> exit(AcceptorPid, kill) end, AcceptorPids),
-	% send a shutdown message to all websockets, if any
-	?LOG_DEBUG("sending shutdown message to websockets: ~p", [WsPidRef]),
-	lists:foreach(fun(WsPid) -> catch WsPid ! shutdown end, WsPidRef),
-	% force exit of all http processes, if not websockets
-	HttpPidRefNoWs = lists:subtract(HttpPidRef, WsPidRef),
-	?LOG_DEBUG("forcing exit of http processes: ~p", [HttpPidRefNoWs]),
-	lists:foreach(fun(HttpPid) -> exit(HttpPid, kill) end, HttpPidRefNoWs),
-	% stop tcp socket
-	misultin_socket:close(ListenSocket, SocketMode),
-	terminated.
-
-% ----------------------------------------------------------------------------------------------------------
-% Function: code_change(OldVsn, State, Extra) -> {ok, NewState}
-% Description: Convert process state when code is changed.
-% ----------------------------------------------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
-
-% ============================ /\ GEN_SERVER CALLBACKS =====================================================
+% ============================ /\ SUPERVISOR CALLBACKS =====================================================
 
 
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
-% Function: -> false | IpTuple
-% Description: Checks and if necessary converts a string Ip to inet repr.
+% Checks and if necessary converts a string Ip to inet repr.
+-spec check_and_convert_string_to_ip(Ip::string() | tuple()) -> inet:ip_address() | false.
 check_and_convert_string_to_ip(Ip) when is_tuple(Ip) ->
 	case size(Ip) of
 		4 ->
@@ -383,8 +247,8 @@ check_and_convert_string_to_ip(Ip) ->
 			IpTuple
 	end.
 	
-% Function: -> true | false
-% Description: Checks if all necessary Ssl Options have been specified
+% Checks if all necessary Ssl Options have been specified
+-spec check_ssl_options(SslOptions::gen_proplist()) -> boolean().
 check_ssl_options(SslOptions) ->
 	Opts = [verify, fail_if_no_peer_cert, verify_fun, depth, certfile, keyfile, password, cacertfile, ciphers, reuse_sessions, reuse_session],
 	F = fun({Name, _Value}) ->
@@ -395,7 +259,48 @@ check_ssl_options(SslOptions) ->
 	end,
 	lists:all(F, SslOptions).
 
-% Description: Validate and get misultin options.
+% check if recbuf has been set
+-spec check_recbuf(RecBuf::default | non_neg_integer()) -> boolean().
+check_recbuf(default) -> default;
+check_recbuf(RecBuf) when is_integer(RecBuf), RecBuf > 0 -> true;
+check_recbuf(_RecBuf) -> false.
+
+% check if access log fun has been set
+-spec check_access_log(AccessLogFun::false | function()) -> boolean().
+check_access_log(undefined) -> true;
+check_access_log(AccessLogFun) when is_function(AccessLogFun) -> true;
+check_access_log(_AccessLogFun) -> false.
+
+% check if ws specified versions are implemented. order does matter so we build a list in proper order
+-spec check_ws_version([websocket_version()]) -> false | [websocket_version()].
+check_ws_version(WsVsn) ->
+	ImplementedVsn = ['draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'],
+	%  build an ordered list of supported versions chosen by user.
+	F = fun(SupportedVsn, Acc) ->
+		case lists:member(SupportedVsn, WsVsn) of
+			true -> [SupportedVsn|Acc];
+			false -> Acc
+		end
+	end,
+	OrderedVsn = lists:reverse(lists:foldl(F, [], ImplementedVsn)),
+	% if length do not agree, then user has specified an unsupported version
+	case length(OrderedVsn) =:= length(WsVsn) of
+		true -> OrderedVsn;
+		_ -> false
+	end.
+
+% check if a number is a non negative integer
+-spec is_non_neg_integer(term()) -> boolean().
+is_non_neg_integer(N) when is_integer(N), N >= 0 -> true;
+is_non_neg_integer(_) -> false.
+
+% Validate and get misultin options.
+-spec get_option({
+	OptionName::atom(),
+	DefaultValue::term(),
+	CheckAndConvertFun::function(),
+	FailTypeError::term()
+	}, Options::gen_proplist()) -> misultin_option() | {error, Reason::term()}.
 get_option({OptionName, DefaultValue, CheckAndConvertFun, FailTypeError}, Options) ->
 	case proplists:get_value(OptionName, Options) of
 		undefined ->
@@ -416,8 +321,8 @@ get_option({OptionName, DefaultValue, CheckAndConvertFun, FailTypeError}, Option
 			end
 	end.
 
-% Function: -> ok | {error, Reason}
-% Description: Start an application.
+% Start an application.
+-spec start_application(Application::atom()) -> ok | {error, Reason::term()}.
 start_application(Application) ->
 	case lists:keyfind(Application, 1, application:which_applications()) of
 		false ->
@@ -432,24 +337,6 @@ start_application(Application) ->
 		_ ->
 			?LOG_DEBUG("application ~p is already running, skip", [Application]),
 			ok
-	end.
-
-% Function: -> {ok, ListenSocket, [AcceptorPid,...]} | {error, Error}
-% Description: Create listening socket
-create_listener_and_acceptors(Port, Options, AcceptorsPoolsize, RecvTimeout, MaxConnections, SocketMode, CustomOpts) ->
-	?LOG_DEBUG("starting listening ~p socket with options ~p on port ~p", [SocketMode, Options, Port]),
-	case misultin_socket:listen(Port, Options, SocketMode) of
-		{ok, ListenSocket} ->
-			?LOG_DEBUG("starting acceptors",[]),
-			% create acceptors
-			AcceptorPids = [
-				misultin_socket:acceptor_start_link(self(), ListenSocket, Port, RecvTimeout, MaxConnections, SocketMode, CustomOpts)
-				|| _K <- lists:seq(1, AcceptorsPoolsize)
-			],
-			{ok, ListenSocket, AcceptorPids};
-		{error, Reason} ->
-			% error
-			{error, Reason}
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

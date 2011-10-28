@@ -1,31 +1,25 @@
-EBIN_DIR := ebin
-SRC_DIR := src
-EXAMPLES_DIR := examples
-INCLUDE_DIR := include
-ERLC := erlc
-ERLC_FLAGS := -W -I $(INCLUDE_DIR) -o $(EBIN_DIR)
+REBAR_CONFIG:=$(PWD)/rebar.config
+INCLUDE_DIR:=include
+SRC_DIR:=src
 
-all:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
-	
+all: compile
+
+compile:
+	@rebar compile
+
 clean:
-	@rm -rf $(EBIN_DIR)/*
-	@rm -f erl_crash.dump
-	
-debug:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) -D log_debug $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
-	
-dialyzer:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) +debug_info $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
+	@rebar clean
+	@find $(PWD)/. -name "erl_crash\.dump" | xargs rm -f
 
-example:
-	@mkdir -p $(EBIN_DIR)
-	$(ERLC) $(ERLC_FLAGS) $(SRC_DIR)/*.erl
-	@cp $(SRC_DIR)/misultin.app.src $(EBIN_DIR)/misultin.app
-	$(ERLC) $(ERLC_FLAGS) $(EXAMPLES_DIR)/*.erl
+tests: compile
+	@rebar ct
+
+debug: 
+	@if test -f $(REBAR_CONFIG); then mv $(REBAR_CONFIG) $(REBAR_CONFIG).bak; fi;
+	@echo {erl_opts, [{d, log_debug}]}. > $(REBAR_CONFIG)
+	@rebar debug_info=true compile
+	@rm $(REBAR_CONFIG)
+	@if test -f $(REBAR_CONFIG).bak; then mv $(REBAR_CONFIG).bak $(REBAR_CONFIG); fi;
+
+dialyze:
+	@dialyzer -n -I $(INCLUDE_DIR) --src $(SRC_DIR)/*.erl

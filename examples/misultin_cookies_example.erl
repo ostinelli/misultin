@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Hello World SSL.
+% MISULTIN - Example: Show how to set/retrieve cookies.
 %
 % >-|-|-(°>
 % 
@@ -27,18 +27,12 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ssl).
+-module(misultin_cookies_example).
 -export([start/1, stop/0]).
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end},
-		{ssl, [
-			{certfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_certificate.pem"])},
-			{keyfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_privkey.pem"])},
-			{password, "misultin"}
-		]}
-	]).
+	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
@@ -46,6 +40,14 @@ stop() ->
 
 % callback on request received
 handle_http(Req) ->	
-	% output
-	Req:ok("Hello World SSL.").
-
+	% get cookies
+	Cookies = Req:get_cookies(),
+	case Req:get_cookie_value("misultin_test_cookie", Cookies) of
+		undefined ->
+			% no cookies preexists, create one that will expire in 365 days
+			Req:set_cookie("misultin_test_cookie", "value of the test cookie", [{max_age, 365*24*3600}]),
+			Req:ok("A cookie has been set. Refresh the browser to see it.");
+		CookieVal ->
+			Req:delete_cookie("misultin_test_cookie"),
+			Req:ok(["The set cookie value was set to \"", CookieVal,"\", and has now been removed. Refresh the browser to see this."])
+	end.

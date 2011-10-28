@@ -1,5 +1,5 @@
 % ==========================================================================================================
-% MISULTIN - Example: Hello World SSL.
+% MISULTIN - Example: Access Log.
 %
 % >-|-|-(°>
 % 
@@ -27,18 +27,12 @@
 % NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
--module(misultin_ssl).
+-module(misultin_access_log).
 -export([start/1, stop/0]).
 
 % start misultin http server
 start(Port) ->
-	misultin:start_link([{port, Port}, {loop, fun(Req) -> handle_http(Req) end},
-		{ssl, [
-			{certfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_certificate.pem"])},
-			{keyfile, filename:join([filename:dirname(code:which(?MODULE)), "..", "priv", "test_privkey.pem"])},
-			{password, "misultin"}
-		]}
-	]).
+	misultin:start_link([{port, Port}, {access_log, fun(AccessInfo) -> access_log(AccessInfo) end}, {loop, fun(Req) -> handle_http(Req) end}]).
 
 % stop misultin
 stop() ->
@@ -46,6 +40,9 @@ stop() ->
 
 % callback on request received
 handle_http(Req) ->	
-	% output
-	Req:ok("Hello World SSL.").
+	Req:ok("Hello World logged.").
+
+% callback on access log
+access_log({PeerAddr, DateTime, RequestLine, HttpCode, ContentLength}) ->
+	io:format("~s - - [~s] \"~s\" ~p ~p~n", [PeerAddr, DateTime, RequestLine, HttpCode, ContentLength]).
 

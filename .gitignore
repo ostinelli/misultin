@@ -1,0 +1,18 @@
+ebin
+logs
+erl_crash.dump
+*.beam
+
+# -------\/------- OSX ignores
+
+# store
+.DS_Store
+
+# thumbs
+._*
+
+# files that might appear on external disk
+.Spotlight-V100
+.Trashes
+
+# -------\/------- OSX ignores

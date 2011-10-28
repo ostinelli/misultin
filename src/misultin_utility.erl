@@ -3,7 +3,8 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>.
+% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>,
+%					  Bob Ippolito <bob@mochimedia.com> for Mochi Media, Inc.
 % All rights reserved.
 %
 % BSD License
@@ -28,17 +29,39 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_utility).
--vsn("0.7.1").
+-vsn("0.9-dev").
 
 % API
 -export([get_http_status_code/1, get_content_type/1, get_key_value/2, header_get_value/2]).
+-export([call/2, call/3, respond/2]).
+-export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
+-export([convert_ip_to_list/1]).
+-export([hexstr/1, get_unix_timestamp/0, get_unix_timestamp/1]).
+
+% macros
+-define(INTERNAL_TIMEOUT, 30000).
+-define(PERCENT, 37).  % $\%
+-define(FULLSTOP, 46). % $\.
+-define(IS_HEX(C), (
+	(C >= $0 andalso C =< $9) orelse
+	(C >= $a andalso C =< $f) orelse
+	(C >= $A andalso C =< $F)
+)).
+-define(QS_SAFE(C), (
+	(C >= $a andalso C =< $z) orelse
+	(C >= $A andalso C =< $Z) orelse
+	(C >= $0 andalso C =< $9) orelse
+	(C =:= ?FULLSTOP orelse C =:= $- orelse C =:= $~ orelse C =:= $_)
+)).
+
+% includes
+-include("../include/misultin.hrl").
 
 
 % ============================ \/ API ======================================================================
 
-% Function: HttpStatus
-% Description: Returns a complete HTTP header
-% most common first
+% Returns a complete HTTP header. Most common first
+-spec get_http_status_code(HttpStatus::non_neg_integer()) -> string().
 get_http_status_code(200) ->
 	"HTTP/1.1 200 OK\r\n";
 get_http_status_code(100) ->
@@ -124,6 +147,7 @@ get_http_status_code(Other) ->
 	lists:flatten(io_lib:format("HTTP/1.1 ~p \r\n", [Other])).
 
 % get content type
+-spec get_content_type(FileName::string()) -> string().
 get_content_type(FileName) ->
 	case filename:extension(FileName) of
 		% most common first
@@ -155,7 +179,8 @@ get_content_type(FileName) ->
 		".mpeg" -> "video/mpeg";
 		".mpg" -> "video/mpeg";
 		".mov" -> "video/quicktime";
-		".avi" -> "video/x-msvideo";	
+		".avi" -> "video/x-msvideo";
+		".xml" -> "text/xml";
 		% less common last
 		".evy" -> "application/envoy";
 		".fif" -> "application/fractals";
@@ -322,19 +347,20 @@ get_content_type(FileName) ->
 	end.
 
 % faster than proplists:get_value
-get_key_value(Key, List)->
+-spec get_key_value(Key::term(), List::[{term(), term()}]) -> undefined | term().
+get_key_value(Key, List) ->
 	case lists:keyfind(Key, 1, List) of
 		false-> undefined;
 		{_K, Value}-> Value
 	end.
 
-% Function: Value | false
-% Description: Find atom Tag in Headers, Headers being both atoms [for known headers] and strings. Comparison on string Header Tags is case insensitive.
+% Find atom Tag in Headers, Headers being both atoms [for known headers] and strings. Comparison on string Header Tags is case insensitive.
+-spec header_get_value(Tag::atom(), Headers::http_headers()) -> false | string() | false.
 header_get_value(Tag, Headers) when is_atom(Tag) ->
 	case lists:keyfind(Tag, 1, Headers) of
 		false ->
 			% header not found, test also conversion to string -> convert all string tags to lowercase (HTTP tags are case insensitive)
-			F =  fun({HTag, HValue}) -> 
+			F =	fun({HTag, HValue}) -> 
 				case is_atom(HTag) of
 					true -> {HTag, HValue};
 					false -> {string:to_lower(HTag), HValue}
@@ -349,10 +375,147 @@ header_get_value(Tag, Headers) when is_atom(Tag) ->
 		{_, Value} -> Value
 	end.
 
+% generic call function
+-spec call(DestPid::pid(), Term::term()) -> {error, timeout} | term().
+-spec call(DestPid::pid(), Term::term(), Timeout::non_neg_integer()) -> {error, timeout} | term().
+call(DestPid, Term) ->
+	call(DestPid, Term, ?INTERNAL_TIMEOUT).
+call(DestPid, Term, Timeout) ->
+	% send term
+	DestPid ! {self(), Term},
+	% wait for response
+	receive
+		{DestPid, Reply} -> Reply
+	after Timeout ->
+		{error, timeout}
+	end.
+
+% generic reply function
+-spec respond(ReqPid::pid(), Term::term()) -> {Pid::pid(), Term::term()}.
+respond(ReqPid, Term) ->
+	ReqPid ! {self(), Term}.
+
+%% @spec parse_qs(string() | binary()) -> [{Key, Value}]
+%% @doc Parse a query string or application/x-www-form-urlencoded.
+-spec parse_qs(string() | binary()) -> [{Key::string(), Value::string()}].
+parse_qs(Binary) when is_binary(Binary) ->
+	parse_qs(binary_to_list(Binary));
+parse_qs(String) ->
+	parse_qs(String, []).
+parse_qs([], Acc) ->
+	lists:reverse(Acc);
+parse_qs(String, Acc) ->
+	{Key, Rest} = parse_qs_key(String),
+	{Value, Rest1} = parse_qs_value(Rest),
+	parse_qs(Rest1, [{Key, Value} | Acc]).
+	
+% unquote
+-spec unquote(binary() | string()) -> string().
+unquote(Binary) when is_binary(Binary) ->
+	unquote(binary_to_list(Binary));
+unquote(String) ->
+	qs_revdecode(lists:reverse(String)).
+
+%% @spec quote_plus(atom() | integer() | float() | string() | binary()) -> string()
+%% @doc URL safe encoding of the given term.
+-spec quote_plus(atom() | integer() | float() | string() | binary()) -> string().
+quote_plus(Atom) when is_atom(Atom) ->
+	quote_plus(atom_to_list(Atom));
+quote_plus(Int) when is_integer(Int) ->
+	quote_plus(integer_to_list(Int));
+quote_plus(Binary) when is_binary(Binary) ->
+	quote_plus(binary_to_list(Binary));
+quote_plus(String) ->
+	quote_plus(String, []).
+
+
+% convert an Ip tuple to string format
+-spec convert_ip_to_list(Ip::term()) -> undefined | list().
+convert_ip_to_list({A, B, C, D}) ->
+	lists:flatten(io_lib:format("~p.~p.~p.~p", [A, B, C, D]));
+convert_ip_to_list({A, B, C, D, E, F, G, H}) ->
+	lists:flatten(io_lib:format("~p.~p.~p.~p.~p.~p.~p.~p", [A, B, C, D, E, F, G, H]));
+convert_ip_to_list(_) ->
+	undefined.
+
+% convert binary to hex string
+-spec hexstr(binary()) -> list().
+hexstr(B) ->
+	hexstr(B, []).
+hexstr(<<>>, Acc) ->
+	lists:reverse(Acc);
+hexstr(<<N/integer, T/binary>>, Acc) ->
+	hexstr(T, [hex(N rem 16), hex(N div 16) | Acc]).
+hex(N) when N < 10 -> $0+N;
+hex(N) when N >= 10, N < 16 -> $a + (N-10).
+
+-spec get_unix_timestamp() -> TimeStamp::non_neg_integer().
+-spec get_unix_timestamp({MegaSecs::non_neg_integer(), Secs::non_neg_integer(), _MicroSecs::non_neg_integer()}) -> TimeStamp::non_neg_integer().
+get_unix_timestamp() -> get_unix_timestamp(erlang:now()).
+get_unix_timestamp({MegaSecs, Secs, _MicroSecs}) -> MegaSecs * 1000000 + Secs.
+
 % ============================ /\ API ======================================================================
 
 
-
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
+
+% parse querystring & post
+-spec parse_qs_key(String::string()) -> {Key::string(), Rest::string()}.
+parse_qs_key(String) ->
+	parse_qs_key(String, []).
+parse_qs_key([], Acc) ->
+	{qs_revdecode(Acc), ""};
+parse_qs_key([$= | Rest], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_key(Rest=[$; | _], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_key(Rest=[$& | _], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_key([C | Rest], Acc) ->
+	parse_qs_key(Rest, [C | Acc]).
+parse_qs_value(String) ->
+	parse_qs_value(String, []).
+parse_qs_value([], Acc) ->
+	{qs_revdecode(Acc), ""};
+parse_qs_value([$; | Rest], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_value([$& | Rest], Acc) ->
+	{qs_revdecode(Acc), Rest};
+parse_qs_value([C | Rest], Acc) ->
+	parse_qs_value(Rest, [C | Acc]).
+
+% revdecode
+-spec qs_revdecode(string()) -> string().
+qs_revdecode(S) ->
+	qs_revdecode(S, []).
+qs_revdecode([], Acc) ->
+	Acc;
+qs_revdecode([$+ | Rest], Acc) ->
+	qs_revdecode(Rest, [$\s | Acc]);
+qs_revdecode([Lo, Hi, ?PERCENT | Rest], Acc) when ?IS_HEX(Lo), ?IS_HEX(Hi) ->
+	qs_revdecode(Rest, [(unhexdigit(Lo) bor (unhexdigit(Hi) bsl 4)) | Acc]);
+qs_revdecode([C | Rest], Acc) ->
+	qs_revdecode(Rest, [C | Acc]).
+
+% unexdigit
+-spec unhexdigit(char()) -> char().
+-spec hexdigit(char()) -> char().
+unhexdigit(C) when C >= $0, C =< $9 -> C - $0;
+unhexdigit(C) when C >= $a, C =< $f -> C - $a + 10;
+unhexdigit(C) when C >= $A, C =< $F -> C - $A + 10.
+hexdigit(C) when C < 10 -> $0 + C;
+hexdigit(C) when C < 16 -> $A + (C - 10).
+
+% quote
+-spec quote_plus(string(), string()) -> string().
+quote_plus([], Acc) ->
+	lists:reverse(Acc);
+quote_plus([C | Rest], Acc) when ?QS_SAFE(C) ->
+	quote_plus(Rest, [C | Acc]);
+quote_plus([$\s | Rest], Acc) ->
+	quote_plus(Rest, [$+ | Acc]);
+quote_plus([C | Rest], Acc) ->
+	<<Hi:4, Lo:4>> = <<C>>,
+	quote_plus(Rest, [hexdigit(Lo), hexdigit(Hi), ?PERCENT | Acc]).
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
