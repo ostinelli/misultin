@@ -115,7 +115,7 @@ init([Options]) ->
 		{autoexit, true, fun is_boolean/1, invalid_autoexit_option},
 		{ws_loop, undefined, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
-		{ws_versions, ['draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified}, % accepted values are 'draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'
+		{ws_versions, ['draft-hybi-17', 'draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified},
 		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire},
 		{access_log, undefined, fun check_access_log/1, invalid_access_log}
 	],
@@ -274,7 +274,7 @@ check_access_log(_AccessLogFun) -> false.
 % check if ws specified versions are implemented. order does matter so we build a list in proper order
 -spec check_ws_version([websocket_version()]) -> false | [websocket_version()].
 check_ws_version(WsVsn) ->
-	ImplementedVsn = ['draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'],
+	ImplementedVsn = ['draft-hybi-17', 'draft-hybi-10', 'draft-hixie-76', 'draft-hixie-68'],
 	%  build an ordered list of supported versions chosen by user.
 	F = fun(SupportedVsn, Acc) ->
 		case lists:member(SupportedVsn, WsVsn) of
