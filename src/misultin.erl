@@ -106,6 +106,7 @@ init([Options]) ->
 		{max_connections, 4096, fun is_non_neg_integer/1, invalid_max_connections_option},
 		{ssl, false, fun check_ssl_options/1, invalid_ssl_options},
 		{ws_force_ssl, false, fun is_boolean/1, invalid_ssl_external},
+		{proxy_protocol, false, fun is_boolean/1, invalid_proxy_protocol},
 		{recbuf, default, fun check_recbuf/1, recbuf_not_integer},
 		% misultin
 		{post_max_size, 4*1024*1024, fun is_non_neg_integer/1, invalid_post_max_size_option},		% defaults to 4 MB
@@ -132,6 +133,7 @@ init([Options]) ->
 			MaxConnections = proplists:get_value(max_connections, OptionsVerified),
 			SslOptions0 = proplists:get_value(ssl, OptionsVerified),
 			WsForceSsl = proplists:get_value(ws_force_ssl, OptionsVerified),
+			ProxyProtocol = proplists:get_value(proxy_protocol, OptionsVerified),
 			% misultin options
 			PostMaxSize = proplists:get_value(post_max_size, OptionsVerified),
 			GetUrlMaxSize = proplists:get_value(get_url_max_size, OptionsVerified),
@@ -197,7 +199,8 @@ init([Options]) ->
 						ws_autoexit = WsAutoExit,
 						ws_versions = WsVersions,
 						access_log = AccessLogFun,
-						ws_force_ssl = WsForceSsl
+						ws_force_ssl = WsForceSsl,
+						proxy_protocol = ProxyProtocol
 					},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
