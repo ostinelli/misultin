@@ -186,63 +186,74 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
 		ok ->
 			% get peer address and port
-			case CustomOpts#custom_opts.proxy_protocol of
-				false -> {PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode);
-				true  -> {PeerAddr, PeerPort} = peername_from_proxy_line(Sock, SocketMode)
-			end,
-			?LOG_DEBUG("remote peer is ~p", [{PeerAddr, PeerPort}]),
-			% get peer certificate, if any
-			PeerCert = misultin_socket:peercert(Sock, SocketMode),
-			?LOG_DEBUG("remote peer certificate is ~p", [PeerCert]),
-			% jump to external callback
-			?LOG_DEBUG("jump to connection logic", []),
-			misultin_http:handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts),
-			ok;
+			case get_peer_addr_port(Sock, SocketMode, CustomOpts) of
+				{ok, {PeerAddr, PeerPort}} ->
+					?LOG_DEBUG("remote peer is ~p", [{PeerAddr, PeerPort}]),
+					% get peer certificate, if any
+					PeerCert = misultin_socket:peercert(Sock, SocketMode),
+					?LOG_DEBUG("remote peer certificate is ~p", [PeerCert]),
+					% jump to external callback
+					?LOG_DEBUG("jump to connection logic", []),
+					misultin_http:handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, PeerAddr, PeerPort, PeerCert, RecvTimeout, CustomOpts),
+					ok;
+				{error, Msg} ->
+					?LOG_DEBUG("error reading PROXY line for IP address info",[]),
+					send_error_message_and_close(502, "", Sock, SocketMode, TableDateRef, CustomOpts)
+			end;
 		{error, _Reason} ->
 			% too many open connections, send error and close [spawn to avoid locking]
 			?LOG_DEBUG("~p, refusing new request", [_Reason]),
-			{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
-			Msg = misultin_http:build_error_message(503, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef, CustomOpts#custom_opts.access_log),
-			misultin_socket:send(Sock, Msg, SocketMode),
-			misultin_socket:close(Sock, SocketMode)
+			send_error_message_and_close(503, "", Sock, SocketMode, TableDateRef, CustomOpts)
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
 
-%% receive the first line, and extract peer address details as per http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+% send error message
+send_error_message_and_close(HttpCode, Msg, Sock, SocketMode, TableDateRef, CustomOpts) ->
+	{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
+	Msg0 = misultin_http:build_error_message(HttpCode, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef, CustomOpts#custom_opts.access_log),
+
+	misultin_socket:send(Sock, Msg0, SocketMode),
+	misultin_socket:close(Sock, SocketMode).
+
+% get peer address
+-spec get_peer_addr_port(Sock::socket(), SocketMode::socketmode(), CustomOpts::#custom_opts{}) -> {ok, {PeerAddr::inet:ip_address(), PeerPort::non_neg_integer()}} | {error, term()}.
+get_peer_addr_port(Sock, SocketMode, CustomOpts) ->
+	case CustomOpts#custom_opts.proxy_protocol of
+		false ->
+			% no proxy, return info
+			{ok, misultin_socket:peername(Sock, SocketMode)};
+		true ->
+			% proxy, read info
+			peername_from_proxy_line(Sock, SocketMode)
+	end.
+
+% receive the first line, and extract peer address details as per http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+-spec peername_from_proxy_line(Sock::socket(), SocketMode::socketmode()) -> {ok, {PeerAddr::inet:ip_address(), PeerPort::non_neg_integer()}} | {error, term()}.
 peername_from_proxy_line(Sock, SocketMode) ->
-	misultin_socket:setopts(Sock, [{active,once}, {packet,line}, list], SocketMode),
+	misultin_socket:setopts(Sock, [{active, once}, {packet, line}, list], SocketMode),
 	receive
 		{TcpOrSsl, Sock, "PROXY " ++ ProxyLine} when TcpOrSsl =:= tcp; TcpOrSsl =:= ssl ->
 			case string:tokens(ProxyLine, "\r\n ") of
 				[_Proto, SrcAddrStr, _DestAddr, SrcPortStr, _DestPort] ->
 					{SrcPort, _}  = string:to_integer(SrcPortStr),
 					{ok, SrcAddr} = inet_parse:address(SrcAddrStr),
-					?LOG_DEBUG("Got peer address from proxy line: ~p",[{SrcAddr, SrcPort} ]),
-					{SrcAddr, SrcPort}
+					?LOG_DEBUG("got peer address from proxy line: ~p", [{SrcAddr, SrcPort}]),
+					{ok, {SrcAddr, SrcPort}};
+				_ ->
+					{error, "got malformed proxy line: ~p", [ProxyLine]}
 			end;
-
 		{_, Sock, FirstLine} -> 
-			?LOG_DEBUG("FIRST LINE NOT 'PROXY', but 'PROXY ...' expected due to config option; line was: '~s'", [FirstLine]),
-			misultin_socket:send(Sock, [
-									"HTTP 502 Server Error\r\n", 
-									"Connection: close\r\n\r\n",
-									"<h1>PROXY line expected</h1>",
-									"Misultin configured to expect PROXY line first, as per ",
-									"<a href=\"http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt\">the haproxy proxy protocol spec</a>, ",
-									"but first line received was:<br/><pre>\n",
-									FirstLine,
-									"\n</pre>"],
-								 SocketMode),
-			misultin_socket:close(Sock, SocketMode),
-			exit(normal)
-
-	after 1000 ->
-			?LOG_DEBUG("Timeout receiving PROXY line from upstream proxy, closing", []),
-			misultin_socket:send(Sock, ["HTTP 502 Server Error\r\n", 
-										"Connection: close\r\n\r\n",
-                                        "<h1>502 timeout on receiving proxy line from upstream</h1>"],
-								 SocketMode),
-			misultin_socket:close(Sock, SocketMode),
-			exit(normal)
+			?LOG_DEBUG("first line not 'PROXY', but 'PROXY ...' expected due to config option; line was: '~s'", [FirstLine]),
+			{error, ["<h2>PROXY line expected</h2>",
+				"Misultin configured to expect PROXY line first, as per ",
+				"<a href=\"http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt\">the haproxy proxy protocol spec</a>, ",
+				"but first line received was:<br/><pre>\r\n",
+				FirstLine,
+				"\r\n</pre>"]};
+		Other ->
+			{error, "got from proxy unexpected: ~p", [Other]}
+	after 5000 ->
+		?LOG_DEBUG("timeout receiving PROXY line from upstream proxy, closing",[]),
+		{error, "timeout on receiving proxy line from upstream proxy"}
 	end.

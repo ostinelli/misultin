@@ -84,7 +84,7 @@ peercert(Sock, ssl) ->
 	end.
 
 % socket set options
--spec setopts(Sock::socket(), Options::gen_proplist(), socketmode()) -> ok | {error, Reason::term()}.
+-spec setopts(Sock::socket(), Options::gen_proplist_options(), socketmode()) -> ok | {error, Reason::term()}.
 setopts(Sock, Options, http) -> inet:setopts(Sock, Options);
 setopts(Sock, Options, ssl) -> ssl:setopts(Sock, Options).
 

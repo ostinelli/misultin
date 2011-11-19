@@ -80,9 +80,9 @@ get(ReqInfo, {misultin_req, SocketPid}) when
 get(peer_addr, {misultin_req, SocketPid}) ->
 	Headers = get(headers, {misultin_req, SocketPid}),
 	Host = case misultin_utility:header_get_value('X-Real-Ip', Headers) of
-		undefined ->
+		false ->
 			case misultin_utility:header_get_value('X-Forwarded-For', Headers) of
-				undefined -> undefined;
+				false -> undefined;
 				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
 			end;
 		Host0 -> Host0
