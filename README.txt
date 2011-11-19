@@ -68,6 +68,17 @@ DOCUMENTATION
 
 API Documentation is available online on the Misultin's wiki: https://github.com/ostinelli/misultin/wiki
 
+SSL NOTES
+==========================================================================================================
+If you are running misultin behind an SSL terminator such as stunnel or stud, then set 
+ {ws_force_ssl, true} 
+so that websocket handshakes work.
+
+If you are using stunnel to terminate, you can also set
+ {proxy_protocol, true}
+to make misultin expect a PROXY.. line as per http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+Newer versions of stunnel support this with the "protocol = proxy" config option.
+
 
 CHANGELOG
 ==========================================================================================================

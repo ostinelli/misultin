@@ -151,7 +151,9 @@
 	ws_autoexit			= true :: boolean(),							% shoud the ws process be automatically killed?
 	ws_versions			= undefined :: [websocket_version()],			% list of supported ws versions
 	access_log			= undefined :: undefined | function(),			% access log function
-	ws_force_ssl		= false :: boolean()							% if we are deployed behind stunnel, or other ssl proxy
+	ws_force_ssl		= false :: boolean(),							% if we are deployed behind stunnel, or other ssl proxy
+	proxy_protocol		= false :: boolean()							% upstream proxy is sending us http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+
 }).
 
 % Request
