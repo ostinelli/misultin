@@ -56,8 +56,12 @@ handle_http(Req, Port) ->
 				var ws;
 				function connect(){
 					if (\"WebSocket\" in window) {
+						ws = new WebSocket(\"ws://localhost:", erlang:integer_to_list(Port) ,"/service\");
+					} else if (\"MozWebSocket\" in window) {
+						ws = new MozWebSocket(\"ws://localhost:", erlang:integer_to_list(Port) ,"/service\");
+					}
+					if (ws) {
 						// browser supports websockets
-						ws = new WebSocket(\"ws://localhost:", integer_to_list(Port) ,"/service\");
 						ws.onopen = function() {
 							// websocket is connected
 							addStatus(\"websocket connected!\");

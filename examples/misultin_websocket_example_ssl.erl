@@ -56,7 +56,13 @@ handle_http(Req, Port) ->
 					document.getElementById('status').innerHTML = document.getElementById('status').innerHTML + date + \": \" + text + \"<br>\";				
 				}
 				function ready(){
+					var ws;
 					if (\"WebSocket\" in window) {
+						ws = new WebSocket(\"ws://localhost:", erlang:integer_to_list(Port) ,"/service\");
+					} else if (\"MozWebSocket\" in window) {
+						ws = new MozWebSocket(\"ws://localhost:", erlang:integer_to_list(Port) ,"/service\");
+					}
+					if (ws) {
 						// browser supports websockets
 						var ws = new WebSocket(\"wss://localhost:", erlang:integer_to_list(Port) ,"/service\");
 						ws.onopen = function() {
