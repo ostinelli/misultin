@@ -198,12 +198,12 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 					ok;
 				{error, Msg} ->
 					?LOG_DEBUG("error reading PROXY line for IP address info",[]),
-					send_error_message_and_close(502, "", Sock, SocketMode, TableDateRef, CustomOpts)
+					send_error_message_and_close(502, Msg, Sock, SocketMode, TableDateRef, CustomOpts)
 			end;
 		{error, _Reason} ->
 			% too many open connections, send error and close [spawn to avoid locking]
 			?LOG_DEBUG("~p, refusing new request", [_Reason]),
-			send_error_message_and_close(503, "", Sock, SocketMode, TableDateRef, CustomOpts)
+			send_error_message_and_close(503, Sock, SocketMode, TableDateRef, CustomOpts)
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
@@ -211,8 +211,7 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 % send error message
 send_error_message_and_close(HttpCode, Msg, Sock, SocketMode, TableDateRef, CustomOpts) ->
 	{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
-	Msg0 = misultin_http:build_error_message(HttpCode, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef, CustomOpts#custom_opts.access_log),
-
+	Msg0 = misultin_http:build_error_message(HttpCode, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef, CustomOpts#custom_opts.access_log, Msg),
 	misultin_socket:send(Sock, Msg0, SocketMode),
 	misultin_socket:close(Sock, SocketMode).
 
@@ -241,6 +240,7 @@ peername_from_proxy_line(Sock, SocketMode) ->
 					?LOG_DEBUG("got peer address from proxy line: ~p", [{SrcAddr, SrcPort}]),
 					{ok, {SrcAddr, SrcPort}};
 				_ ->
+					?LOG_DEBUG("got malformed proxy line: ~p", [ProxyLine]),
 					{error, "got malformed proxy line: ~p", [ProxyLine]}
 			end;
 		{_, Sock, FirstLine} -> 
@@ -252,6 +252,7 @@ peername_from_proxy_line(Sock, SocketMode) ->
 				FirstLine,
 				"\r\n</pre>"]};
 		Other ->
+			?LOG_DEBUG("got from proxy unexpected: ~p", [Other]),
 			{error, "got from proxy unexpected: ~p", [Other]}
 	after 5000 ->
 		?LOG_DEBUG("timeout receiving PROXY line from upstream proxy, closing",[]),

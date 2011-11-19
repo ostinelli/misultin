@@ -34,7 +34,7 @@
 -vsn("0.9-dev").
 
 % API
--export([handle_data/11, build_error_message/4, get_reqinfo/2, session_cmd/2]).
+-export([handle_data/11, build_error_message/4, build_error_message/5, get_reqinfo/2, session_cmd/2]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -107,14 +107,17 @@ handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, 
 
 % build error message
 -spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid(), AccessLogFun::function()) -> iolist().
+-spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid(), AccessLogFun::function(), MessageBody::iolist()) -> iolist().
 build_error_message(HttpCode, Req, TableDateRef, AccessLogFun) ->
+	build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, <<"">>).
+build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, MessageBody) ->
 	% build headers
 	Headers = [{'Content-Length', 0}, {'Connection', Req#req.connection}],
 	Enc_headers = enc_headers(Headers),
 	% info log
 	build_access_log(Req, HttpCode, 0, TableDateRef, AccessLogFun),
 	% build and send response
-	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>].	
+	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, MessageBody].	
 
 % get request info from http process handler
 -spec get_reqinfo(SocketPid::pid(), ReqInfo::atom()) -> term().
