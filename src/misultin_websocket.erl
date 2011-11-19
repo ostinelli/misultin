@@ -88,7 +88,9 @@ check_headers(Headers, RequiredHeaders) ->
 				case Val of
 					ignore -> false; % ignore value -> ok, remove from list
 					HVal -> false;	 % expected val -> ok, remove from list
-					_ -> true		 % val is different, keep in list
+					_ ->
+						% check if header has multiple parameters (for instance FF7 websockets)
+						not(lists:member(Val,string:tokens(HVal,", ")))
 				end		
 		end
 	end,
@@ -128,14 +130,14 @@ get_wsinfo(SocketPid, WsInfo) ->
 
 % behaviour
 behaviour_info(callbacks) ->
-    [
+	[
 		{check_websocket, 1},
 		{handshake, 3},
 		{handle_data, 3},
 		{send_format, 2}
 	];
 behaviour_info(_) ->
-    undefined.
+	undefined.
 
 % Loop to check for all available supported websocket protocols.
 -spec check_websockets(VsnSupported::[websocket_version()], Headers::http_headers()) -> false | {true, Vsn::websocket_version()}.
