@@ -89,9 +89,17 @@ CHANGELOG
        - added sessions state, persistent across requests
        - added access log callback function, so that main application can log HTTP access
        - added support for websocket draft-hybi-10
+       - added support for websocket draft-hybi-17 (thanks to RJ)
+       - added support for websockets on FireFox (thanks to Egobrain)
+       - added support for 'If-Modified-Since' headers in file sending (thanks to davidgaleano)
+       - added support for websockets when behind stunnel with {external_ssl, boolean()} option (thanks to
+         RJ)
+       - added support to see the correct client IP when behind stunnel, according to
+         <http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt> (thanks to RJ)
+       - added support for OPTIONS method (thanks to majek)
        - added configuration option to set which websocket versions must be supported by the server
        - rebar-ized makefile
-       - corrected minor bugs
+       - corrected minor bugs (thank you all - you know who you are!)
 
 0.8:   - Misultin has been redesigned to use supervisor behaviours where appropriate, to be more OTP
          compliant
