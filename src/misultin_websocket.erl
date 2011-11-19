@@ -88,8 +88,12 @@ check_headers(Headers, RequiredHeaders) ->
 				case Val of
 					ignore -> false; % ignore value -> ok, remove from list
 					HVal -> false;	 % expected val -> ok, remove from list
-					_ -> true		 % val is different, keep in list
-				end		
+					_ ->
+						case string:str(HVal, Val) > 0 of
+							true -> false;
+							false -> true		 % val is different, keep in list
+						end
+				end
 		end
 	end,
 	case lists:filter(F, RequiredHeaders) of
