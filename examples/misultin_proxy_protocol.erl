@@ -3,7 +3,7 @@
 %
 % >-|-|-(°>
 % 
-% Copyright (C) 2011, Roberto Ostinelli <roberto@ostinelli.net>
+% Copyright (C) 2011, Richard Jones <rj@metabrew.com>
 % All rights reserved.
 %
 % BSD License
@@ -12,11 +12,11 @@
 % that the following conditions are met:
 %
 %  * Redistributions of source code must retain the above copyright notice, this list of conditions and the
-%    following disclaimer.
+%	 following disclaimer.
 %  * Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-%    the following disclaimer in the documentation and/or other materials provided with the distribution.
+%	 the following disclaimer in the documentation and/or other materials provided with the distribution.
 %  * Neither the name of the authors nor the names of its contributors may be used to endorse or promote
-%    products derived from this software without specific prior written permission.
+%	 products derived from this software without specific prior written permission.
 %
 % THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
 % WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
@@ -44,6 +44,6 @@ stop() ->
 
 % callback on request received
 handle_http(Req) ->
-    {A,B,C,D} = Req:get(peer_addr),
-    Msg = io_lib:format("Hello ~B.~B.~B.~B", [A,B,C,D]),
+	{A,B,C,D} = Req:get(peer_addr),
+	Msg = io_lib:format("Hello ~B.~B.~B.~B", [A,B,C,D]),
 	Req:ok(Msg).
