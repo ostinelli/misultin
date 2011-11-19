@@ -39,9 +39,6 @@
 % internal
 -export([init/6]).
 
-% macros
--define(ACCEPTOR_TIMEOUT_FOR_CODE_UPGRADES, 5000).	% force timeout of acceptors to allow for hot code swapping
-
 % includes
 -include("../include/misultin.hrl").
 
@@ -101,7 +98,7 @@ init(MainSupRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) 
 	SocketMode::socketmode(),
 	CustomOpts::#custom_opts{}) -> [].
 acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts) ->
-	case catch misultin_socket:accept(ListenSocket, ?ACCEPTOR_TIMEOUT_FOR_CODE_UPGRADES, SocketMode) of
+	case catch misultin_socket:accept(ListenSocket, SocketMode) of
 		{ok, Sock} when SocketMode =:= http ->
 			?LOG_DEBUG("received a new http request, spawning a controlling process",[]),
 			Pid = spawn(fun() ->
@@ -116,7 +113,7 @@ acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTim
 					misultin_socket:close(Sock, SocketMode)
 			end,					
 			% get back to accept loop
-			?MODULE:acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{ok, Sock} ->
 			?LOG_DEBUG("received a new https request, spawning a controlling process",[]),
 			Pid = spawn(fun() ->
@@ -140,14 +137,11 @@ acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTim
 					misultin_socket:close(Sock, SocketMode)
 			end,
 			% get back to accept loop
-			?MODULE:acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
-		{error, timeout} ->
-			% refresh acceptors
-			?MODULE:acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{error, _Error} ->
 			?LOG_WARNING("accept failed with error: ~p", [_Error]),
 			% get back to accept loop
-			?MODULE:acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{'EXIT', Error} ->
 			?LOG_ERROR("accept exited with error: ~p, quitting process", [Error]),
 			exit({error, {accept_failed, Error}})
