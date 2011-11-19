@@ -186,7 +186,10 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 	case misultin_server:http_pid_ref_add(ServerRef, self()) of
 		ok ->
 			% get peer address and port
-			{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
+			case CustomOpts#custom_opts.proxy_protocol of
+				false -> {PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode);
+				true  -> {PeerAddr, PeerPort} = peername_from_proxy_line(Sock, SocketMode)
+			end,
 			?LOG_DEBUG("remote peer is ~p", [{PeerAddr, PeerPort}]),
 			% get peer certificate, if any
 			PeerCert = misultin_socket:peercert(Sock, SocketMode),
@@ -205,3 +208,41 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
+
+%% receive the first line, and extract peer address details as per http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
+peername_from_proxy_line(Sock, SocketMode) ->
+	misultin_socket:setopts(Sock, [{active,once}, {packet,line}, list], SocketMode),
+	receive
+		{TcpOrSsl, Sock, "PROXY " ++ ProxyLine} when TcpOrSsl =:= tcp; TcpOrSsl =:= ssl ->
+			case string:tokens(ProxyLine, "\r\n ") of
+				[_Proto, SrcAddrStr, _DestAddr, SrcPortStr, _DestPort] ->
+					{SrcPort, _}  = string:to_integer(SrcPortStr),
+					{ok, SrcAddr} = inet_parse:address(SrcAddrStr),
+					?LOG_DEBUG("Got peer address from proxy line: ~p",[{SrcAddr, SrcPort} ]),
+					{SrcAddr, SrcPort}
+			end;
+
+		{_, Sock, FirstLine} -> 
+			?LOG_DEBUG("FIRST LINE NOT 'PROXY', but 'PROXY ...' expected due to config option; line was: '~s'", [FirstLine]),
+			misultin_socket:send(Sock, [
+									"HTTP 502 Server Error\r\n", 
+									"Connection: close\r\n\r\n",
+									"<h1>PROXY line expected</h1>",
+									"Misultin configured to expect PROXY line first, as per ",
+									"<a href=\"http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt\">the haproxy proxy protocol spec</a>, ",
+									"but first line received was:<br/><pre>\n",
+									FirstLine,
+									"\n</pre>"],
+								 SocketMode),
+			misultin_socket:close(Sock, SocketMode),
+			exit(normal)
+
+	after 1000 ->
+			?LOG_DEBUG("Timeout receiving PROXY line from upstream proxy, closing", []),
+			misultin_socket:send(Sock, ["HTTP 502 Server Error\r\n", 
+										"Connection: close\r\n\r\n",
+                                        "<h1>502 timeout on receiving proxy line from upstream</h1>"],
+								 SocketMode),
+			misultin_socket:close(Sock, SocketMode),
+			exit(normal)
+	end.
