@@ -34,7 +34,7 @@
 -vsn("0.9-dev").
 
 % API
--export([listen/3, accept/2, controlling_process/3, peername/2, peercert/2, setopts/3, recv/4, send/3, close/2]).
+-export([listen/3, accept/2, accept/3, controlling_process/3, peername/2, peercert/2, setopts/3, recv/4, send/3, close/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -49,9 +49,13 @@ listen(Port, Options, ssl) -> ssl:listen(Port, Options).
 
 % socket accept
 -spec accept(ListenSocket::socket(), socketmode()) -> {ok, ListenSock::socket()} | {error, Reason::term()}.
-accept(ListenSocket, http) -> gen_tcp:accept(ListenSocket);
-accept(ListenSocket, ssl) ->
-	try ssl:transport_accept(ListenSocket)
+accept(ListenSocket, http) ->
+	accept(ListenSocket, infinity, http).
+
+-spec accept(ListenSocket::socket(), Timeout::timeout(), socketmode()) -> {ok, ListenSock::socket()} | {error, Reason::term()}.
+accept(ListenSocket, Timeout, http) -> gen_tcp:accept(ListenSocket, Timeout);
+accept(ListenSocket, Timeout, ssl) ->
+	try ssl:transport_accept(ListenSocket, Timeout)
 	catch
 		error:{badmatch, {error, Reason}} ->
 			{error, Reason}

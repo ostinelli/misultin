@@ -16,5 +16,5 @@
 	]},
 	{registered, []},
 	{env, []},
-	{applications, [kernel, stdlib, inets]}
+	{applications, [kernel, stdlib]}
 ]}.

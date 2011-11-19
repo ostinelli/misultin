@@ -160,9 +160,9 @@ request(#c{recv_timeout = RecvTimeout, get_url_max_size = GetUrlMaxSize} = C, #r
 			% go to headers
 			headers(C, Req#req{vsn = Version, method = Method, uri = Path, connection = default_connection(Version)}, []);
 		{SocketMode, Sock, {http_error, "\r\n"}} ->
-			request(C, Req);
+			?MODULE:request(C, Req);
 		{SocketMode, Sock, {http_error, "\n"}} ->
-			request(C, Req);
+			?MODULE:request(C, Req);
 		{http, Sock, {http_error, _Other}}  ->
 			?LOG_DEBUG("not the beginning of a request [maybe a ssl request while socket in http mode?]: ~p, sending bad request message and closing socket", [_Other]),
 			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
@@ -474,7 +474,7 @@ get_chunk_length(HeadLine) ->
 handle_keepalive(close, _C, #req{socket = Sock, socket_mode = SocketMode} = _Req) ->
 	misultin_socket:close(Sock, SocketMode);
 handle_keepalive(keep_alive, C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
-	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
+	?MODULE:request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
 % Main dispatcher
 -spec call_mfa(C::#c{}, Req::#req{}) -> closed | true.
