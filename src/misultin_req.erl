@@ -50,19 +50,19 @@
 -include_lib("kernel/include/file.hrl").
 
 % types
--type reqt() :: {misultin_req, SocketPid::pid()}.
+-type reqt() :: {misultin_req, SocketPid::pid(), TableDateRef::ets:tid()}.
 
 
 % ============================ \/ API ======================================================================
 
 % Returns raw request content.
 -spec raw(reqt()) -> #req{}.
-raw({misultin_req, SocketPid}) ->
+raw({misultin_req, SocketPid, _TableDateRef}) ->
 	misultin_http:get_reqinfo(SocketPid, raw).
 
 % Get request info.
 -spec get(ReqInfo::atom(), reqt()) -> term().
-get(ReqInfo, {misultin_req, SocketPid}) when
+get(ReqInfo, {misultin_req, SocketPid, _TableDateRef}) when
 	ReqInfo =:= socket;
 	ReqInfo =:= socket_mode;
 	ReqInfo =:= peer_port;
@@ -77,8 +77,8 @@ get(ReqInfo, {misultin_req, SocketPid}) when
 	ReqInfo =:= body ->
 		misultin_http:get_reqinfo(SocketPid, ReqInfo);
 		
-get(peer_addr, {misultin_req, SocketPid}) ->
-	Headers = get(headers, {misultin_req, SocketPid}),
+get(peer_addr, {misultin_req, SocketPid, _TableDateRef}) ->
+	Headers = get(headers, {misultin_req, SocketPid, _TableDateRef}),
 	Host = case misultin_utility:header_get_value('X-Real-Ip', Headers) of
 		false ->
 			case misultin_utility:header_get_value('X-Forwarded-For', Headers) of
@@ -132,13 +132,13 @@ get_cookie_value(CookieTag, Cookies, _ReqT) ->
 -spec set_cookie(Key::string(), Value::string(), Options::cookies_options(), reqt()) -> ok.
 set_cookie(Key, Value, _ReqT) ->
 	set_cookie(Key, Value, [], _ReqT).
-set_cookie(Key, Value, Options, {misultin_req, SocketPid}) ->
+set_cookie(Key, Value, Options, {misultin_req, SocketPid, _TableDateRef}) ->
 	SocketPid ! {set_cookie, misultin_cookies:set_cookie(Key, Value, Options)},
 	ok.		% retro-compatibility: 'ok' atom gets ignored by enc_headers/1 in case set_cookie is used inside Req headers
 
 % delete cookie
 -spec delete_cookie(Key::string(), reqt()) -> ok.
-delete_cookie(Key, {misultin_req, SocketPid}) ->
+delete_cookie(Key, {misultin_req, SocketPid, _TableDateRef}) ->
 	SocketPid ! {set_cookie, misultin_cookies:delete_cookie(Key)},
 	ok.		% retro-compatibility: 'ok' atom gets ignored by enc_headers/1 in case set_cookie is used inside Req headers
 
@@ -152,12 +152,12 @@ delete_cookie(Key, {misultin_req, SocketPid}) ->
 session(ReqT) ->
 	Cookies = get_cookies(ReqT),
 	session(Cookies, ReqT).
-session(Cookies, {misultin_req, SocketPid}) ->
+session(Cookies, {misultin_req, SocketPid, _TableDateRef}) ->
 	misultin_http:session_cmd(SocketPid, {session, Cookies}).
 
 % save session state
 -spec save_session_state(SessionId::string(), SessionState::term(), ReqT::reqt()) -> {error, Reason::term()} | ok.
-save_session_state(SessionId, SessionState, {misultin_req, SocketPid}) ->
+save_session_state(SessionId, SessionState, {misultin_req, SocketPid, _TableDateRef}) ->
 	misultin_http:session_cmd(SocketPid, {save_session_state, SessionId, SessionState}).
 
 % ---------------------------- /\ Sessions ------------------------------------------------------------------
@@ -171,7 +171,7 @@ options(Options, ReqT) when is_list(Options) ->
 	lists:foreach(fun({OptionTag, OptionVal}) -> options_set(OptionTag, OptionVal, ReqT) end, Options).
 % set to comet mode
 -spec options_set(OptionName::atom(), OptionVal::term(), reqt()) -> term().
-options_set(comet, OptionVal, {misultin_req, SocketPid}) when OptionVal =:= true; OptionVal =:= false ->
+options_set(comet, OptionVal, {misultin_req, SocketPid, _TableDateRef}) when OptionVal =:= true; OptionVal =:= false ->
 	SocketPid ! {set_option, {comet, OptionVal}};
 options_set(_OptionTag, _OptionVal, _ReqT)	->
 	% ignore
@@ -200,9 +200,9 @@ respond(HttpCode, ReqT) ->
 	respond(HttpCode, [], [], ReqT).
 respond(HttpCode, Template, ReqT) ->
 	respond(HttpCode, [], Template, ReqT).
-respond(HttpCode, Headers, Template, {misultin_req, SocketPid}) ->
+respond(HttpCode, Headers, Template, {misultin_req, SocketPid, _TableDateRef}) ->
 	SocketPid ! {response, HttpCode, Headers, Template}.
-respond(HttpCode, Headers, Template, Vars, {misultin_req, SocketPid}) when is_list(Template) =:= true ->
+respond(HttpCode, Headers, Template, Vars, {misultin_req, SocketPid, _TableDateRef}) when is_list(Template) =:= true ->
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
 
 % Chunked Transfer-Encoding.
@@ -241,19 +241,19 @@ chunk_send(Data, ReqT) ->
 	(Template::string(), Vars::[term()], reqt()) -> term().
 -spec stream
 	(head, HttpCode::non_neg_integer(), Headers::http_headers(), reqt()) -> term().
-stream(close, {misultin_req, SocketPid}) ->
+stream(close, {misultin_req, SocketPid, _TableDateRef}) ->
 	SocketPid ! stream_close;
 stream(head, ReqT) ->
 	stream(head, 200, [], ReqT);
-stream({error, Reason}, {misultin_req, SocketPid}) ->
+stream({error, Reason}, {misultin_req, SocketPid, _TableDateRef}) ->
 	SocketPid ! {stream_error, Reason};
-stream(Data, {misultin_req, SocketPid}) ->
+stream(Data, {misultin_req, SocketPid, _TableDateRef}) ->
 	catch SocketPid ! {stream_data, Data}.
 stream(head, Headers, ReqT) ->
 	stream(head, 200, Headers, ReqT);
-stream(Template, Vars, {misultin_req, SocketPid}) when is_list(Template) =:= true ->
+stream(Template, Vars, {misultin_req, SocketPid, _TableDateRef}) when is_list(Template) =:= true ->
 	catch SocketPid ! {stream_data, io_lib:format(Template, Vars)}.
-stream(head, HttpCode, Headers, {misultin_req, SocketPid}) ->
+stream(head, HttpCode, Headers, {misultin_req, SocketPid, _TableDateRef}) ->
 	catch SocketPid ! {stream_head, HttpCode, Headers}.
 
 % Sends a file to the browser.
@@ -384,13 +384,13 @@ file_send(FilePath, Headers, ReqT) ->
 			stream({error, 404}, ReqT)
 	end.
 -spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), FileModifiedTime::string(), Headers::http_headers(), reqt()) -> term().
-file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) ->
+file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, {misultin_req, _SocketPid, TableDateRef} = ReqT) ->
 	case file:open(FilePath, [read, binary]) of
 		{error, Reason} ->
 			{error, Reason};
 		{ok, IoDevice} ->
 			% send headers
-			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize}, {'Last-Modified', FileModifiedTime} | Headers],
+			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize}, {'Last-Modified', FileModifiedTime}, {'Expires', misultin_server:get_rfc_date(TableDateRef)} | Headers],
 			stream(head, HeadersFull, ReqT),
 			% read portions
 			case file_read_and_send(IoDevice, 0, ReqT) of

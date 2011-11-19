@@ -478,7 +478,7 @@ handle_keepalive(keep_alive, C, #req{socket = Sock, socket_mode = SocketMode} = 
 
 % Main dispatcher
 -spec call_mfa(C::#c{}, Req::#req{}) -> closed | true.
-call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
+call_mfa(#c{table_date_ref = TableDateRef, loop = Loop, autoexit = AutoExit} = C, Req) ->
 	% spawn_link custom loop
 	Self = self(),
 	% trap exit
@@ -486,7 +486,7 @@ call_mfa(#c{loop = Loop, autoexit = AutoExit} = C, Req) ->
 	% spawn
 	LoopPid = spawn_link(fun() ->
 		% create request
-		ReqT = {misultin_req, Self},
+		ReqT = {misultin_req, Self, TableDateRef},
 		% start custom loop
 		Loop(ReqT)
 	end),
@@ -586,7 +586,7 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			socket_loop(C, Req, LoopPid, ReqOptions#req_options{comet = OptionVal}, AppHeaders, HttpCodeSent, SizeSent);
 		{stream_head, HttpCode, Headers0} ->
 			?LOG_DEBUG("sending stream head", []),
-			Headers = add_output_header('Connection', {Headers0, Req}),
+			Headers = add_headers_no_content_length(Headers0, C#c.table_date_ref, Req),
 			Enc_headers = enc_headers(Headers),
 			Resp = [misultin_utility:get_http_status_code(HttpCode, Req#req.vsn), Enc_headers, <<"\r\n">>],
 			% respond
@@ -666,8 +666,13 @@ convert_to_binary(Body) when is_atom(Body) ->
 % add necessary headers
 -spec add_headers(http_headers(), BodyBinary::binary(), TableDateRef::ets:tid(), Req::#req{}) -> http_headers().
 add_headers(OriginalHeaders, BodyBinary, TableDateRef, Req) ->
-	Headers0 = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
-	Headers1 = add_output_header('Connection', {Headers0, Req}),
+	Headers = add_output_header('Content-Length', {OriginalHeaders, BodyBinary}),
+	add_headers_no_content_length(Headers, TableDateRef, Req).
+
+% add necessary headers without content length one
+-spec add_headers_no_content_length(Headers::http_headers(), TableDateRef::ets:tid(), Req::#req{}) -> http_headers().
+add_headers_no_content_length(Headers, TableDateRef, Req) ->
+	Headers1 = add_output_header('Connection', {Headers, Req}),
 	Headers2 = add_output_header('Server', Headers1),
 	add_output_header('Date', {Headers2, TableDateRef}).
 
