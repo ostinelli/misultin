@@ -32,7 +32,7 @@
 -vsn("0.9-dev").
 
 % API
--export([get_http_status_code/1, get_content_type/1, get_key_value/2, header_get_value/2]).
+-export([get_http_status_code/2, get_http_status_message/1, get_content_type/1, get_key_value/2, header_get_value/2]).
 -export([call/2, call/3, respond/2]).
 -export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
 -export([convert_ip_to_list/1]).
@@ -60,90 +60,95 @@
 
 % ============================ \/ API ======================================================================
 
-% Returns a complete HTTP header. Most common first
--spec get_http_status_code(HttpStatus::non_neg_integer()) -> string().
-get_http_status_code(200) ->
-	"HTTP/1.1 200 OK\r\n";
-get_http_status_code(100) ->
-	"HTTP/1.1 100 Continue\r\n";
-get_http_status_code(101) ->
-	"HTTP/1.1 101 Switching Protocols\r\n";
-get_http_status_code(301) ->
-	"HTTP/1.1 301 Moved Permanently\r\n";
-get_http_status_code(400) ->
-	"HTTP/1.1 400 Bad Request\r\n";
-get_http_status_code(401) ->
-	"HTTP/1.1 401 Unauthorized\r\n";	
-get_http_status_code(403) ->
-	"HTTP/1.1 403 Forbidden\r\n";
-get_http_status_code(404) ->
-	"HTTP/1.1 404 Not Found\r\n";				
-get_http_status_code(408) ->
-	"HTTP/1.1 408 Request Timeout\r\n";			
-get_http_status_code(500) ->
-	"HTTP/1.1 500 Internal Server Error\r\n";
-get_http_status_code(501) ->
-	"HTTP/1.1 501 Not Implemented\r\n";				
+% Returns a complete HTTP header
+-spec get_http_status_code(HttpCode::non_neg_integer(), HttpVsn::http_version()) -> string().
+get_http_status_code(HttpCode, {Maj, Min}) ->
+	lists:flatten(io_lib:format("HTTP/~p.~p ~s\r\n", [Maj, Min, get_http_status_message(HttpCode)])).
+
+% Returns the HTTP code description
+-spec get_http_status_message(HttpStatus::non_neg_integer()) -> string().
+get_http_status_message(200) ->
+	"200 OK";
+get_http_status_message(100) ->
+	"100 Continue";
+get_http_status_message(101) ->
+	"101 Switching Protocols";
+get_http_status_message(301) ->
+	"301 Moved Permanently";
+get_http_status_message(400) ->
+	"400 Bad Request";
+get_http_status_message(401) ->
+	"401 Unauthorized";	
+get_http_status_message(403) ->
+	"403 Forbidden";
+get_http_status_message(404) ->
+	"404 Not Found";				
+get_http_status_message(408) ->
+	"408 Request Timeout";			
+get_http_status_message(500) ->
+	"500 Internal Server Error";
+get_http_status_message(501) ->
+	"501 Not Implemented";				
 % less common last
-get_http_status_code(201) ->
-	"HTTP/1.1 201 Created\r\n";
-get_http_status_code(202) ->
-	"HTTP/1.1 202 Accepted\r\n";
-get_http_status_code(203) ->
-	"HTTP/1.1 203 Non-Authoritative Information\r\n";
-get_http_status_code(204) ->
-	"HTTP/1.1 204 No Content\r\n";
-get_http_status_code(205) ->
-	"HTTP/1.1 205 Reset Content\r\n";
-get_http_status_code(206) ->
-	"HTTP/1.1 206 Partial Content\r\n";
-get_http_status_code(300) ->
-	"HTTP/1.1 300 Multiple Choices\r\n";
-get_http_status_code(302) ->
-	"HTTP/1.1 302 Found\r\n";
-get_http_status_code(303) ->
-	"HTTP/1.1 303 See Other\r\n";
-get_http_status_code(304) ->
-	"HTTP/1.1 304 Not Modified\r\n";
-get_http_status_code(305) ->
-	"HTTP/1.1 305 Use Proxy\r\n";
-get_http_status_code(307) ->
-	"HTTP/1.1 307 Temporary Redirect\r\n";
-get_http_status_code(402) ->
-	"HTTP/1.1 402 Payment Required\r\n";
-get_http_status_code(405) ->
-	"HTTP/1.1 405 Method Not Allowed\r\n";
-get_http_status_code(406) ->
-	"HTTP/1.1 406 Not Acceptable\r\n";
-get_http_status_code(407) ->
-	"HTTP/1.1 407 Proxy Authentication Required\r\n";
-get_http_status_code(409) ->
-	"HTTP/1.1 409 Conflict\r\n";
-get_http_status_code(410) ->
-	"HTTP/1.1 410 Gone\r\n";
-get_http_status_code(411) ->
-	"HTTP/1.1 411 Length Required\r\n";
-get_http_status_code(412) ->
-	"HTTP/1.1 412 Precondition Failed\r\n";
-get_http_status_code(413) ->
-	"HTTP/1.1 413 Request Entity Too Large\r\n";
-get_http_status_code(414) ->
-	"HTTP/1.1 414 Request-URI Too Long\r\n";
-get_http_status_code(415) ->
-	"HTTP/1.1 415 Unsupported Media Type\r\n";
-get_http_status_code(416) ->
-	"HTTP/1.1 416 Requested Range Not Satisfiable\r\n";
-get_http_status_code(417) ->
-	"HTTP/1.1 417 Expectation Failed\r\n";
-get_http_status_code(502) ->
-	"HTTP/1.1 502 Bad Gateway\r\n";
-get_http_status_code(503) ->
-	"HTTP/1.1 503 Service Unavailable\r\n";
-get_http_status_code(504) ->
-	"HTTP/1.1 504 Gateway Timeout\r\n";
-get_http_status_code(505) ->
-	"HTTP/1.1 505 HTTP Version Not Supported\r\n";
-get_http_status_code(Other) ->
+get_http_status_message(201) ->
+	"201 Created";
+get_http_status_message(202) ->
+	"202 Accepted";
+get_http_status_message(203) ->
+	"203 Non-Authoritative Information";
+get_http_status_message(204) ->
+	"204 No Content";
+get_http_status_message(205) ->
+	"205 Reset Content";
+get_http_status_message(206) ->
+	"206 Partial Content";
+get_http_status_message(300) ->
+	"300 Multiple Choices";
+get_http_status_message(302) ->
+	"302 Found";
+get_http_status_message(303) ->
+	"303 See Other";
+get_http_status_message(304) ->
+	"304 Not Modified";
+get_http_status_message(305) ->
+	"305 Use Proxy";
+get_http_status_message(307) ->
+	"307 Temporary Redirect";
+get_http_status_message(402) ->
+	"402 Payment Required";
+get_http_status_message(405) ->
+	"405 Method Not Allowed";
+get_http_status_message(406) ->
+	"406 Not Acceptable";
+get_http_status_message(407) ->
+	"407 Proxy Authentication Required";
+get_http_status_message(409) ->
+	"409 Conflict";
+get_http_status_message(410) ->
+	"410 Gone";
+get_http_status_message(411) ->
+	"411 Length Required";
+get_http_status_message(412) ->
+	"412 Precondition Failed";
+get_http_status_message(413) ->
+	"413 Request Entity Too Large";
+get_http_status_message(414) ->
+	"414 Request-URI Too Long";
+get_http_status_message(415) ->
+	"415 Unsupported Media Type";
+get_http_status_message(416) ->
+	"416 Requested Range Not Satisfiable";
+get_http_status_message(417) ->
+	"417 Expectation Failed";
+get_http_status_message(502) ->
+	"502 Bad Gateway";
+get_http_status_message(503) ->
+	"503 Service Unavailable";
+get_http_status_message(504) ->
+	"504 Gateway Timeout";
+get_http_status_message(505) ->
+	"505 HTTP Version Not Supported";
+get_http_status_message(Other) ->
 	lists:flatten(io_lib:format("HTTP/1.1 ~p \r\n", [Other])).
 
 % get content type

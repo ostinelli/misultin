@@ -107,17 +107,24 @@ handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, 
 
 % build error message
 -spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid(), AccessLogFun::function()) -> iolist().
--spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid(), AccessLogFun::function(), MessageBody::iolist()) -> iolist().
+-spec build_error_message(HttpCode::non_neg_integer(), Req::#req{}, TableDateRef::ets:tid(), AccessLogFun::function(), MessageBody::iolist() | list() | binary()) -> iolist().
 build_error_message(HttpCode, Req, TableDateRef, AccessLogFun) ->
-	build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, <<"">>).
+	build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, "").
 build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, MessageBody) ->
+	?LOG_DEBUG("building error message with httpcode: ~p and message body: ~p", [HttpCode, MessageBody]),
+	% building body
+	Body = [
+		"<h1>", misultin_utility:get_http_status_message(HttpCode), "</h1>\r\n",
+		MessageBody,
+		"<hr><i>", ?SERVER_VERSION_TAG, "</i>"
+		],
 	% build headers
-	Headers = [{'Content-Length', 0}, {'Connection', Req#req.connection}],
+	Headers = [{'Content-Length', erlang:iolist_size(Body)}, {'Connection', Req#req.connection}],
 	Enc_headers = enc_headers(Headers),
 	% info log
 	build_access_log(Req, HttpCode, 0, TableDateRef, AccessLogFun),
 	% build and send response
-	[misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, MessageBody].	
+	[misultin_utility:get_http_status_code(HttpCode, Req#req.vsn), Enc_headers, "\r\n", Body].	
 
 % get request info from http process handler
 -spec get_reqinfo(SocketPid::pid(), ReqInfo::atom()) -> term().
@@ -522,7 +529,7 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			Headers = add_headers(Headers0, BodyBinary, C#c.table_date_ref, Req),			
 			Enc_headers = enc_headers(lists:append([CompressHeaders, AppHeaders, Headers])),
 			% build and send response
-			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>, BodyBinary],
+			Resp = [misultin_utility:get_http_status_code(HttpCode, Req#req.vsn), Enc_headers, <<"\r\n">>, BodyBinary],
 			% send
 			misultin_socket:send(Sock, Resp, SocketMode),
 			% loop and save sent status
@@ -581,7 +588,7 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			?LOG_DEBUG("sending stream head", []),
 			Headers = add_output_header('Connection', {Headers0, Req}),
 			Enc_headers = enc_headers(Headers),
-			Resp = [misultin_utility:get_http_status_code(HttpCode), Enc_headers, <<"\r\n">>],
+			Resp = [misultin_utility:get_http_status_code(HttpCode, Req#req.vsn), Enc_headers, <<"\r\n">>],
 			% respond
 			misultin_socket:send(Sock, Resp, SocketMode),
 			% loop and set HttpCode

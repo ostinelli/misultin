@@ -203,12 +203,13 @@ open_connections_switch(ServerRef, SessionsRef, TableDateRef, Sock, ListenPort, 
 		{error, _Reason} ->
 			% too many open connections, send error and close [spawn to avoid locking]
 			?LOG_DEBUG("~p, refusing new request", [_Reason]),
-			send_error_message_and_close(503, Sock, SocketMode, TableDateRef, CustomOpts)
+			send_error_message_and_close(503, "Server is experiencing heavy load, please try again in a few minutes.", Sock, SocketMode, TableDateRef, CustomOpts)
 	end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
 
 % send error message
+-spec send_error_message_and_close(HttpCode::non_neg_integer(), Msg::iolist(), Sock::socket(), SocketMode::socketmode(), TableDateRef::ets:tid(), CustomOpts::#custom_opts{}) -> ok.
 send_error_message_and_close(HttpCode, Msg, Sock, SocketMode, TableDateRef, CustomOpts) ->
 	{PeerAddr, PeerPort} = misultin_socket:peername(Sock, SocketMode),
 	Msg0 = misultin_http:build_error_message(HttpCode, #req{peer_addr = PeerAddr, peer_port = PeerPort, connection = close}, TableDateRef, CustomOpts#custom_opts.access_log, Msg),

@@ -166,7 +166,7 @@
 	peer_cert		= undefined :: undefined | term(),				% the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
 	connection		= close :: keep_alive | close,
 	content_length	= undefined :: undefined | non_neg_integer(),
-	vsn				= undefined :: undefined | http_version(),
+	vsn				= {1, 1} :: http_version(),						% defaults to HTTP/1.1
 	method			= undefined :: undefined | http_method(),
 	uri				= undefined :: undefined | http_uri(),
 	args			= "" :: list(),									% Part of URI after ?
