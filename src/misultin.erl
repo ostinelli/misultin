@@ -118,7 +118,8 @@ init([Options]) ->
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
 		{ws_versions, ['draft-hybi-17', 'draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified},
 		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire},
-		{access_log, undefined, fun check_access_log/1, invalid_access_log}
+		{access_log, undefined, fun check_access_log/1, invalid_access_log},
+		{auto_recv_body, true, fun is_boolean/1, invalid_auto_recv_body}
 	],
 	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -146,6 +147,7 @@ init([Options]) ->
 			RecBuf = proplists:get_value(recbuf, OptionsVerified),
 			SessionsExpireSec = proplists:get_value(sessions_expire, OptionsVerified),
 			AccessLogFun = proplists:get_value(access_log, OptionsVerified),
+			AutoRecvBody = proplists:get_value(auto_recv_body, OptionsVerified),
 			% set additional options according to socket mode if necessary
 			Continue = case SslOptions0 of
 				false ->
@@ -200,7 +202,8 @@ init([Options]) ->
 						ws_versions = WsVersions,
 						access_log = AccessLogFun,
 						ws_force_ssl = WsForceSsl,
-						proxy_protocol = ProxyProtocol
+						proxy_protocol = ProxyProtocol,
+						auto_recv_body = AutoRecvBody
 					},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},

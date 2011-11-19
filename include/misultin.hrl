@@ -80,7 +80,8 @@
 	{ws_autoexit, boolean()} |
 	{ws_versions, [websocket_version()]} |
 	{sessions_expire, non_neg_integer()} |
-	{access_log, undefined | function()}.
+	{access_log, undefined | function()} |
+	{auto_recv_body, boolean()}.
 -type misultin_option() :: misultin_option_tcp() |  misultin_option_server().
 % ---------------------------- /\ MISULTIN -----------------------------------------------------------------
 

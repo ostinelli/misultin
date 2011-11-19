@@ -57,7 +57,8 @@
 	ws_autoexit			= true :: boolean(),
 	ws_versions			= undefined :: [websocket_version()],
 	access_log			= undefined :: undefined | function(),
-	ws_force_ssl		= false :: boolean()
+	ws_force_ssl		= false :: boolean(),
+	auto_recv_body		= true :: boolean()
 }).
 -record(req_options, {
 	comet				= false :: boolean()		% if comet =:= true, we will monitor client tcp close
@@ -99,7 +100,8 @@ handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, 
 		ws_autoexit = CustomOpts#custom_opts.ws_autoexit,
 		ws_versions = CustomOpts#custom_opts.ws_versions,
 		access_log = CustomOpts#custom_opts.access_log,
-		ws_force_ssl = CustomOpts#custom_opts.ws_force_ssl
+		ws_force_ssl = CustomOpts#custom_opts.ws_force_ssl,
+		auto_recv_body = CustomOpts#custom_opts.auto_recv_body
 	},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
