@@ -34,7 +34,7 @@
 -vsn("0.9-dev").
 
 % macros
--define(FILE_READ_BUFFER, 64*1012).
+-define(FILE_READ_BUFFER, 64*1024).
 
 % API
 -export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5]).
