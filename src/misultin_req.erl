@@ -257,22 +257,10 @@ stream(Template, Vars, {misultin_req, SocketPid, _TableDateRef}) when is_list(Te
 stream(head, HttpCode, Headers, {misultin_req, SocketPid, _TableDateRef}) ->
 	catch SocketPid ! {stream_head, HttpCode, Headers}.
 
-
-
-
-
-% recv body
+% manual recv body
+-spec body_recv(reqt()) -> {ok | chunk, Body::binary()} | end_of_chunks | {error, Reason::term()}.
 body_recv({misultin_req, SocketPid, _TableDateRef}) ->
 	misultin_http:body_recv(SocketPid).
-
-
-
-
-
-
-
-
-
 
 % Sends a file to the browser.
 -spec file

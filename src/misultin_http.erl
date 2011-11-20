@@ -138,18 +138,10 @@ get_reqinfo(SocketPid, ReqInfo) ->
 session_cmd(SocketPid, SessionCmd) ->
 	misultin_utility:call(SocketPid, {session_cmd, SessionCmd}).
 
-
-
-
-
 % call body_recv on the http process handler
--spec body_recv(SocketPid::pid()) -> {ok | chunk, Body::binary()}.
+-spec body_recv(SocketPid::pid()) -> {ok | chunk, binary()} | end_of_chunks | {error, Reason::term()}.
 body_recv(SocketPid) ->
 	misultin_utility:call(SocketPid, body_recv).
-
-
-
-
 
 % ============================ /\ API ======================================================================
 
@@ -348,7 +340,7 @@ read_body_dispatch(#c{auto_recv_body = AutoRecvBody} = C, #req{socket = Sock, so
 		true ->
 			?LOG_DEBUG("automatically read body of request",[]),
 			% read post body
-			case read_body(C, Req) of
+			case read_body(full, C, Req) of
 				{ok, Bin} ->
 					?LOG_DEBUG("full body read: ~p", [Bin]),
 					Req0 = Req#req{body = Bin},
@@ -373,26 +365,28 @@ read_body_dispatch(#c{auto_recv_body = AutoRecvBody} = C, #req{socket = Sock, so
 			handle_keepalive(Req#req.connection, C, Req)
 	end.			
 
-
-
-
-read_body(C, Req) ->
+% read the body
+-spec read_body(Mode::full | chunk, C::#c{}, Req::#req{}) -> {ok | chunk, Body::binary()} | end_of_chunks | {error, Reason::term()}.
+read_body(Mode, C, Req) ->
 	case read_post_body(C, Req) of
 		{ok, Bin} ->
 			?LOG_DEBUG("full body read: ~p", [Bin]),
 			{ok, Bin};
 		chunked_body ->
 			?LOG_DEBUG("body is chunked, proceed to reading it",[]),
-			read_post_body_chunk(full, C, Req, <<>>);
+			read_post_body_chunk(Mode, C, Req, <<>>);
 		{error, Reason} ->
 			?LOG_ERROR("error reading body: ~p", [Reason]),
 			{error, Reason}
 	end.
 
-
 % read post body chunk
-read_post_body_chunk(Mode, C, Req, Acc) ->
+-spec read_post_body_chunk(Mode::full | chunk, C::#c{}, Req::#req{}, Acc::binary()) -> {ok | chunk, binary()} | end_of_chunks | {error, Reason::term()}.
+read_post_body_chunk(Mode, #c{post_max_size = PostMaxSize} = C, Req, Acc) ->
 	case read_post_body_chunk_headline(C, Req) of
+		{chunk, _Chunk} when Mode =:= full, size(Acc) > PostMaxSize ->
+			?LOG_DEBUG("total size of chunked parts of ~p bytes exceed limit of ~p bytes", [size(Acc), PostMaxSize]),
+			{error, post_max_size};
 		{chunk, Chunk} when Mode =:= full ->
 			?LOG_DEBUG("received a chunk: ~p, proceed to automatic reading of next chunk", [Chunk]),
 			read_post_body_chunk(Mode, C, Req, <<Acc/binary, Chunk/binary>>);
@@ -408,19 +402,8 @@ read_post_body_chunk(Mode, C, Req, Acc) ->
 			{error, Reason}
 	end.
 
-
-% read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, _Req, Acc) when size(Acc) > PostMaxSize ->
-% 	?LOG_DEBUG("total size of chunked parts of ~p bytes exceed limit of ~p bytes", [size(Acc), PostMaxSize]),
-% 	{error, post_max_size};
-	
-	
-
-
-
-
-
 % Read the post body according to headers
--spec read_post_body(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | chunked_body | {error, Reason::term()}.
 -spec read_post_body(C::#c{}, Req::#req{}, Out::{error, no_valid_content_specs} | {ok, <<>>}) -> {ok, Body::binary()} | chunked_body | {error, Reason::term()}.
 read_post_body(C, #req{method = Method} = Req) when Method =:= 'POST'; Method =:= 'PUT' ->
 	% on PUT and POST require content length or transfer encoding headers
@@ -640,27 +623,11 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 					% loop
 					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
 			end;
-			
-			
-			
-			
 		{LoopPid, body_recv} ->
-			?LOG_DEBUG("received a request to read body",[]),
-			
-			
-			
-			misultin_utility:respond(LoopPid, {ok, <<"voila">>}),
+			?LOG_DEBUG("received a request to manually read the body",[]),			
+			misultin_utility:respond(LoopPid, read_body(chunk, C, Req)),
 			% loop
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
-			
-			
-			
-			
-			
-			
-			
-			
-			
 		{set_cookie, CookieHeader} ->
 			?LOG_DEBUG("received a cookie: ~p", [CookieHeader]),
 			% add cookie header
