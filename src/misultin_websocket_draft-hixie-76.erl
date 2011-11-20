@@ -110,10 +110,10 @@ handshake(#req{socket = Sock, socket_mode = SocketMode, ws_force_ssl = WsForceSs
 	].
 
 % ----------------------------------------------------------------------------------------------------------
-% Function: -> websocket_close | {websocket_close, DataToSendBeforeClose::binary() | iolist()} | NewStatus
+% Function: -> websocket_close | {websocket_close, DataToSendBeforeClose::binary() | iolist()} | NewState
 % Description: Callback to handle incomed data.
 % ----------------------------------------------------------------------------------------------------------
--spec handle_data(Data::binary(), Status::undefined | term(), {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | term().
+-spec handle_data(Data::binary(), State::undefined | term(), {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | term().
 handle_data(Data, undefined, {Socket, SocketMode, WsHandleLoopPid}) ->
 	% init status
 	handle_data(Data, {buffer, none}, {Socket, SocketMode, WsHandleLoopPid});
@@ -125,7 +125,7 @@ handle_data(Data, {buffer, B} = _State, {Socket, SocketMode, WsHandleLoopPid}) -
 % Function: -> binary() | iolist()
 % Description: Callback to format data before it is sent into the socket.
 % ----------------------------------------------------------------------------------------------------------
--spec send_format(Data::iolist(), Status::term()) -> iolist().
+-spec send_format(Data::iolist(), State::term()) -> iolist().
 send_format(Data, _State) ->
 	[0, Data, 255].
 

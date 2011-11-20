@@ -221,8 +221,8 @@ ws_loop(WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMod
 			% close websocket and custom controlling loop
 			websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		{send, Data} ->
-			?LOG_DEBUG("sending data to websocket: ~p", [Data]),
 			VsnMod = get_module_name_from_vsn(Vsn),
+			?LOG_DEBUG("sending data: ~p to websocket module: ~p", [Data, VsnMod]),
 			misultin_socket:send(Socket, VsnMod:send_format(Data, State), SocketMode),
 			ws_loop(WsHandleLoopPid, Ws, State);
 		shutdown ->
