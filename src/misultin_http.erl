@@ -34,7 +34,7 @@
 -vsn("0.9-dev").
 
 % API
--export([handle_data/11, build_error_message/4, build_error_message/5, get_reqinfo/2, session_cmd/2]).
+-export([handle_data/11, build_error_message/4, build_error_message/5, get_reqinfo/2, session_cmd/2, body_recv/1]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -137,6 +137,19 @@ get_reqinfo(SocketPid, ReqInfo) ->
 -spec session_cmd(SocketPid::pid(), SessionCmd::term()) -> term().
 session_cmd(SocketPid, SessionCmd) ->
 	misultin_utility:call(SocketPid, {session_cmd, SessionCmd}).
+
+
+
+
+
+% call body_recv on the http process handler
+-spec body_recv(SocketPid::pid()) -> {ok | chunk, Body::binary()}.
+body_recv(SocketPid) ->
+	misultin_utility:call(SocketPid, body_recv).
+
+
+
+
 
 % ============================ /\ API ======================================================================
 
@@ -330,31 +343,85 @@ method_dispatch(C, #req{socket = Sock, socket_mode = SocketMode, method = _Metho
 
 % read body and dispatch to mfa if ok
 -spec read_body_dispatch(C::#c{}, Req::#req{}) -> ok | ignored | ssl_closed | tcp_closed | true.	
-read_body_dispatch(C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
-	% read post body
+read_body_dispatch(#c{auto_recv_body = AutoRecvBody} = C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
+	case AutoRecvBody of
+		true ->
+			?LOG_DEBUG("automatically read body of request",[]),
+			% read post body
+			case read_body(C, Req) of
+				{ok, Bin} ->
+					?LOG_DEBUG("full body read: ~p", [Bin]),
+					Req0 = Req#req{body = Bin},
+					call_mfa(C, Req0),
+					handle_keepalive(Req#req.connection, C, Req0);
+				{error, timeout} ->
+					?LOG_WARNING("request timeout, sending error", []),
+					misultin_socket:send(Sock, build_error_message(408, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+					handle_keepalive(close, C, Req);			
+				{error, post_max_size} ->	
+					?LOG_WARNING("post request entity too large", []),				
+					misultin_socket:send(Sock, build_error_message(413, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
+					handle_keepalive(close, C, Req);
+				{error, Reason} ->
+					?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [Reason]),
+					misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
+					handle_keepalive(close, C, Req)
+			end;
+		false ->
+			?LOG_DEBUG("auto_recv_body set to false, do not read body of request",[]),
+			call_mfa(C, Req),
+			handle_keepalive(Req#req.connection, C, Req)
+	end.			
+
+
+
+
+read_body(C, Req) ->
 	case read_post_body(C, Req) of
 		{ok, Bin} ->
-			?LOG_DEBUG("body read: ~p", [Bin]),
-			Req0 = Req#req{body = Bin},
-			call_mfa(C, Req0),
-			handle_keepalive(Req#req.connection, C, Req0);
-		{error, timeout} ->
-			?LOG_WARNING("request timeout, sending error", []),
-			misultin_socket:send(Sock, build_error_message(408, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
-			handle_keepalive(close, C, Req);			
-		{error, post_max_size} ->	
-			?LOG_WARNING("post request entity too large", []),				
-			misultin_socket:send(Sock, build_error_message(413, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
-			handle_keepalive(close, C, Req);
+			?LOG_DEBUG("full body read: ~p", [Bin]),
+			{ok, Bin};
+		chunked_body ->
+			?LOG_DEBUG("body is chunked, proceed to reading it",[]),
+			read_post_body_chunk(full, C, Req, <<>>);
 		{error, Reason} ->
-			?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [Reason]),
-			misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
-			handle_keepalive(close, C, Req)
+			?LOG_ERROR("error reading body: ~p", [Reason]),
+			{error, Reason}
 	end.
+
+
+% read post body chunk
+read_post_body_chunk(Mode, C, Req, Acc) ->
+	case read_post_body_chunk_headline(C, Req) of
+		{chunk, Chunk} when Mode =:= full ->
+			?LOG_DEBUG("received a chunk: ~p, proceed to automatic reading of next chunk", [Chunk]),
+			read_post_body_chunk(Mode, C, Req, <<Acc/binary, Chunk/binary>>);
+		{chunk, Chunk} ->
+			?LOG_DEBUG("received a chunk: ~p, return it", [Chunk]),
+			{chunk, Chunk};
+		end_of_chunks when Mode =:= full ->
+			?LOG_DEBUG("finished reading chunks",[]),
+			{ok, Acc};
+		end_of_chunks ->
+			end_of_chunks;
+		{error, Reason} ->
+			{error, Reason}
+	end.
+
+
+% read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, _Req, Acc) when size(Acc) > PostMaxSize ->
+% 	?LOG_DEBUG("total size of chunked parts of ~p bytes exceed limit of ~p bytes", [size(Acc), PostMaxSize]),
+% 	{error, post_max_size};
+	
+	
+
+
+
+
 
 % Read the post body according to headers
 -spec read_post_body(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | {error, Reason::term()}.
--spec read_post_body(C::#c{}, Req::#req{}, Out::{error, no_valid_content_specs} | {ok, <<>>}) -> {ok, Body::binary()} | {error, Reason::term()}.
+-spec read_post_body(C::#c{}, Req::#req{}, Out::{error, no_valid_content_specs} | {ok, <<>>}) -> {ok, Body::binary()} | chunked_body | {error, Reason::term()}.
 read_post_body(C, #req{method = Method} = Req) when Method =:= 'POST'; Method =:= 'PUT' ->
 	% on PUT and POST require content length or transfer encoding headers
 	read_post_body(C, Req, {error, no_valid_content_specs});
@@ -371,8 +438,8 @@ read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOu
 				TE ->
 					case string:to_lower(TE) of
 						"chunked" ->
-							?LOG_DEBUG("chunked content being sent by the client, parsing body content and looping for additional chunks",[]),
-							read_post_body_chunk(C, Req);
+							?LOG_DEBUG("chunked content being sent by the client",[]),
+							chunked_body;
 					_ ->
 						NoContentNoChunkOutput
 				end
@@ -406,22 +473,16 @@ i_read_post_body(#c{recv_timeout = RecvTimeout, post_max_size = PostMaxSize}, #r
 	end.
 
 % Read body chunks
--spec read_post_body_chunk(C::#c{}, Req::#req{}) -> {ok, Body::binary()} | {error, Reason::term()}.
--spec read_post_body_chunk_headline(C::#c{}, Req::#req{}, Acc::binary()) -> {ok, Body::binary()} | {error, Reason::term()}.
--spec read_post_body_chunk_content(C::#c{}, Req::#req{}, Acc::binary(), Len::non_neg_integer()) -> {ok, Body::binary()} | {error, Reason::term()}.
-read_post_body_chunk(C, Req) ->
-	read_post_body_chunk_headline(C, Req, <<>>).
-read_post_body_chunk_headline(#c{post_max_size = PostMaxSize}, _Req, Acc) when size(Acc) > PostMaxSize ->
-	?LOG_DEBUG("total size of chunked parts of ~p bytes exceed limit of ~p bytes", [size(Acc), PostMaxSize]),
-	{error, post_max_size};
-read_post_body_chunk_headline(#c{recv_timeout = RecvTimeout} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, Acc) ->
+-spec read_post_body_chunk_headline(C::#c{}, Req::#req{}) -> {chunk, Body::binary()} | end_of_chunks | {error, Reason::term()}.
+-spec read_post_body_chunk_content(C::#c{}, Req::#req{}, Len::non_neg_integer()) -> {chunk, Body::binary()} | end_of_chunks | {error, Reason::term()}.
+read_post_body_chunk_headline(#c{recv_timeout = RecvTimeout} = C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	misultin_socket:setopts(Sock, [{packet, line}, {active, false}], SocketMode),
 	case misultin_socket:recv(Sock, 0, RecvTimeout, SocketMode) of
 		{ok, HeadLineBin} ->
 			?LOG_DEBUG("received a chunked headline: ~p", [HeadLineBin]),
 			case get_chunk_length(binary_to_list(HeadLineBin)) of			
 				{ok, Len} ->
-					read_post_body_chunk_content(C, Req, Acc, Len);
+					read_post_body_chunk_content(C, Req, Len);
 				{error, Reason} ->
 					{error, Reason}
 			end;
@@ -430,7 +491,7 @@ read_post_body_chunk_headline(#c{recv_timeout = RecvTimeout} = C, #req{socket = 
 		Other ->
 			{error, Other}
 	end.
-read_post_body_chunk_content(#c{recv_timeout = RecvTimeout} = C, #req{socket = Sock, socket_mode = SocketMode} = Req, Acc, Len) ->
+read_post_body_chunk_content(#c{recv_timeout = RecvTimeout}, #req{socket = Sock, socket_mode = SocketMode}, Len) ->
 	?LOG_DEBUG("receiving a chunk of ~p bytes", [Len]),
 	misultin_socket:setopts(Sock, [{packet, raw}, {active, false}], SocketMode),
 	case misultin_socket:recv(Sock, Len + 2, RecvTimeout, SocketMode) of	% we need 2 more bytes for the chunked CRLF closing
@@ -438,12 +499,12 @@ read_post_body_chunk_content(#c{recv_timeout = RecvTimeout} = C, #req{socket = S
 			?LOG_DEBUG("received chunk content, with 2 additional chunked closing bytes CRLF: ~p", [Bin]),
 			case Len of
 				0 -> 
-					?LOG_DEBUG("client has finished sending chunks, resulting body is: ~p", [Acc]),
-					{ok, Acc};
+					?LOG_DEBUG("client has finished sending chunks",[]),
+					end_of_chunks;
 				_ ->
 					% continue with next chunk
 					?LOG_DEBUG("waiting for next chunk", []),
-					read_post_body_chunk_headline(C, Req, <<Acc/binary, Bin:Len/binary>>)
+					{chunk, <<Bin:Len/binary>>}
 			end;
 		{error, timeout} ->
 			{error, timeout};
@@ -579,6 +640,27 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 					% loop
 					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
 			end;
+			
+			
+			
+			
+		{LoopPid, body_recv} ->
+			?LOG_DEBUG("received a request to read body",[]),
+			
+			
+			
+			misultin_utility:respond(LoopPid, {ok, <<"voila">>}),
+			% loop
+			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
+			
+			
+			
+			
+			
+			
+			
+			
+			
 		{set_cookie, CookieHeader} ->
 			?LOG_DEBUG("received a cookie: ~p", [CookieHeader]),
 			% add cookie header
