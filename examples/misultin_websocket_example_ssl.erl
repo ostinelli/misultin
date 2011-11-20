@@ -64,7 +64,6 @@ handle_http(Req, Port) ->
 					}
 					if (ws) {
 						// browser supports websockets
-						var ws = new WebSocket(\"wss://localhost:", erlang:integer_to_list(Port) ,"/service\");
 						ws.onopen = function() {
 							// websocket is connected
 							addStatus(\"websocket connected!\");
