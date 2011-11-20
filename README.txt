@@ -84,10 +84,13 @@ CHANGELOG
 ==========================================================================================================
 
 0.9-dev:
-       - consistently improved memory usage by not copying by default to handler processes the full request or
-         websocket record
-       - added sessions state, persistent across requests
+       - added SESSIONS state, persistent across requests
        - added access log callback function, so that main application can log HTTP access
+       - added streaming input for big files or endless input, using a manual body_recv function in
+         conjunction with the {auto_recv_body, false} option
+       - consistently improved memory usage by not copying by default to handler processes the full request
+         or websocket record
+       - added configuration option to set which websocket versions must be supported by the server
        - added support for websocket draft-hybi-10
        - added support for websocket draft-hybi-17 (thanks to RJ)
        - added support for websockets on FireFox (thanks to Egobrain)
@@ -97,7 +100,6 @@ CHANGELOG
        - added support to see the correct client IP when behind stunnel, according to
          <http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt> (thanks to RJ)
        - added support for OPTIONS method (thanks to majek)
-       - added configuration option to set which websocket versions must be supported by the server
        - rebar-ized makefile
        - corrected minor bugs (thank you all - you know who you are!)
 
