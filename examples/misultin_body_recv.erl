@@ -40,21 +40,19 @@ stop() ->
 
 % callback on request received
 handle_http(Req) ->
-	Req:chunk(head, [{"Content-Type", "text/html"}]),
-	echo_body(Req).
+	body_recv(Req, <<>>).
 
-echo_body(Req) ->
+body_recv(Req, Acc) ->
 	case Req:body_recv() of
 		{ok, Body} ->
-			Req:chunk("body was not chunked: ~p", [Body]),
-			Req:chunk(done);
-		{chunk, Body} ->
-			Req:chunk("received body chunk: ~p", [Body]),
-			echo_body(Req);
+			% received a full body, no streaming
+			Req:ok([], "received full body: ~p", [Body]);
+		{chunk, Chunk} ->
+			% received a body chunk: append it, and loop to receive next ones
+			body_recv(Req, <<Acc/binary, Chunk/binary>>);
 		end_of_chunks ->
-			Req:chunk("finished receiving body chunks."),
-			Req:chunk(done);
+			% received all body chunks, output to body
+			Req:ok([], "done receiving all body chunks: ~p", [Acc]);
 		{error, Reason} ->
-			Req:chunk("error reading all body: ~p", [Reason]),
-			Req:chunk(done)
+			Req:ok([], "error reading all body: ~p", [Reason])
 	end.
