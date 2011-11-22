@@ -38,7 +38,7 @@
 -export([check_websocket/1, handshake/3, handle_data/3, send_format/2]).
 
 % macros
--define(HIBY_10_17_COMMON, 'misultin_websocket_draft-hybi-10_17').
+-define(HYBI_COMMON, 'misultin_websocket_draft-hybi-10_17').
 
 % includes
 -include("../include/misultin.hrl").
@@ -57,7 +57,7 @@ check_websocket(Headers) ->
 		{'Upgrade', "websocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Sec-Websocket-Origin', ignore},
 		{'Sec-Websocket-Key', ignore}, {'Sec-WebSocket-Version', "8"}
 	],
-	?HIBY_10_17_COMMON:check_websocket(Headers, RequiredHeaders).
+	?HYBI_COMMON:check_websocket(Headers, RequiredHeaders).
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> iolist() | binary()
@@ -65,7 +65,7 @@ check_websocket(Headers) ->
 % ----------------------------------------------------------------------------------------------------------
 -spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
 handshake(Req, Headers, {Path, Origin, Host}) ->
-	?HIBY_10_17_COMMON:handshake(Req, Headers, {Path, Origin, Host}).
+	?HYBI_COMMON:handshake(Req, Headers, {Path, Origin, Host}).
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> websocket_close | {websocket_close, DataToSendBeforeClose::binary() | iolist()} | NewState
@@ -75,7 +75,7 @@ handshake(Req, Headers, {Path, Origin, Host}) ->
 				  State::undefined | term(), 
 				  {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | {websocket_close, binary()} | term().
 handle_data(Data, St, Tuple) ->
-	?HIBY_10_17_COMMON:handle_data(Data, St, Tuple).
+	?HYBI_COMMON:handle_data(Data, St, Tuple).
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> binary() | iolist()
@@ -83,7 +83,7 @@ handle_data(Data, St, Tuple) ->
 % ----------------------------------------------------------------------------------------------------------
 -spec send_format(Data::iolist(), State::term()) -> binary().
 send_format(Data, State) ->	
-	?HIBY_10_17_COMMON:send_format(Data, State).
+	?HYBI_COMMON:send_format(Data, State).
 
 % ============================ /\ API ======================================================================
 
