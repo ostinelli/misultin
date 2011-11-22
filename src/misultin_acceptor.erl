@@ -231,7 +231,15 @@ get_peer_addr_port(Sock, SocketMode, CustomOpts) ->
 % receive the first line, and extract peer address details as per http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt
 -spec peername_from_proxy_line(Sock::socket(), SocketMode::socketmode()) -> {ok, {PeerAddr::inet:ip_address(), PeerPort::non_neg_integer()}} | {error, term()}.
 peername_from_proxy_line(Sock, SocketMode) ->
+	%% Temporary socket options for reading PROXY line:
 	misultin_socket:setopts(Sock, [{active, once}, {packet, line}, list], SocketMode),
+	Val = parse_peername_from_proxy_line(Sock),
+	%% Set socket options back to previous values, set in misultin.erl
+	misultin_socket:setopts(Sock, [{active, false}, {packet, raw}, binary], SocketMode),
+	Val.
+
+-spec parse_peername_from_proxy_line(Sock::socket()) -> {ok, {PeerAddr::inet:ip_address(), PeerPort::non_neg_integer()}} | {error, term()}.
+parse_peername_from_proxy_line(Sock) ->
 	receive
 		{TcpOrSsl, Sock, "PROXY " ++ ProxyLine} when TcpOrSsl =:= tcp; TcpOrSsl =:= ssl ->
 			case string:tokens(ProxyLine, "\r\n ") of
