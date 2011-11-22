@@ -256,7 +256,7 @@ i_handle_data(#state{buffer=ToParse} = State, {Socket, SocketMode, WsHandleLoopP
 			?LOG_DEBUG("parsed frame ~p, remaining buffer is: ~p", [Frame,Rest]),
 			%% sanity check, in case client is broken
 			case sanity_check(Frame) of
-				ok ->
+				true ->
 					?LOG_DEBUG("sanity checks successfully performed",[]),
 					case handle_frame(Frame, 
 									  State#state{buffer = Rest}, 
@@ -267,14 +267,14 @@ i_handle_data(#state{buffer=ToParse} = State, {Socket, SocketMode, WsHandleLoopP
 						Other ->
 							Other
 					end;
-				protocol_error ->
+				false -> % protocol error
 					?LOG_DEBUG("sanity checks errors encountered, closing websocket",[]),
 					{websocket_close, websocket_close_data()}
 			end
 	end.
 
 % format sanity checks
--spec sanity_check(#frame{}) -> ok | protocol_error.
+-spec sanity_check(#frame{}) -> true | false.
 sanity_check(Frame) ->
 	Checks = [
 		{1, Frame#frame.maskbit},
@@ -282,15 +282,7 @@ sanity_check(Frame) ->
 		{0, Frame#frame.rsv2},
 		{0, Frame#frame.rsv3}
 	],
-	ChecksVerified = lists:dropwhile(
-		fun ({A, A}) -> true;
-			({_A, _}) -> false
-		end, Checks
-	),
-	case ChecksVerified of
-		[] -> ok;
-		_ -> protocol_error
-	end.
+	lists:foldl(fun({A,B}, Acc) -> Acc andalso (A =:= B) end, true, Checks).
 
 % ---------------------------- /\ frame parsing ------------------------------------------------------------
 
