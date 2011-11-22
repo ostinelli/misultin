@@ -64,6 +64,9 @@
 
 -define(IS_CONTROL_OPCODE(X), ((X band 8)=:=8) ).
 
+%% If we don't find a websocket protocol frame in this many bytes, connection aborts
+-define(MAX_UNPARSED_BUFFER_SIZE, 1024 * 100).
+
 % includes
 -include("../include/misultin.hrl").
 
@@ -187,7 +190,7 @@ take_frame(<<Fin:1,
 			length=PayloadLen,
 			maskkey=MaskKey,
 			data = Data}, Rest};
-% extende payload (126)
+% extended payload (126)
 take_frame(<<Fin:1, 
 			 Rsv1:1, %% Rsv1 = 0
 			 Rsv2:1, %% Rsv2 = 0
@@ -208,7 +211,7 @@ take_frame(<<Fin:1,
 			length=PayloadLen,
 			maskkey=MaskKey,
 			data=unmask(MaskKey,PayloadData)},	Rest};
-% extende payload (127)
+% extended payload (127)
 take_frame(<<Fin:1, 
 			 Rsv1:1, %% Rsv1 = 0
 			 Rsv2:1, %% Rsv2 = 0
@@ -230,14 +233,21 @@ take_frame(<<Fin:1,
 			length=PayloadLen,
 			maskkey=MaskKey,
 			data=unmask(MaskKey, PayloadData)},	 Rest};
-% catch wrong format
-take_frame(Data) when is_binary(Data) ->
-	{undefined, Data}.
+% incomplete frame
+take_frame(Data) when is_binary(Data), size(Data) < ?MAX_UNPARSED_BUFFER_SIZE ->
+	{undefined, Data};
+% Try to prevent denial-of-service from clients that send an infinite stream of
+% incompatible data
+take_frame(Data) when is_binary(Data), size(Data) >= ?MAX_UNPARSED_BUFFER_SIZE ->
+	{error, max_size_reached}.
 
 % process incoming data
 -spec i_handle_data(#state{}, {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> #state{} | {websocket_close, term()}.
 i_handle_data(#state{buffer=ToParse} = State, {Socket, SocketMode, WsHandleLoopPid}) ->
 	case take_frame(ToParse) of
+		{error, max_size_reached} ->
+			?LOG_DEBUG("reached max unparsed buffer size, aborting connection", []),
+			{websocket_close, websocket_close_data()};
 		{undefined, Rest} ->
 			?LOG_DEBUG("no frame to take, add to buffer: ~p", [Rest]),
 			%% no full frame to be had yet
@@ -330,9 +340,9 @@ handle_frame(#frame{fin = 1, opcode = ?OP_CONT}, _, _) ->
 
 % ---------------------------- \/ frame handling -----------------------------------------------------------
 
-%% CONTROL FRAMES: 1) cannot be fragmented, thus have size <= 125bytes
-%%				 2) have an opcode where MSB is set
-%%				 3) can appear between larger fragmented message frames
+%% CONTROL FRAMES: 	1) cannot be fragmented, thus have size <= 125bytes
+%%				 	2) have an opcode where MSB is set
+%%				 	3) can appear between larger fragmented message frames
 handle_frame(#frame{fin=1, opcode=Opcode, data=Data}, 
 			 State, 
 			 {Socket, SocketMode, _WsHandleLoopPid}) when ?IS_CONTROL_OPCODE(Opcode) ->
