@@ -300,18 +300,25 @@ parse_post(Option, ReqT) ->
 		false ->
 			[];
 		ContentType ->
-			[Type|Modificator] = string:tokens(ContentType, ";"),
+			[Type|Modificator] = re:split(ContentType, "\s*;\s*", [{return, list}]),
 			case Type of
-			    "application/octet-stream" ->
-			        get(body, ReqT);
+				"application/octet-stream" ->
+					get(body, ReqT);
 				"application/x-www-form-urlencoded" ->
 					Body = get(body, ReqT),
 					misultin_utility:parse_qs(Body, Option);
 				"multipart/form-data" ->
 					[Modificator0] = Modificator,
-					"boundary=" ++ Boundary = string:strip(Modificator0),
+					"boundary=" ++ Boundary0 = string:strip(Modificator0),
+					Boundary = string:strip(Boundary0, both, 34), %"
 					Body = get(body, ReqT),
 					parse_multipart_form_data(Body, list_to_binary(Boundary));
+				"multipart/mixed" ->
+					[Modificator0] = Modificator,
+					"boundary=" ++ Boundary0 = string:strip(Modificator0),
+					Boundary = string:strip(Boundary0, both, 34), %"
+					Body = get(body, ReqT),
+					parse_multipart_mixed(Body, list_to_binary(Boundary));
 				_Other ->
 					[]
 			end
@@ -406,14 +413,28 @@ file_read_and_send(IoDevice, Position, ReqT) ->
 			{error, Reason}
 	end.
 
+
+% parse multipart data
+-spec parse_multipart_mixed(Body::binary(), Boundary::binary()) -> [{'part', Headers::gen_proplist(), Data::binary()}].
+parse_multipart_mixed(Body, Boundary) ->
+	[_Junk|Parts] = lists:map(fun erlang:hd/1,
+	                          re:split(Body, <<"\r\n--", Boundary/binary, "(--)?\r\n(\r\n)?">>, [trim, group])),
+	F = fun(Part) ->
+				[HeadersBin, Content] = re:split(Part, "\r\n\r\n", [{parts, 2}]),
+				Headers = decode_httph(<<HeadersBin/binary, "\r\n\r\n">>),
+				{part, Headers, Content}
+		end,
+	lists:map(F, Parts).
+
 % parse multipart data
 -spec parse_multipart_form_data(Body::binary(), Boundary::binary()) -> [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
 parse_multipart_form_data(Body, Boundary) ->
-	[<<>> | Parts] = re:split(Body, <<"--", Boundary/binary>>),
+	[_Junk | Parts] = re:split(Body, <<"--", Boundary/binary>>),
 	F = fun
-		(<<"--\r\n">>, Data) -> Data;
+		(<<"--\r\n", _/binary>>, Data) -> Data;
 		(Part, Data) ->
-			case re:run(Part, "Content-Disposition:\\s*form-data;\\s*name=\"([^\"]+)\"(.*)\r\n\r\n(.+)\r\n$", [{capture, all_but_first, binary}, ungreedy, dotall]) of
+			case re:run(Part, "Content-Disposition:\\s*form-data;\\s*name=\"([^\"]+)\"(.*)\r\n\r\n(.+)\r\n$", % ",
+			            [{capture, all_but_first, binary}, ungreedy, dotall]) of
 				{match, [Key, Attributes, Value]} ->
 					[{binary_to_list(Key), parse_attributes(Attributes), Value}|Data];
 				_ ->
@@ -430,5 +451,13 @@ parse_attributes(Attributes) ->
 		_ ->
 			[]
 	end.
+
+decode_httph(Bin) ->
+    {ok, {http_header, _, K, _, V}, R} = erlang:decode_packet(httph, Bin, []),
+    case R of
+        <<"\r\n">> -> [{K, V}];
+        _ ->
+            [{K, V} | decode_httph(R)]
+    end.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
