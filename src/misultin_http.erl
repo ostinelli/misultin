@@ -580,7 +580,7 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			misultin_socket:send(Sock, Resp, SocketMode),
 			% loop and save sent status
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCode, size(BodyBinary));
-		{LoopPid, {reqinfo, ReqInfo}} ->
+		{Pid, {reqinfo, ReqInfo}} ->
 			ReqResponse = case ReqInfo of
 				raw				-> Req;
 				socket			-> Req#req.socket;
@@ -598,9 +598,9 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 				body			-> Req#req.body
 			end,
 			?LOG_DEBUG("received request info for: ~p, responding with ~p", [ReqInfo, ReqResponse]),
-			misultin_utility:respond(LoopPid, ReqResponse),
+			misultin_utility:respond(Pid, ReqResponse),
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
-		{LoopPid, {session_cmd, SessionCmd}} ->
+		{Pid, {session_cmd, SessionCmd}} ->
 			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
 			case SessionCmd of
 				{session, Cookies} ->
@@ -608,24 +608,24 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 					case misultin_sessions:session(C#c.sessions_ref, Cookies, Req) of
 						{error, Reason} ->
 							?LOG_DEBUG("error getting/creating session: ~p", [Reason]),
-							misultin_utility:respond(LoopPid, {error, Reason});
+							misultin_utility:respond(Pid, {error, Reason});
 						{SessionId, _SessionVars} = SessionInfo ->
 							?LOG_DEBUG("got session info: ~p", [SessionInfo]),
 							% respond with session id
-							misultin_utility:respond(LoopPid, SessionInfo),
+							misultin_utility:respond(Pid, SessionInfo),
 							% add session id cookie header
 							socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AppHeaders], HttpCodeSent, SizeSent)
 					end;
 				{save_session_state, SessionId, SessionState} ->
 					% save session state
 					Response = misultin_sessions:save_session_state(C#c.sessions_ref, SessionId, SessionState, Req),
-					misultin_utility:respond(LoopPid, Response),
+					misultin_utility:respond(Pid, Response),
 					% loop
 					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
 			end;
-		{LoopPid, body_recv} ->
+		{Pid, body_recv} ->
 			?LOG_DEBUG("received a request to manually read the body",[]),			
-			misultin_utility:respond(LoopPid, read_body(chunk, C, Req)),
+			misultin_utility:respond(Pid, read_body(chunk, C, Req)),
 			% loop
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
 		{set_cookie, CookieHeader} ->
