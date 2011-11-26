@@ -140,6 +140,8 @@ get_http_status_message(416) ->
 	"416 Requested Range Not Satisfiable";
 get_http_status_message(417) ->
 	"417 Expectation Failed";
+get_http_status_message(422) ->
+    "422 Unprocessable Entity";
 get_http_status_message(502) ->
 	"502 Bad Gateway";
 get_http_status_message(503) ->
