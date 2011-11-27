@@ -69,12 +69,10 @@ get_http_status_code(HttpCode, {Maj, Min}) ->
 -spec get_http_status_message(HttpStatus::non_neg_integer()) -> string().
 get_http_status_message(200) ->
 	"200 OK";
-get_http_status_message(100) ->
-	"100 Continue";
-get_http_status_message(101) ->
-	"101 Switching Protocols";
 get_http_status_message(301) ->
 	"301 Moved Permanently";
+get_http_status_message(302) ->
+	"302 Found";
 get_http_status_message(400) ->
 	"400 Bad Request";
 get_http_status_message(401) ->
@@ -82,14 +80,22 @@ get_http_status_message(401) ->
 get_http_status_message(403) ->
 	"403 Forbidden";
 get_http_status_message(404) ->
-	"404 Not Found";				
-get_http_status_message(408) ->
-	"408 Request Timeout";			
+	"404 Not Found";
 get_http_status_message(500) ->
 	"500 Internal Server Error";
 get_http_status_message(501) ->
 	"501 Not Implemented";				
 % less common last
+get_http_status_message(100) ->
+	"100 Continue";
+get_http_status_message(101) ->
+	"101 Switching Protocols";
+get_http_status_message(102) ->
+	"102 Processing";
+get_http_status_message(103) ->
+	"103 Checkpoint";
+get_http_status_message(122) ->
+	"122 Request-URI too long";
 get_http_status_message(201) ->
 	"201 Created";
 get_http_status_message(202) ->
@@ -102,18 +108,26 @@ get_http_status_message(205) ->
 	"205 Reset Content";
 get_http_status_message(206) ->
 	"206 Partial Content";
+get_http_status_message(207) ->
+	"207 Multi-Status";
+get_http_status_message(208) ->
+	"208 Already Reported";
+get_http_status_message(226) ->
+	"226 IM Used";
 get_http_status_message(300) ->
 	"300 Multiple Choices";
-get_http_status_message(302) ->
-	"302 Found";
 get_http_status_message(303) ->
 	"303 See Other";
 get_http_status_message(304) ->
 	"304 Not Modified";
 get_http_status_message(305) ->
 	"305 Use Proxy";
+get_http_status_message(306) ->
+	"306 Switch Proxy";
 get_http_status_message(307) ->
 	"307 Temporary Redirect";
+get_http_status_message(308) ->
+	"308 Resume Incomplete";
 get_http_status_message(402) ->
 	"402 Payment Required";
 get_http_status_message(405) ->
@@ -121,7 +135,9 @@ get_http_status_message(405) ->
 get_http_status_message(406) ->
 	"406 Not Acceptable";
 get_http_status_message(407) ->
-	"407 Proxy Authentication Required";
+	"407 Proxy Authentication Required";				
+get_http_status_message(408) ->
+	"408 Request Timeout";
 get_http_status_message(409) ->
 	"409 Conflict";
 get_http_status_message(410) ->
@@ -140,6 +156,34 @@ get_http_status_message(416) ->
 	"416 Requested Range Not Satisfiable";
 get_http_status_message(417) ->
 	"417 Expectation Failed";
+get_http_status_message(418) ->
+	"418 I'm a teapot";
+get_http_status_message(422) ->
+	"422 Unprocessable Entity";
+get_http_status_message(423) ->
+	"423 Locked";
+get_http_status_message(424) ->
+	"424 Failed Dependency";
+get_http_status_message(425) ->
+	"425 Unordered Collection";
+get_http_status_message(426) ->
+	"426 Upgrade Required";
+get_http_status_message(428) ->
+	"428 Precondition Required";
+get_http_status_message(429) ->
+	"429 Too Many Requests";
+get_http_status_message(431) ->
+	"431 Request Header Fields Too Large";
+get_http_status_message(429) ->
+	"429 Too Many Requests";
+get_http_status_message(444) ->
+	"444 No Response";
+get_http_status_message(449) ->
+	"449 Retry With";
+get_http_status_message(450) ->
+	"450 Blocked by Windows Parental Controls";
+get_http_status_message(499) ->
+	"499 Client Closed Request";
 get_http_status_message(502) ->
 	"502 Bad Gateway";
 get_http_status_message(503) ->
@@ -148,8 +192,24 @@ get_http_status_message(504) ->
 	"504 Gateway Timeout";
 get_http_status_message(505) ->
 	"505 HTTP Version Not Supported";
+get_http_status_message(506) ->
+	"506 Variant Also Negotiates";
+get_http_status_message(507) ->
+	"507 Insufficient Storage";
+get_http_status_message(508) ->
+	"508 Loop Detected";
+get_http_status_message(509) ->
+	"509 Bandwidth Limit Exceeded";
+get_http_status_message(510) ->
+	"510 Not Extended";
+get_http_status_message(511) ->
+	"511 Network Authentication Required";
+get_http_status_message(598) ->
+	"598 Network read timeout error";
+get_http_status_message(599) ->
+	"599 Network connect timeout error";
 get_http_status_message(Other) ->
-	lists:flatten(io_lib:format("HTTP/1.1 ~p \r\n", [Other])).
+	lists:flatten(io_lib:format("~p \r\n", [Other])).
 
 % get content type
 -spec get_content_type(FileName::string()) -> string().
