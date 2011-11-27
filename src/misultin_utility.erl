@@ -174,8 +174,6 @@ get_http_status_message(429) ->
 	"429 Too Many Requests";
 get_http_status_message(431) ->
 	"431 Request Header Fields Too Large";
-get_http_status_message(429) ->
-	"429 Too Many Requests";
 get_http_status_message(444) ->
 	"444 No Response";
 get_http_status_message(449) ->

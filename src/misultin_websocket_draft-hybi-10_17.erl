@@ -164,7 +164,7 @@ send_format(Data, OpCode, _State) ->
 % ---------------------------- \/ frame parsing ------------------------------------------------------------
 
 % parse received data and get the frames
--spec take_frame(Data::binary()) -> {#frame{} | undefined, Rest::binary()}.
+-spec take_frame(Data::binary()) -> {#frame{} | undefined, Rest::binary()} | {error, max_size_reached}.
 % normal length
 take_frame(<<Fin:1, 
 			 Rsv1:1, %% Rsv1 = 0
