@@ -418,13 +418,14 @@ file_read_and_send(IoDevice, Position, ReqT) ->
 -spec parse_multipart_mixed(Body::binary(), Boundary::binary()) -> [{'part', Headers::gen_proplist(), Data::binary()}].
 parse_multipart_mixed(Body, Boundary) ->
 	[_Junk|Parts] = lists:map(fun erlang:hd/1,
-	                          re:split(Body, <<"\r\n--", Boundary/binary, "(--)?\r\n(\r\n)?">>, [trim, group])),
-	F = fun(Part) ->
+	                          re:split(Body, <<"(\r\n)?--", Boundary/binary, "(--)?\r\n(\r\n)?">>, [trim, group])),
+	F = fun(<<>>, Data) -> Data;
+               (Part, Data) ->
 				[HeadersBin, Content] = re:split(Part, "\r\n\r\n", [{parts, 2}]),
 				Headers = decode_httph(<<HeadersBin/binary, "\r\n\r\n">>),
-				{part, Headers, Content}
+				[{part, Headers, Content} | Data]
 		end,
-	lists:map(F, Parts).
+	lists:reverse(lists:foldl(F, [], Parts)).
 
 % parse multipart data
 -spec parse_multipart_form_data(Body::binary(), Boundary::binary()) -> [{Id::string(), Attributes::gen_proplist(), Data::binary()}].
