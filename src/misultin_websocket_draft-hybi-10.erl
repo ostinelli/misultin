@@ -37,6 +37,8 @@
 % API
 -export([check_websocket/1, handshake/3, handle_data/3, send_format/2]).
 
+-export([required_headers/0]).
+
 % macros
 -define(HYBI_COMMON, 'misultin_websocket_draft-hybi-10_17').
 

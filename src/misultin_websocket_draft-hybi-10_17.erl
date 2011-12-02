@@ -259,8 +259,8 @@ i_handle_data(#state{buffer=ToParse} = State, {Socket, SocketMode, WsHandleLoopP
 				true ->
 					?LOG_DEBUG("sanity checks successfully performed",[]),
 					case handle_frame(Frame, 
-									  State#state{buffer = Rest}, 
-									  {Socket, SocketMode, WsHandleLoopPid}) of
+                                                          State#state{buffer = Rest}, 
+                                                          {Socket, SocketMode, WsHandleLoopPid}) of
 						%% tail-call if there is stuff in the buffer still to parse
 						NewState = #state{buffer = B} when is_binary(B), B =/= <<>> ->
 							i_handle_data(NewState, {Socket, SocketMode, WsHandleLoopPid});
