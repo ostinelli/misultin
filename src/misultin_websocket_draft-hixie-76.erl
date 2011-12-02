@@ -50,12 +50,8 @@
 -spec check_websocket(Headers::http_headers()) -> boolean().
 check_websocket(Headers) ->
 	% set required headers
-	RequiredHeaders = [
-		{'Upgrade', "WebSocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Origin', ignore},
-		{'Sec-WebSocket-Key1', ignore}, {'Sec-WebSocket-Key2', ignore}
-	],
 	% check for headers existance
-	case misultin_websocket:check_headers(Headers, RequiredHeaders) of
+	case misultin_websocket:check_headers(Headers, required_headers()) of
 		true ->
 			% return
 			true;
@@ -64,11 +60,17 @@ check_websocket(Headers) ->
 			false
 	end.
 
+required_headers() ->
+    [
+     {'Upgrade', "WebSocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Origin', ignore},
+     {'Sec-WebSocket-Key1', ignore}, {'Sec-WebSocket-Key2', ignore}
+    ].
+
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> iolist() | binary()
 % Description: Callback to build handshake data.
 % ----------------------------------------------------------------------------------------------------------
--spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
+    -spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
 handshake(#req{socket = Sock, socket_mode = SocketMode, ws_force_ssl = WsForceSsl}, Headers, {Path, Origin, Host}) ->
 	% build data
 	Key1 = misultin_utility:header_get_value('Sec-WebSocket-Key1', Headers),

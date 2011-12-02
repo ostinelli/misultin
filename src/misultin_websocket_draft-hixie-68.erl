@@ -50,16 +50,18 @@
 -spec check_websocket(Headers::http_headers()) -> boolean().
 check_websocket(Headers) ->
 	% set required headers
-	RequiredHeaders = [
-		{'Upgrade', "WebSocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Origin', ignore}
-	],
 	% check for headers existance
-	case misultin_websocket:check_headers(Headers, RequiredHeaders) of
+	case misultin_websocket:check_headers(Headers, required_headers()) of
 		true -> true;
 		_RemainingHeaders ->
 			?LOG_DEBUG("not this protocol, remaining headers: ~p", [_RemainingHeaders]),
 			false
 	end.
+
+required_headers() ->
+    [
+     {'Upgrade', "WebSocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Origin', ignore}
+    ].
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> iolist() | binary()

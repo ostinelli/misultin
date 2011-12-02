@@ -53,11 +53,13 @@
 -spec check_websocket(Headers::http_headers()) -> boolean().
 check_websocket(Headers) ->
 	% set required headers
-	RequiredHeaders = [
-		{'Upgrade', "websocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Sec-Websocket-Origin', ignore},
-		{'Sec-Websocket-Key', ignore}, {'Sec-WebSocket-Version', "8"}
-	],
-	?HYBI_COMMON:check_websocket(Headers, RequiredHeaders).
+	?HYBI_COMMON:check_websocket(Headers, required_headers()).
+
+required_headers() ->
+    [
+     {'Upgrade', "websocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Sec-Websocket-Origin', ignore},
+     {'Sec-Websocket-Key', ignore}, {'Sec-WebSocket-Version', "8"}
+    ].
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> iolist() | binary()
