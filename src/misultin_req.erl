@@ -80,25 +80,8 @@ get(ReqInfo, {misultin_req, SocketPid, _TableDateRef}) when
 		
 get(peer_addr, {misultin_req, SocketPid, _TableDateRef}) ->
 	Headers = get(headers, {misultin_req, SocketPid, _TableDateRef}),
-	Host = case misultin_utility:header_get_value('X-Real-Ip', Headers) of
-		false ->
-			case misultin_utility:header_get_value('X-Forwarded-For', Headers) of
-				false -> undefined;
-				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
-			end;
-		Host0 -> Host0
-	end,
-	case Host of
-		undefined ->
-			misultin_http:get_reqinfo(SocketPid, peer_addr);
-		_ ->
-			case inet_parse:address(Host) of
-				{error, _Reason} ->
-					misultin_http:get_reqinfo(SocketPid, peer_addr);
-				{ok, IpTuple} ->
-					IpTuple
-			end
-	end;
+	ConnectionPeerAddr = misultin_http:get_reqinfo(SocketPid, peer_addr),
+	misultin_utility:get_peer(Headers, ConnectionPeerAddr);
 
 get(uri_unquoted, ReqT) ->
 	uri_unquote(get(uri, ReqT)).

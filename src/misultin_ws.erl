@@ -62,25 +62,8 @@ get(WsInfo, {misultin_ws, SocketPid}) when
 		misultin_websocket:get_wsinfo(SocketPid, WsInfo);
 get(peer_addr, {misultin_ws, SocketPid}) ->
 	Headers = get(headers, {misultin_ws, SocketPid}),
-	Host = case misultin_utility:header_get_value('X-Real-Ip', Headers) of
-		false ->
-			case misultin_utility:header_get_value('X-Forwarded-For', Headers) of
-				false -> undefined;
-				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
-			end;
-		Host0 -> Host0
-	end,
-	case Host of
-		undefined ->
-			misultin_websocket:get_wsinfo(SocketPid, peer_addr);
-		_ -> 
-			case inet_parse:address(Host) of
-				{error, _Reason} ->
-					misultin_websocket:get_wsinfo(SocketPid, peer_addr);
-				{ok, IpTuple} ->
-					IpTuple
-			end
-	end.
+	ConnectionPeerAddr = misultin_websocket:get_wsinfo(SocketPid, peer_addr),
+	misultin_utility:get_peer(Headers, ConnectionPeerAddr).
 
 % ---------------------------- \/ Cookies ------------------------------------------------------------------
 

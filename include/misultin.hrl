@@ -162,8 +162,8 @@
 -record(req, {
 	socket			= undefined :: undefined | socket(),			% the socket handling the request
 	socket_mode		= http :: socketmode(),
-	peer_addr		= undefined :: undefined | inet:ip_address(),	% peer IP | undefined
-	peer_port		= undefined :: undefined | non_neg_integer(),	% peer port | undefined
+	peer_addr		= undefined :: undefined | inet:ip_address(),	% peer IP | undefined: this is the peer address of the connection, may differ from the client
+	peer_port		= undefined :: undefined | non_neg_integer(),	% peer port | undefined: this is the peer port of the connection, may differ from the client
 	peer_cert		= undefined :: undefined | term(),				% the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
 	connection		= close :: keep_alive | close,
 	content_length	= undefined :: undefined | non_neg_integer(),
@@ -181,8 +181,8 @@
 	socket			= undefined :: undefined | socket(),			% the socket handling the request
 	socket_mode		= http :: socketmode(),
 	ws_autoexit		= true :: boolean(),							% shoud the ws process be automatically killed?
-	peer_addr		= undefined :: undefined | inet:ip_address(),	% peer IP | undefined
-	peer_port		= undefined :: undefined | non_neg_integer(),	% peer port | undefined
+	peer_addr		= undefined :: undefined | inet:ip_address(),	% peer IP | undefined: this is the peer address of the connection, may differ from the client
+	peer_port		= undefined :: undefined | non_neg_integer(),	% peer port | undefined: this is the peer port of the connection, may differ from the client
 	peer_cert		= undefined :: undefined | term(),				% the DER encoded peer certificate that can be decoded with public_key:pkix_decode_cert/2
 	vsn				= undefined :: undefined | websocket_version(),
 	origin			= undefined :: undefined | list(),				% the originator

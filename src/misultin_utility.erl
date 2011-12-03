@@ -34,7 +34,7 @@
 % API
 -export([get_http_status_code/2, get_http_status_message/1, get_content_type/1, get_key_value/2, header_get_value/2]).
 -export([call/2, call/3, respond/2]).
--export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1]).
+-export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1, get_peer/2]).
 -export([convert_ip_to_list/1]).
 -export([hexstr/1, get_unix_timestamp/0, get_unix_timestamp/1]).
 
@@ -513,6 +513,30 @@ hex(N) when N >= 10, N < 16 -> $a + (N-10).
 -spec get_unix_timestamp({MegaSecs::non_neg_integer(), Secs::non_neg_integer(), _MicroSecs::non_neg_integer()}) -> TimeStamp::non_neg_integer().
 get_unix_timestamp() -> get_unix_timestamp(erlang:now()).
 get_unix_timestamp({MegaSecs, Secs, _MicroSecs}) -> MegaSecs * 1000000 + Secs.
+
+
+% extract the peer address from the headers (in case of proxy specifying it in the address), or default to connection peer address
+-spec get_peer(Headers::http_headers(), ConnectionPeerAddr::undefined | inet:ip_address()) -> {error, term()} | {ok, inet:ip_address()}.
+get_peer(Headers, ConnectionPeerAddr) ->
+	Host = case header_get_value('X-Real-Ip', Headers) of
+		false ->
+			case header_get_value('X-Forwarded-For', Headers) of
+				false -> undefined;
+				Hosts0 -> string:strip(lists:nth(1, string:tokens(Hosts0, ",")))
+			end;
+		Host0 -> Host0
+	end,
+	case Host of
+		undefined ->
+			ConnectionPeerAddr;
+		_ ->
+			case inet_parse:address(Host) of
+				{error, _Reason} ->
+					ConnectionPeerAddr;
+				{ok, IpTuple} ->
+					IpTuple
+			end
+	end.
 
 % ============================ /\ API ======================================================================
 
