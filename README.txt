@@ -89,6 +89,8 @@ CHANGELOG
        - added access log callback function, so that main application can log HTTP access
        - added streaming input for big files or endless input, using a manual body_recv function in
          conjunction with the {auto_recv_body, false} option
+       - added static directory support, so that GET requests to /static/* can automatically send files
+         from a specified directory (thanks to egobrain suggestion)
        - consistently improved memory usage by not copying by default to handler processes the full request
          or websocket record
        - added configuration option to set which websocket versions must be supported by the server

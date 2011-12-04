@@ -117,9 +117,10 @@ init([Options]) ->
 		{ws_loop, undefined, fun is_function/1, ws_loop_not_function},
 		{ws_autoexit, true, fun is_boolean/1, invalid_ws_autoexit_option},
 		{ws_versions, ['draft-hybi-17', 'draft-hybi-10', 'draft-hixie-76'], fun check_ws_version/1, unsupported_ws_vsn_specified},
-		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire},
-		{access_log, undefined, fun check_access_log/1, invalid_access_log},
-		{auto_recv_body, true, fun is_boolean/1, invalid_auto_recv_body}
+		{sessions_expire, 600, fun is_non_neg_integer/1, invalid_sessions_expire_option},
+		{access_log, undefined, fun check_access_log/1, invalid_access_log_option},
+		{auto_recv_body, true, fun is_boolean/1, invalid_auto_recv_body_option},
+		{static, false, fun check_static/1, invalid_static_option}		% if set to a directory, requests to /static/* will automatically send files from the directory
 	],
 	OptionsVerified = lists:foldl(fun(OptionProp, Acc) -> [get_option(OptionProp, Options)|Acc] end, [], OptionProps),
 	case proplists:get_value(error, OptionsVerified) of
@@ -148,6 +149,7 @@ init([Options]) ->
 			SessionsExpireSec = proplists:get_value(sessions_expire, OptionsVerified),
 			AccessLogFun = proplists:get_value(access_log, OptionsVerified),
 			AutoRecvBody = proplists:get_value(auto_recv_body, OptionsVerified),
+			Static = proplists:get_value(static, OptionsVerified),
 			% set additional options according to socket mode if necessary
 			Continue = case SslOptions0 of
 				false ->
@@ -203,7 +205,8 @@ init([Options]) ->
 						access_log = AccessLogFun,
 						ws_force_ssl = WsForceSsl,
 						proxy_protocol = ProxyProtocol,
-						auto_recv_body = AutoRecvBody
+						auto_recv_body = AutoRecvBody,
+						static = Static
 					},
 					% define misultin_server supervisor specs
 					ServerSpec = {server, {misultin_server, start_link, [{MaxConnections}]}, permanent, 60000, worker, [misultin_server]},
@@ -299,6 +302,12 @@ check_ws_version(WsVsn) ->
 -spec is_non_neg_integer(term()) -> boolean().
 is_non_neg_integer(N) when is_integer(N), N >= 0 -> true;
 is_non_neg_integer(_) -> false.
+
+% check if the static option is valid
+-spec check_static(list() | false) -> boolean().
+check_static(false) -> true;
+check_static(Path) when is_list(Path) -> true;
+check_static(_) -> false.
 
 % Validate and get misultin options.
 -spec get_option({

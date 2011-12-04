@@ -58,7 +58,8 @@
 	ws_versions			= undefined :: [websocket_version()],
 	access_log			= undefined :: undefined | function(),
 	ws_force_ssl		= false :: boolean(),
-	auto_recv_body		= true :: boolean()
+	auto_recv_body		= true :: boolean(),
+	static				= false :: boolean()
 }).
 -record(req_options, {
 	comet				= false :: boolean()		% if comet =:= true, we will monitor client tcp close
@@ -101,7 +102,8 @@ handle_data(ServerRef, SessionsRef, TableDateRef, Sock, SocketMode, ListenPort, 
 		ws_versions = CustomOpts#custom_opts.ws_versions,
 		access_log = CustomOpts#custom_opts.access_log,
 		ws_force_ssl = CustomOpts#custom_opts.ws_force_ssl,
-		auto_recv_body = CustomOpts#custom_opts.auto_recv_body
+		auto_recv_body = CustomOpts#custom_opts.auto_recv_body,
+		static = CustomOpts#custom_opts.static
 	},
 	Req = #req{socket = Sock, socket_mode = SocketMode, peer_addr = PeerAddr, peer_port = PeerPort, peer_cert = PeerCert},
 	% enter loop
@@ -326,7 +328,7 @@ method_dispatch(C, #req{method = Method} = Req) when Method =:= 'GET'; Method =:
 method_dispatch(C, #req{method = Method} = Req) when Method =:= 'TRACE' ->
 	?LOG_DEBUG("~p request received", [Method]),
 	% an entity-body is explicitly forbidden in TRACE requests <http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.8>
-	call_mfa(C, Req),
+	main_dispatcher(C, Req),
 	handle_keepalive(Req#req.connection, C, Req);
 method_dispatch(C, #req{socket = Sock, socket_mode = SocketMode, method = _Method, connection = Connection} = Req) ->
 	?LOG_DEBUG("method not implemented: ~p", [_Method]),
@@ -344,7 +346,7 @@ read_body_dispatch(#c{auto_recv_body = AutoRecvBody} = C, #req{socket = Sock, so
 				{ok, Bin} ->
 					?LOG_DEBUG("full body read: ~p", [Bin]),
 					Req0 = Req#req{body = Bin},
-					call_mfa(C, Req0),
+					main_dispatcher(C, Req0),
 					handle_keepalive(Req#req.connection, C, Req0);
 				{error, timeout} ->
 					?LOG_WARNING("request timeout, sending error", []),
@@ -361,7 +363,7 @@ read_body_dispatch(#c{auto_recv_body = AutoRecvBody} = C, #req{socket = Sock, so
 			end;
 		false ->
 			?LOG_DEBUG("auto_recv_body set to false, do not read body of request",[]),
-			call_mfa(C, Req),
+			main_dispatcher(C, Req),
 			handle_keepalive(Req#req.connection, C, Req)
 	end.			
 
@@ -522,9 +524,19 @@ handle_keepalive(close, _C, #req{socket = Sock, socket_mode = SocketMode} = _Req
 handle_keepalive(keep_alive, C, #req{socket = Sock, socket_mode = SocketMode} = Req) ->
 	request(C, #req{socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, peer_cert = Req#req.peer_cert}).
 
-% Main dispatcher
--spec call_mfa(C::#c{}, Req::#req{}) -> closed | true.
-call_mfa(#c{table_date_ref = TableDateRef, loop = Loop, autoexit = AutoExit} = C, Req) ->
+% File dispatcher
+main_dispatcher(#c{static = false} = C, Req) ->
+	% no static option specified
+	process_dispatcher(C, Req);
+main_dispatcher(#c{static = StaticDir, loop = Loop} = C, Req) ->
+	% static directory specified
+	StaticLoop = fun(ReqT) -> handle_static(ReqT, StaticDir, Loop) end,
+	% replace original loop with static loop
+	process_dispatcher(C#c{loop = StaticLoop}, Req).
+
+% Process dispatcher
+-spec process_dispatcher(C::#c{}, Req::#req{}) -> closed | true.
+process_dispatcher(#c{table_date_ref = TableDateRef, loop = Loop, autoexit = AutoExit} = C, Req) ->
 	% spawn_link custom loop
 	Self = self(),
 	% trap exit
@@ -911,5 +923,27 @@ build_access_data_do(PeerAddr, RequestLine, TableDateRef) ->
 -spec build_full_uri(Uri::string(), Args::string()) -> string().
 build_full_uri(Uri, []) -> Uri;
 build_full_uri(Uri, Args) -> lists:concat([Uri, "?", Args]).
+
+% ---------------------------- \/ Static File Handler ------------------------------------------------------
+
+% test if this is a static file request, otherwise fallback to original loop
+handle_static(Req, StaticDir, Loop) ->
+	?LOG_DEBUG("checking if this is a request to a static file",[]),
+	handle_static(Req:get(method), Req:resource([lowercase, urldecode]), Req, StaticDir, Loop).
+handle_static('GET', ["static" | FilePath], Req, StaticDir, _Loop) ->
+	?LOG_DEBUG("static request found, sanitizing path",[]),
+	case misultin_utility:sanitize_path_tokens(FilePath) of
+		invalid ->
+			?LOG_DEBUG("invalid static request :~p", [FilePath]),
+			Req:respond(403);
+		SanitizedPath ->
+			FullFilePath = filename:join([StaticDir, filename:join(SanitizedPath)]),
+			?LOG_DEBUG("sending file in path: ~p", [FullFilePath]),	
+			Req:file(FullFilePath)
+	end;
+handle_static(_, _, Req, _, Loop) ->
+	Loop(Req).
+
+% ---------------------------- /\ Static File Handler ------------------------------------------------------
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================

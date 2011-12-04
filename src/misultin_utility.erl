@@ -37,6 +37,7 @@
 -export([parse_qs/1, parse_qs/2, unquote/1, quote_plus/1, get_peer/2]).
 -export([convert_ip_to_list/1]).
 -export([hexstr/1, get_unix_timestamp/0, get_unix_timestamp/1]).
+-export([sanitize_path_tokens/1]).
 
 % macros
 -define(INTERNAL_TIMEOUT, 30000).
@@ -538,6 +539,11 @@ get_peer(Headers, ConnectionPeerAddr) ->
 			end
 	end.
 
+% sanitize path tokens to avoid directory traversal attacks
+-spec sanitize_path_tokens(Path::list(string())) -> invalid | list(string()).
+sanitize_path_tokens(Path) ->
+	i_sanitize_path_tokens(Path).
+
 % ============================ /\ API ======================================================================
 
 
@@ -616,4 +622,58 @@ quote_plus([C | Rest], Acc) ->
 	<<Hi:4, Lo:4>> = <<C>>,
 	quote_plus(Rest, [hexdigit(Lo), hexdigit(Hi), ?PERCENT | Acc]).
 
+-spec i_sanitize_path_tokens(Path::list(string())) -> invalid | list(string()).
+i_sanitize_path_tokens(Path) ->
+	% ensure no backslash \ character is included in path tokens
+	F = fun(S) ->
+		case string:str(S, "\\") of
+			0 -> false;
+			_ -> true
+		end
+	end,
+	case lists:any(F, Path) of
+		true ->
+			% backslash found
+			invalid;
+		_ ->
+			% proceed to check for sanity
+			i_sanitize_path_tokens(lists:reverse(Path), 0, [])
+	end.
+i_sanitize_path_tokens([], RemCount, _Acc) when RemCount > 0 ->
+	invalid;
+i_sanitize_path_tokens([], _RemCount, Acc) ->
+	Acc;
+i_sanitize_path_tokens([".."|[]], _RemCount, _Acc) ->
+	invalid;
+i_sanitize_path_tokens([".."|T], RemCount, Acc) ->
+	i_sanitize_path_tokens(T, RemCount + 1, Acc);
+i_sanitize_path_tokens([_H|T], RemCount, Acc) when RemCount > 0 ->
+	i_sanitize_path_tokens(T, RemCount - 1, Acc);
+i_sanitize_path_tokens([H|T], RemCount, Acc) ->
+	i_sanitize_path_tokens(T, RemCount, [H|Acc]).
+
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
+
+
+% ============================ \/ TESTS ====================================================================
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+i_sanitize_path_tokens_test() ->
+	?assertEqual(["one", "two", "three"], i_sanitize_path_tokens(["one", "two", "three"])),
+	?assertEqual(["one", "three"], i_sanitize_path_tokens(["one", "two", "..", "three"])),
+	?assertEqual(["three"], i_sanitize_path_tokens(["one", "two", "..", "..", "three"])),
+	?assertEqual(["three"], i_sanitize_path_tokens(["one", "two", "..", "..", "three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["one", "two", "..", "..", "..", "three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["one", "..", "..", "three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["..", "..", "..", "three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["..", "three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens([".."])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["..", "..", "one", "two", "three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["one", "two", "\\three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["one", "..", "\\three"])),
+	?assertEqual(invalid, i_sanitize_path_tokens(["\\..\\one"])).
+-endif.
+
+% ============================ /\ TESTS ====================================================================
