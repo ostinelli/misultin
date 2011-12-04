@@ -209,10 +209,11 @@ ws_loop(WsHandleLoopPid, SessionsRef, #ws{vsn = Vsn, socket = Socket, socket_mod
 			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
 			case misultin_utility:get_peer(Ws#ws.headers, Ws#ws.peer_addr) of
 				{error, Reason} ->
-					?LOG_ERROR("error getting remote peer_addr: ~p, cannot get session", [Reason]),
+					?LOG_DEBUG("error getting remote peer_addr: ~p, cannot get session", [Reason]),
 					misultin_utility:respond(CallerPid, {error, {peer_addr, Reason}}),
 					ws_loop(WsHandleLoopPid, SessionsRef, Ws, State);
 				{ok, PeerAddr} ->
+					?LOG_DEBUG("got remote peer_addr: ~p", [PeerAddr]),
 					case SessionCmd of
 						{session, Cookies} ->
 							% websocket cannot create sessions since they don't generate set-cookies
@@ -229,6 +230,7 @@ ws_loop(WsHandleLoopPid, SessionsRef, #ws{vsn = Vsn, socket = Socket, socket_mod
 							end;
 						{save_session_state, SessionId, SessionState} ->
 							% save session state
+							?LOG_DEBUG("trying to save new session state: ~p", [SessionState]),
 							Response = misultin_sessions:save_session_state(SessionsRef, SessionId, SessionState, PeerAddr),
 							misultin_utility:respond(CallerPid, Response),
 							% loop

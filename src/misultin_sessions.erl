@@ -123,7 +123,7 @@ handle_call({session, undefined, PeerAddr, CreateIfNonExistant}, _From, #state{t
 	end;
 			
 handle_call({session, SessionId, PeerAddr, CreateIfNonExistant}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
-	?LOG_DEBUG("starting or retrieving session ~p", [SessionId]),
+	?LOG_DEBUG("retrieving session ~p, starting new if non-existant is ~p", [SessionId, CreateIfNonExistant]),
 	case ets:lookup(TableSessions, SessionId) of
 		[] when CreateIfNonExistant =:= true ->
 			?LOG_DEBUG("session with id ~p could not be found, start new one", [SessionId]),

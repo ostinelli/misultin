@@ -529,7 +529,7 @@ get_peer(Headers, ConnectionPeerAddr) ->
 	end,
 	case Host of
 		undefined ->
-			ConnectionPeerAddr;
+			{ok, ConnectionPeerAddr};
 		_ ->
 			case inet_parse:address(Host) of
 				{error, _Reason} ->

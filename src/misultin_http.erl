@@ -616,10 +616,11 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
 			case misultin_utility:get_peer(Req#req.headers, Req#req.peer_addr) of
 				{error, Reason} ->
-					?LOG_ERROR("error getting remote peer_addr: ~p, cannot get/create session", [Reason]),
+					?LOG_DEBUG("error getting remote peer_addr: ~p, cannot get/create session", [Reason]),
 					misultin_utility:respond(CallerPid, {error, {peer_addr, Reason}}),
 					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
 				{ok, PeerAddr} ->
+					?LOG_DEBUG("got remote peer_addr: ~p", [PeerAddr]),
 					case SessionCmd of
 						{session, Cookies} ->
 							% start new session process or retrieve exiting one's id
@@ -631,6 +632,7 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 							socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AppHeaders], HttpCodeSent, SizeSent);
 						{save_session_state, SessionId, SessionState} ->
 							% save session state
+							?LOG_DEBUG("trying to save new session state: ~p", [SessionState]),
 							Response = misultin_sessions:save_session_state(C#c.sessions_ref, SessionId, SessionState, PeerAddr),
 							misultin_utility:respond(CallerPid, Response),
 							% loop
