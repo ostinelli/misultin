@@ -36,7 +36,7 @@
 
 % API
 -export([start_link/1]).
--export([set_session_cookie/1, session/3, save_session_state/4]).
+-export([set_session_cookie/1, session/3, session/4, save_session_state/4]).
 
 % macros
 -define(TABLE_SESSIONS, misultin_table_sessions).
@@ -68,17 +68,20 @@ start_link(Options) when is_tuple(Options) ->
 set_session_cookie(SessionId) ->
 	misultin_cookies:set_cookie(?SESSION_HEADER_NAME, SessionId, [{max_age, 365*24*3600}]).
 
-% retrieve session info and start a session if necessary.
--spec session(ServerRef::pid(), Cookies::gen_proplist(), Req::#req{}) -> {SessionId::string(), SessionState::term()} | {error, Reason::term()}.
-session(ServerRef, Cookies, Req) ->
+% retrieve session info or start a session if necessary.
+-spec session(ServerRef::pid(), Cookies::gen_proplist(), PeerAddr::inet:ip_address()) -> {SessionId::string(), SessionState::term()}.
+-spec session(ServerRef::pid(), Cookies::gen_proplist(), PeerAddr::inet:ip_address(), CreateIfNonExistant::boolean()) -> {SessionId::string(), SessionState::term()} | {error, Reason::term()}.
+session(ServerRef, Cookies, PeerAddr) ->
+	session(ServerRef, Cookies, PeerAddr, true).
+session(ServerRef, Cookies, PeerAddr, CreateIfNonExistant) ->
 	% extract session id
 	SessionId = misultin_utility:get_key_value(?SESSION_HEADER_NAME, Cookies),
-	gen_server:call(ServerRef, {session, SessionId, Req}).
+	gen_server:call(ServerRef, {session, SessionId, PeerAddr, CreateIfNonExistant}).
 
 % save a session state
--spec save_session_state(ServerRef::pid(), SessionId::string(), SessionState::term(), Req::#req{}) -> ok | {error, Reason::term()}.
-save_session_state(ServerRef, SessionId, SessionState, Req) ->
-	gen_server:call(ServerRef, {save_session_state, SessionId, SessionState, Req}).
+-spec save_session_state(ServerRef::pid(), SessionId::string(), SessionState::term(), PeerAddr::inet:ip_address()) -> ok | {error, Reason::term()}.
+save_session_state(ServerRef, SessionId, SessionState, PeerAddr) ->
+	gen_server:call(ServerRef, {save_session_state, SessionId, SessionState, PeerAddr}).
 
 % ============================ /\ API ======================================================================
 
@@ -108,35 +111,49 @@ init({MainSupRef, SessionsExpireSec}) ->
 % ----------------------------------------------------------------------------------------------------------
 
 % start a session
-handle_call({session, undefined, Req}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
-	?LOG_DEBUG("generate a new session",[]),
-	NewSessionId = i_start_session(TableSessions, TableDateRef, Req),
-	{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State};
-handle_call({session, SessionId, Req}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
+handle_call({session, undefined, PeerAddr, CreateIfNonExistant}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
+	case CreateIfNonExistant of
+		true ->
+			?LOG_DEBUG("generate a new session",[]),
+			NewSessionId = i_start_session(TableSessions, TableDateRef, PeerAddr),
+			{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State};
+		_ ->
+			?LOG_DEBUG("do not generate a new session, report error",[]),
+			{reply, {error, non_existent_session}, State}
+	end;
+			
+handle_call({session, SessionId, PeerAddr, CreateIfNonExistant}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
 	?LOG_DEBUG("starting or retrieving session ~p", [SessionId]),
 	case ets:lookup(TableSessions, SessionId) of
-		[] ->
+		[] when CreateIfNonExistant =:= true ->
 			?LOG_DEBUG("session with id ~p could not be found, start new one", [SessionId]),
-			NewSessionId = i_start_session(TableSessions, TableDateRef, Req),
+			NewSessionId = i_start_session(TableSessions, TableDateRef, PeerAddr),
 			{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State};
+		[] ->
+			?LOG_DEBUG("session with id ~p could not be found, report error", [SessionId]),
+			{reply, {error, non_existent_session}, State};
 		[{SessionId, VerifyInfo, _TSLastAccess, SessionState}] ->
 			?LOG_DEBUG("session id ~p found in table with verify info: ~p, start validity check", [SessionId, VerifyInfo]),
-			case is_session_valid(VerifyInfo, Req) of
+			case is_session_valid(VerifyInfo, PeerAddr) of
 				true ->
 					?LOG_DEBUG("session id ~p is valid, return id and state", [SessionId]),
 					% update session access data
 					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_server:get_timestamp(TableDateRef), SessionState}),
 					{reply, {SessionId, SessionState}, State};
-				false ->
+				false when CreateIfNonExistant =:= true ->
 					?LOG_DEBUG("session is not valid, killing session and generate new",[]),
 					i_remove_session(TableSessions, SessionId),
-					NewSessionId = i_start_session(TableSessions, TableDateRef, Req),
-					{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State}
+					NewSessionId = i_start_session(TableSessions, TableDateRef, PeerAddr),
+					{reply, {NewSessionId, ?DEFAULT_SESSION_STATE}, State};
+				false ->
+					?LOG_DEBUG("session is not valid, killing session",[]),
+					i_remove_session(TableSessions, SessionId),
+					{reply, {error, non_existent_session}, State}
 			end
 	end;
 
 % save session state
-handle_call({save_session_state, SessionId, SessionState, Req}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
+handle_call({save_session_state, SessionId, SessionState, PeerAddr}, _From, #state{table_sessions = TableSessions, table_date_ref = TableDateRef} = State) ->
 	?LOG_DEBUG("saving session ~p state ~p", [SessionId, SessionState]),
 	case ets:lookup(TableSessions, SessionId) of
 		[] ->
@@ -144,7 +161,7 @@ handle_call({save_session_state, SessionId, SessionState, Req}, _From, #state{ta
 			{reply, {error, invalid_session_id}, State};
 		[{SessionId, VerifyInfo, _TSLastAccess, _OldSessionState}] ->
 			?LOG_DEBUG("session id ~p found in table with verify info: ~p, start validity check", [SessionId, VerifyInfo]),
-			case is_session_valid(VerifyInfo, Req) of
+			case is_session_valid(VerifyInfo, PeerAddr) of
 				true ->
 					?LOG_DEBUG("session id ~p is valid, set new state ~p", [SessionId, SessionState]),
 					ets:insert(TableSessions, {SessionId, VerifyInfo, misultin_server:get_timestamp(TableDateRef), SessionState}),
@@ -236,10 +253,10 @@ code_change(_OldVsn, State, _Extra) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % start a new session
--spec i_start_session(TableSessions::ets:tid(), TableDateRef::ets:tid(), Req::#req{}) -> SessionId::string() | {error, Reason::term()}.
-i_start_session(TableSessions, TableDateRef, Req) ->
+-spec i_start_session(TableSessions::ets:tid(), TableDateRef::ets:tid(), PeerAddr::inet:ip_address()) -> SessionId::string() | {error, Reason::term()}.
+i_start_session(TableSessions, TableDateRef, PeerAddr) ->
 	% build verify info
-	case get_ip_domain(Req#req.peer_addr) of
+	case get_ip_domain(PeerAddr) of
 		{error, _Error} ->
 			?LOG_DEBUG("could not start session: ~p", [_Error]),
 			{error, could_not_start_session};
@@ -273,9 +290,9 @@ get_ip_domain({A, B, C, D, E, F, G, _}) -> {A, B, C, D, E, F, G};	% ipv6
 get_ip_domain(_) -> {error, undefined_ip}.
 
 % is session valid
--spec is_session_valid(VerifyInfo::term(), Req::#req{}) -> boolean().
-is_session_valid({VerifyDomain}, Req) ->
-	get_ip_domain(Req#req.peer_addr) =:= VerifyDomain.
+-spec is_session_valid(VerifyInfo::term(), PeerAddr::inet:ip_address()) -> boolean().
+is_session_valid({VerifyDomain}, PeerAddr) ->
+	get_ip_domain(PeerAddr) =:= VerifyDomain.
 
 % expire sessions
 -spec expire_sessions(TableSessions::ets:tid(), TableDateRef::ets:tid(), SessionsExpireSec::non_neg_integer()) -> true.

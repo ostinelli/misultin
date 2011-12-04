@@ -32,6 +32,7 @@
 
 % API
 -export([raw/1, get/2, get_cookies/1, get_cookie_value/3, send/2]).
+-export([session/1, session/2, save_session_state/3]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -86,6 +87,24 @@ get_cookie_value(CookieTag, Cookies, _WsT) ->
 	misultin_utility:get_key_value(CookieTag, Cookies).
 
 % ---------------------------- /\ Cookies ------------------------------------------------------------------
+
+% ---------------------------- \/ Sessions -----------------------------------------------------------------
+
+% get session id and state
+-spec session(WsT::wst()) -> {error, Reason::term()} | {SessionId::string(), SessionState::term()}.
+-spec session(Cookies::gen_proplist(), WsT::wst()) -> {error, Reason::term()} | {SessionId::string(), SessionState::term()}.
+session(WsT) ->
+	Cookies = get_cookies(WsT),
+	session(Cookies, WsT).
+session(Cookies, {misultin_ws, SocketPid}) ->
+	misultin_websocket:session_cmd(SocketPid, {session, Cookies}).
+
+% save session state
+-spec save_session_state(SessionId::string(), SessionState::term(), WsT::wst()) -> {error, Reason::term()} | ok.
+save_session_state(SessionId, SessionState, {misultin_ws, SocketPid}) ->
+	misultin_websocket:session_cmd(SocketPid, {save_session_state, SessionId, SessionState}).
+
+% ---------------------------- /\ Sessions ------------------------------------------------------------------
 
 % send data
 -spec send(Data::list() | binary() | iolist(), wst()) -> term().

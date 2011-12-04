@@ -34,8 +34,8 @@
 -vsn("0.9-dev").
 
 % API
--export([check/3, connect/4]).
--export([check_headers/2, websocket_close/4, ws_loop/3, send_to_browser/2, get_wsinfo/2]).
+-export([check/3, connect/5]).
+-export([check_headers/2, websocket_close/4, ws_loop/4, send_to_browser/2, get_wsinfo/2, session_cmd/2]).
 
 % behaviour
 -export([behaviour_info/1]).
@@ -54,8 +54,8 @@ check(WsVersions, _Path, Headers) ->
 	check_websockets(WsVersions, Headers).
 
 % Connect and handshake with Websocket.
--spec connect(ServerRef::pid(), Req::#req{}, Ws::#ws{}, WsLoop::function()) -> true.
-connect(ServerRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Path} = Ws, WsLoop) ->
+-spec connect(ServerRef::pid(), SessionsRef::pid(), Req::#req{}, Ws::#ws{}, WsLoop::function()) -> true.
+connect(ServerRef, SessionsRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Path} = Ws, WsLoop) ->
 	?LOG_DEBUG("building handshake response", []),
 	% get data
 	Origin = misultin_utility:header_get_value('Origin', Headers),
@@ -75,7 +75,7 @@ connect(ServerRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket
 	% add main websocket pid to misultin server reference
 	misultin_server:ws_pid_ref_add(ServerRef, self()),
 	% enter loop
-	enter_loop(WsHandleLoopPid, Ws, Req#req.headers, Origin, Host).
+	enter_loop(WsHandleLoopPid, SessionsRef, Ws, Req#req.headers, Origin, Host).
 
 % Check if headers correspond to headers requirements.
 -spec check_headers(Headers::http_headers(), RequiredHeaders::http_headers()) -> true | http_headers().
@@ -123,6 +123,11 @@ send_to_browser(WsHandleLoopPid, Data) ->
 get_wsinfo(SocketPid, WsInfo) ->
 	misultin_utility:call(SocketPid, {wsinfo, WsInfo}).
 
+% send a session command to the ws process handler
+-spec session_cmd(SocketPid::pid(), SessionCmd::term()) -> term().
+session_cmd(SocketPid, SessionCmd) ->
+	misultin_utility:call(SocketPid, {session_cmd, SessionCmd}).
+
 % ============================ /\ API ======================================================================
 
 
@@ -151,20 +156,17 @@ check_websockets([Vsn|T], Headers) ->
 	end.
 
 % enter loop
--spec enter_loop(WsHandleLoopPid::pid(), Ws::#ws{}, Headers::http_headers(), Origin::string(), Host::string()) -> true.
-enter_loop(WsHandleLoopPid, Ws, Headers, Origin, Host) ->
+-spec enter_loop(WsHandleLoopPid::pid(), SessionsRef::pid(), Ws::#ws{}, Headers::http_headers(), Origin::string(), Host::string()) -> true.
+enter_loop(WsHandleLoopPid, SessionsRef, Ws, Headers, Origin, Host) ->
 	% start listening for incoming data
-	ws_loop(WsHandleLoopPid, Ws#ws{headers = Headers, origin = Origin, host = Host}, undefined),
+	ws_loop(WsHandleLoopPid, SessionsRef, Ws#ws{headers = Headers, origin = Origin, host = Host}, undefined),
 	% unlink
 	process_flag(trap_exit, false),
 	erlang:unlink(WsHandleLoopPid).
 
 % Main Websocket loop
--spec ws_loop(
-	WsHandleLoopPid::pid(),
-	Ws::#ws{},
-	State::term()) -> ok.
-ws_loop(WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, ws_autoexit = WsAutoExit} = Ws, State) ->
+-spec ws_loop(WsHandleLoopPid::pid(), SessionsRef::pid(), Ws::#ws{}, State::term()) -> ok.
+ws_loop(WsHandleLoopPid, SessionsRef, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, ws_autoexit = WsAutoExit} = Ws, State) ->
 	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
 		{tcp, Socket, Data} ->
@@ -176,7 +178,7 @@ ws_loop(WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMod
 					misultin_socket:send(Socket, CloseData, SocketMode),
 					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 				NewState ->
-					ws_loop(WsHandleLoopPid, Ws, NewState)
+					ws_loop(WsHandleLoopPid, SessionsRef, Ws, NewState)
 			end;
 		{ssl, Socket, Data} ->
 			VsnMod = get_module_name_from_vsn(Vsn),
@@ -184,7 +186,7 @@ ws_loop(WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMod
 				{command, websocket_close} ->
 					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 				NewState ->
-					ws_loop(WsHandleLoopPid, Ws, NewState)
+					ws_loop(WsHandleLoopPid, SessionsRef, Ws, NewState)
 			end;
 		{WsHandleLoopPid, {wsinfo, WsInfo}} ->
 			WsResponse = case WsInfo of
@@ -202,7 +204,37 @@ ws_loop(WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMod
 			end,
 			?LOG_DEBUG("received ws info for: ~p, responding with ~p", [WsInfo, WsResponse]),
 			misultin_utility:respond(WsHandleLoopPid, WsResponse),
-			ws_loop(WsHandleLoopPid, Ws, State);
+			ws_loop(WsHandleLoopPid, SessionsRef, Ws, State);
+		{CallerPid, {session_cmd, SessionCmd}} ->
+			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
+			case misultin_utility:get_peer(Ws#ws.headers, Ws#ws.peer_addr) of
+				{error, Reason} ->
+					?LOG_ERROR("error getting remote peer_addr: ~p, cannot get session", [Reason]),
+					misultin_utility:respond(CallerPid, {error, {peer_addr, Reason}}),
+					ws_loop(WsHandleLoopPid, SessionsRef, Ws, State);
+				{ok, PeerAddr} ->
+					case SessionCmd of
+						{session, Cookies} ->
+							% websocket cannot create sessions since they don't generate set-cookies
+							case misultin_sessions:session(SessionsRef, Cookies, PeerAddr, false) of
+								{error, Reason} ->
+									?LOG_DEBUG("error getting session: ~p", [Reason]),
+									misultin_utility:respond(CallerPid, {error, Reason});
+								SessionInfo ->
+									?LOG_DEBUG("got session info: ~p", [SessionInfo]),
+									% respond with session id
+									misultin_utility:respond(CallerPid, SessionInfo),
+									% loop
+									ws_loop(WsHandleLoopPid, SessionsRef, Ws, State)
+							end;
+						{save_session_state, SessionId, SessionState} ->
+							% save session state
+							Response = misultin_sessions:save_session_state(SessionsRef, SessionId, SessionState, PeerAddr),
+							misultin_utility:respond(CallerPid, Response),
+							% loop
+							ws_loop(WsHandleLoopPid, SessionsRef, Ws, State)
+					end
+			end;
 		{tcp_closed, Socket} ->
 			?LOG_DEBUG("tcp connection was closed, exit", []),
 			% close websocket and custom controlling loop
@@ -224,14 +256,14 @@ ws_loop(WsHandleLoopPid, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMod
 			VsnMod = get_module_name_from_vsn(Vsn),
 			?LOG_DEBUG("sending data: ~p to websocket module: ~p", [Data, VsnMod]),
 			misultin_socket:send(Socket, VsnMod:send_format(Data, State), SocketMode),
-			ws_loop(WsHandleLoopPid, Ws, State);
+			ws_loop(WsHandleLoopPid, SessionsRef, Ws, State);
 		shutdown ->
 			?LOG_DEBUG("shutdown request received, closing websocket with pid ~p", [self()]),
 			% close websocket and custom controlling loop
 			websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
 		_Ignored ->
 			?LOG_WARNING("received unexpected message, ignoring: ~p", [_Ignored]),
-			ws_loop(WsHandleLoopPid, Ws, State)
+			ws_loop(WsHandleLoopPid, SessionsRef, Ws, State)
 	end.
 
 % convert websocket version to module name

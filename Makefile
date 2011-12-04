@@ -4,7 +4,7 @@ SRC_DIR:=src
 
 all: compile
 
-compile:
+compile: clean
 	@rebar compile
 
 clean:
@@ -14,7 +14,7 @@ clean:
 tests: compile
 	@rebar ct
 
-debug: 
+debug: clean
 	@if test -f $(REBAR_CONFIG); then mv $(REBAR_CONFIG) $(REBAR_CONFIG).bak; fi;
 	@echo {erl_opts, [{d, log_debug}]}. > $(REBAR_CONFIG)
 	@rebar debug_info=true compile

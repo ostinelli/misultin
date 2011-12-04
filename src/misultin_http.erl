@@ -250,7 +250,7 @@ headers(#c{recv_timeout = RecvTimeout, ws_loop = WsLoop} = C, #req{socket = Sock
 					end;
 				{true, Vsn} ->
 					?LOG_DEBUG("websocket request received", []),
-					misultin_websocket:connect(C#c.server_ref, Req#req{headers = Headers, ws_force_ssl = C#c.ws_force_ssl}, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, ws_autoexit = C#c.ws_autoexit}, WsLoop)
+					misultin_websocket:connect(C#c.server_ref, C#c.sessions_ref, Req#req{headers = Headers, ws_force_ssl = C#c.ws_force_ssl}, #ws{vsn = Vsn, socket = Sock, socket_mode = SocketMode, peer_addr = Req#req.peer_addr, peer_port = Req#req.peer_port, path = Path, ws_autoexit = C#c.ws_autoexit}, WsLoop)
 			end;
 		{SocketMode, Sock, _Other} ->
 			?LOG_WARNING("tcp error treating headers: ~p, send bad request error back", [_Other]),
@@ -614,26 +614,28 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
 		{CallerPid, {session_cmd, SessionCmd}} ->
 			?LOG_DEBUG("received a session command: ~p", [SessionCmd]),
-			case SessionCmd of
-				{session, Cookies} ->
-					% start new session process or retrieve exiting one's id
-					case misultin_sessions:session(C#c.sessions_ref, Cookies, Req) of
-						{error, Reason} ->
-							?LOG_DEBUG("error getting/creating session: ~p", [Reason]),
-							misultin_utility:respond(CallerPid, {error, Reason});
-						{SessionId, _SessionVars} = SessionInfo ->
-							?LOG_DEBUG("got session info: ~p", [SessionInfo]),
-							% respond with session id
-							misultin_utility:respond(CallerPid, SessionInfo),
-							% add session id cookie header
-							socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AppHeaders], HttpCodeSent, SizeSent)
-					end;
-				{save_session_state, SessionId, SessionState} ->
-					% save session state
-					Response = misultin_sessions:save_session_state(C#c.sessions_ref, SessionId, SessionState, Req),
-					misultin_utility:respond(CallerPid, Response),
-					% loop
-					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
+			case misultin_utility:get_peer(Req#req.headers, Req#req.peer_addr) of
+				{error, Reason} ->
+					?LOG_ERROR("error getting remote peer_addr: ~p, cannot get/create session", [Reason]),
+					misultin_utility:respond(CallerPid, {error, {peer_addr, Reason}}),
+					socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
+				{ok, PeerAddr} ->
+					case SessionCmd of
+						{session, Cookies} ->
+							% start new session process or retrieve exiting one's id
+							{SessionId, _SessionVars} = SessionInfo = misultin_sessions:session(C#c.sessions_ref, Cookies, PeerAddr),                                                                                                                                                           
+							?LOG_DEBUG("got session info: ~p", [SessionInfo]),                                                                             
+							% respond with session id                                                                                                      
+							misultin_utility:respond(CallerPid, SessionInfo),                                                                              
+							% add session id cookie header                                                                                                 
+							socket_loop(C, Req, LoopPid, ReqOptions, [misultin_sessions:set_session_cookie(SessionId)|AppHeaders], HttpCodeSent, SizeSent);
+						{save_session_state, SessionId, SessionState} ->
+							% save session state
+							Response = misultin_sessions:save_session_state(C#c.sessions_ref, SessionId, SessionState, PeerAddr),
+							misultin_utility:respond(CallerPid, Response),
+							% loop
+							socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent)
+					end
 			end;
 		{CallerPid, body_recv} ->
 			?LOG_DEBUG("received a request to manually read the body",[]),			
