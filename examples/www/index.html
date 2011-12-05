@@ -10,20 +10,17 @@
 
     function chat(box) { 
         var V = $$(box.parentNode).elmsByTag('input');
-	    var Data = '{chat,[' + box.parentNode.id;
+	    var Data = '{' + window.myValue + ',{chat,[' + box.parentNode.id;
 	    var i=0;
 	    for (i=0;i<V.length;i++)
 		    if(V[i].value)  
 			    Data = Data + ',' + V[i].value
-        client._send(Data + '],{' + box.id + ',' + box.value + '}}.');
+        client._send(Data + '],{' + box.id + ',' + box.value + '}}}.');
     }
 	
     function add_or_delete(r,c) {
         delete_list();
         client._send('{' + window.myValue + ',{add_or_delete,' + r + ',' + c + '}}.');
-    }
-    function read() {
-        client._send('{add_or_delete}.');
     }
 
 function save_pid(pid) {
