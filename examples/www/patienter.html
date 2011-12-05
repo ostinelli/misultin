@@ -1,0 +1,34 @@
+<html>
+<head>
+<meta id="module" name="patienter" content="eHospital service" />
+<title>Patienter</title>
+<script src="DOMAssistantComplete-2.8.js"></script>
+<script src="websocket.js"></script>
+<script type="text/javascript">   
+    function listing(arr) {
+        var i;
+		$(data).replaceContent("<h2>Patienter</h2>");
+        for (i=1;i<arr.length;i++){
+            $(data).create("div", {id : "r"+i},true, '<a href=blodtryck.html?' + arr[i] + '>'+arr[i]+'</A>');
+		}
+	}
+</script>	
+<style type="text/css">
+<!--
+#data {background-color: #FFFFFF;  float: right; width: 470px;}
+#text {background-color: #FFFFFF; width: 50%;}
+--></style>
+</head>
+<body onload="client.connect()">
+<div id="text"><h1>V&auml;lkommen till SU's blodtryckstj&auml;nst</h1>
+<h2>Detta system ger dig tillg&aring;ng till blodtrycksdata p&aring; individnivå</h2>
+<p>Dina patienter SMS:ar sina blodtrycksv&auml;rden till 0760497402. SMS:et ska endast inneh&aring;lla en 4-siffrig PIN-kod samt &ouml;vre och undre tryck. T ex 9999 120 75
+obs att endast siffror &auml;r till&aring;tna.</p>
+<p>Se &auml;ven rapporten fr&aring; <a href=http://www.sbu.se/sv/Om-SBU/Nyheter/Hemblodtrycksmatning/>SBU</a></p>
+
+</div>
+<div id="data"><p>Att kontakta: Björn Dahlöf, överläkare och docent vid medicinkliniken på Sahlgrenska universitetssjukhuset.  Ludvig Grothe SU,
+Bo Carlberg och Lars Hjalmar Lindholm, bägge verksamma vid Umeå universitet.</p>
+</div>
+</body>
+</html>
