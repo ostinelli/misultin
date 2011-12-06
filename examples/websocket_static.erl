@@ -10,7 +10,8 @@ start(Port) ->
 		{port, Port}, 
 		{static, "/home/skvamme/misultin/examples/www"},
 		{loop, fun(Req) -> handle_http(Req) end},
-		{ws_loop, fun(Ws) -> handle_websocket(Ws,null) end}
+		{ws_autoexit, false},
+		{ws_loop, fun(Ws) -> handle_websocket(Ws,self()) end}
 	]).
 
 % stop misultin
@@ -34,7 +35,12 @@ handle_websocket(Ws,Pid) ->
 				Term -> Pid ! Term, Pid
 			end,
 			handle_websocket(Ws,Pid1);
-		Ignore -> io:format("Unknown message: ~p~n",[Ignore]),
+		closed ->
+			% IMPORTANT: since we specified the {ws_autoexit, false} option, we need to manually ensure that this process exits
+			% [otherwise it will become a zombie]
+			io:format("The WebSocket was CLOSED!~n"),
+			Pid ! {quit};
+		Any -> io:format("~p got unknown msg: ~p~n",[?MODULE, Any]),
 			handle_websocket(Ws,Pid)
 	end.
 	
