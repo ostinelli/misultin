@@ -10,7 +10,7 @@ start(Port) ->
 		{port, Port}, 
 		{static, "/home/skvamme/misultin/examples/www"},
 		{loop, fun(Req) -> handle_http(Req) end},
-		{ws_loop, fun(Ws) -> handle_websocket(Ws) end}
+		{ws_loop, fun(Ws) -> handle_websocket(Ws,null) end}
 	]).
 
 % stop misultin
@@ -22,20 +22,19 @@ handle_http(Req) ->
 	Req:ok("Not a static file request.").
 
 % callback on received websockets data
-handle_websocket(Ws) ->
+handle_websocket(Ws,Pid) ->
 	receive
 		{browser, Data} ->
 			io:format("Websocket ~p data: ~p~n", [Ws,Data]),
 			{ok,Tokens,_} = erl_scan:string(Data),
 			{ok,Term} = erl_parse:parse_term(Tokens),
 			io:format("Parsed term: ~p~n", [Term]), 
-			case Term of
+			Pid1 = case Term of
 				{make,Module} -> Module:make(Ws);
-				{Pid,T} -> list_to_pid(Pid) ! T;
-				Any ->io:format("Unknown Browser data: ~p~n",[Any])
+				Term -> Pid ! Term, Pid
 			end,
-			handle_websocket(Ws);
+			handle_websocket(Ws,Pid1);
 		Ignore -> io:format("Unknown message: ~p~n",[Ignore]),
-			handle_websocket(Ws)
+			handle_websocket(Ws,Pid)
 	end.
 	

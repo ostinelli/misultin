@@ -14,8 +14,6 @@ init(Websocket) ->
 	end,
 	[{rows,R}] = ets:lookup(Tab, rows),
 	[{columns,C}] = ets:lookup(Tab, columns),
-	Js1 = lists:flatten(io_lib:format("save_pid(['~p']);",[pid_to_list(self())])),
-	Websocket:send(Js1),
 	Js = lists:flatten(io_lib:format("create_list(['~p','~p']);",[R,C])),
 	Websocket:send(Js),
 	loop(Websocket,Tab).
