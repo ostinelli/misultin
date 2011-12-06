@@ -1,6 +1,6 @@
     
-    if (!window.WebSocket)
-        alert("WebSocket not supported by this browser");
+	if (!window.WebSocket && window.MozWebSocket)
+		window.WebSocket=window.MozWebSocket;
 
 
     var client = {
