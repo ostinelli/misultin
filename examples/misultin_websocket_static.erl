@@ -1,4 +1,4 @@
--module(websocket_static).
+-module(misultin_websocket_static).
 -export([start/1, stop/0]).
 
 % start misultin http server with a static option {static, "/home/skvamme/misultin/examples/www"} 
@@ -8,7 +8,7 @@
 start(Port) ->
 	misultin:start_link([
 		{port, Port}, 
-		{static, "/home/skvamme/misultin/examples/www"},
+		{static, "/home/yourhomedir/misultin/examples/www"},
 		{loop, fun(Req) -> handle_http(Req) end},
 		{ws_autoexit, false},
 		{ws_loop, fun(Ws) -> handle_websocket(Ws,self()) end}
@@ -26,7 +26,7 @@ handle_http(Req) ->
 handle_websocket(Ws,Pid) ->
 	receive
 		{browser, Data} ->
-			io:format("Websocket ~p data: ~p~n", [Ws,Data]),
+			io:format("Websocket data: ~p~n", [Data]),
 			{ok,Tokens,_} = erl_scan:string(Data),
 			{ok,Term} = erl_parse:parse_term(Tokens),
 			io:format("Parsed term: ~p~n", [Term]), 
