@@ -138,7 +138,7 @@ behaviour_info(callbacks) ->
 	[
 		{check_websocket, 1},
 		{handshake, 3},
-		{handle_data, 3},
+		{handle_data, 5},
 		{send_format, 2}
 	];
 behaviour_info(_) ->
@@ -171,21 +171,23 @@ ws_loop(WsHandleLoopPid, SessionsRef, #ws{vsn = Vsn, socket = Socket, socket_mod
 	receive
 		{tcp, Socket, Data} ->
 			VsnMod = get_module_name_from_vsn(Vsn),
-			case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
-				websocket_close ->
+                        WsCallback = fun(D, _) -> send_to_browser(WsHandleLoopPid, D) end,
+			case VsnMod:handle_data(Data, State, {Socket, SocketMode}, [], WsCallback) of
+				{_, websocket_close} ->
 					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-				{websocket_close, CloseData} ->
+                                {_, websocket_close, CloseData} ->
 					misultin_socket:send(Socket, CloseData, SocketMode),
 					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-				NewState ->
+				{_, continue, NewState} ->
 					ws_loop(WsHandleLoopPid, SessionsRef, Ws, NewState)
 			end;
 		{ssl, Socket, Data} ->
 			VsnMod = get_module_name_from_vsn(Vsn),
-			case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
-				{command, websocket_close} ->
+                        WsCallback = fun(D, _) -> send_to_browser(WsHandleLoopPid, {browser, D}) end,
+			case VsnMod:handle_data(Data, State, {Socket, SocketMode}, [], WsCallback) of
+				{_, websocket_close} ->
 					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-				NewState ->
+                                {_, continue, NewState} ->
 					ws_loop(WsHandleLoopPid, SessionsRef, Ws, NewState)
 			end;
 		{WsHandleLoopPid, {wsinfo, WsInfo}} ->

@@ -35,7 +35,9 @@
 -vsn("0.9-dev").
 
 % API
--export([check_websocket/1, handshake/3, handle_data/3, send_format/2]).
+-export([check_websocket/1, handshake/3, handle_data/5, send_format/2]).
+
+-export([required_headers/0]).
 
 % macros
 -define(HYBI_COMMON, 'misultin_websocket_draft-hybi-10_17').
@@ -53,11 +55,13 @@
 -spec check_websocket(Headers::http_headers()) -> boolean().
 check_websocket(Headers) ->
 	% set required headers
-	RequiredHeaders = [
-		{'Upgrade', "websocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, 
-		{'Sec-Websocket-Key', ignore}, {'Sec-WebSocket-Version', "13"}
-	],
-	?HYBI_COMMON:check_websocket(Headers, RequiredHeaders).
+	?HYBI_COMMON:check_websocket(Headers, required_headers()).
+
+required_headers() ->
+    [
+     {'Upgrade', "websocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, 
+     {'Sec-Websocket-Key', ignore}, {'Sec-WebSocket-Version', "13"}
+    ].
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> iolist() | binary()
@@ -68,14 +72,17 @@ handshake(Req, Headers, {Path, Origin, Host}) ->
 	?HYBI_COMMON:handshake(Req, Headers, {Path, Origin, Host}).
 
 % ----------------------------------------------------------------------------------------------------------
-% Function: -> websocket_close | {websocket_close, DataToSendBeforeClose::binary() | iolist()} | NewState
+% Function: -> {Acc1, websocket_close | {Acc1, websocket_close, DataToSendBeforeClose::binary() | iolist()} | {Acc1, continue, NewState}
 % Description: Callback to handle incomed data.
 % ----------------------------------------------------------------------------------------------------------
--spec handle_data(Data::binary(), 
-				  State::undefined | term(), 
-				  {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | {websocket_close, binary()} | term().
-handle_data(Data, St, Tuple) ->
-	?HYBI_COMMON:handle_data(Data, St, Tuple).
+-spec handle_data(Data::binary(),
+                  State::websocket_state() | term(),
+                  {Socket::socket(), SocketMode::socketmode()},
+                  Acc::term(),
+                  WsCallback::fun()) ->
+	{term(), websocket_close} | {term(), websocket_close, binary()} | {term(), continue, websocket_state()}.
+handle_data(Data, St, Tuple, Acc, WsCallback) ->
+	?HYBI_COMMON:handle_data(Data, St, Tuple, Acc, WsCallback).
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> binary() | iolist()

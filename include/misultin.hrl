@@ -119,6 +119,8 @@
 	'draft-hixie-68' |
 	'draft-hixie-76'.
 
+-opaque websocket_state() :: term().
+
 -type socketmode() :: http | ssl.
 -type socket() :: inet:socket() | term().	% unfortunately ssl does not export the socket equivalent, we could use {sslsocket, term(), term()} but this is relying on internals.
 

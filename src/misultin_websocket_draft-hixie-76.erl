@@ -35,7 +35,9 @@
 -vsn("0.9-dev").
 
 % API
--export([check_websocket/1, handshake/3, handle_data/3, send_format/2]).
+-export([check_websocket/1, handshake/3, handle_data/5, send_format/2]).
+
+-export([required_headers/0]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -50,12 +52,8 @@
 -spec check_websocket(Headers::http_headers()) -> boolean().
 check_websocket(Headers) ->
 	% set required headers
-	RequiredHeaders = [
-		{'Upgrade', "WebSocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Origin', ignore},
-		{'Sec-WebSocket-Key1', ignore}, {'Sec-WebSocket-Key2', ignore}
-	],
 	% check for headers existance
-	case misultin_websocket:check_headers(Headers, RequiredHeaders) of
+	case misultin_websocket:check_headers(Headers, required_headers()) of
 		true ->
 			% return
 			true;
@@ -64,11 +62,17 @@ check_websocket(Headers) ->
 			false
 	end.
 
+required_headers() ->
+    [
+     {'Upgrade', "WebSocket"}, {'Connection', "Upgrade"}, {'Host', ignore}, {'Origin', ignore},
+     {'Sec-WebSocket-Key1', ignore}, {'Sec-WebSocket-Key2', ignore}
+    ].
+
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> iolist() | binary()
 % Description: Callback to build handshake data.
 % ----------------------------------------------------------------------------------------------------------
--spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
+    -spec handshake(Req::#req{}, Headers::http_headers(), {Path::string(), Origin::string(), Host::string()}) -> iolist().
 handshake(#req{socket = Sock, socket_mode = SocketMode, ws_force_ssl = WsForceSsl}, Headers, {Path, Origin, Host}) ->
 	% build data
 	Key1 = misultin_utility:header_get_value('Sec-WebSocket-Key1', Headers),
@@ -110,16 +114,19 @@ handshake(#req{socket = Sock, socket_mode = SocketMode, ws_force_ssl = WsForceSs
 	].
 
 % ----------------------------------------------------------------------------------------------------------
-% Function: -> websocket_close | {websocket_close, DataToSendBeforeClose::binary() | iolist()} | NewState
+% Function: -> {Acc1, websocket_close | {Acc1, websocket_close, DataToSendBeforeClose::binary() | iolist()} | {Acc1, continue, NewState}
 % Description: Callback to handle incomed data.
 % ----------------------------------------------------------------------------------------------------------
--spec handle_data(Data::binary(), State::undefined | term(), {Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | term().
-handle_data(Data, undefined, {Socket, SocketMode, WsHandleLoopPid}) ->
-	% init status
-	handle_data(Data, {buffer, none}, {Socket, SocketMode, WsHandleLoopPid});
-handle_data(Data, {buffer, B} = _State, {Socket, SocketMode, WsHandleLoopPid}) ->
-	% read status
-	i_handle_data(Data, B, {Socket, SocketMode, WsHandleLoopPid}).
+-spec handle_data(Data::binary(),
+                  State::websocket_state() | term(),
+                  {Socket::socket(), SocketMode::socketmode()},
+                  term(),
+                  WsCallback::fun()) ->                          
+	{term(), websocket_close} | {term(), websocket_close, binary()} | {term(), continue, websocket_state()}.
+handle_data(Data, undefined, {Socket, SocketMode}, Acc0, WsCallback) ->
+	handle_data(Data, {buffer, none}, {Socket, SocketMode}, Acc0, WsCallback);
+handle_data(Data, {buffer, B} = _State, {Socket, SocketMode}, Acc0, WsCallback) ->
+	i_handle_data(Data, B, {Socket, SocketMode}, Acc0, WsCallback).
 
 % ----------------------------------------------------------------------------------------------------------
 % Function: -> binary() | iolist()
@@ -135,26 +142,27 @@ send_format(Data, _State) ->
 % ============================ \/ INTERNAL FUNCTIONS =======================================================
 
 % Buffering and data handling
--spec i_handle_data(
-	Data::binary(),
-	Buffer::binary() | none,
-	{Socket::socket(), SocketMode::socketmode(), WsHandleLoopPid::pid()}) -> websocket_close | term().
-i_handle_data(<<0, T/binary>>, none, {Socket, SocketMode, WsHandleLoopPid}) ->
-	i_handle_data(T, <<>>, {Socket, SocketMode, WsHandleLoopPid});
-i_handle_data(<<>>, none, {_Socket, _SocketMode, _WsHandleLoopPid}) ->
+-spec i_handle_data( Data::binary(),
+                     Buffer::binary() | none,
+                     {Socket::socket(), SocketMode::socketmode()},
+                     Acc::term(),
+                     WsCallback::pid()) -> {term(), websocket_close} | {term(), continue, term()}.
+i_handle_data(<<0, T/binary>>, none, {Socket, SocketMode}, Acc, WsCallback) ->
+	i_handle_data(T, <<>>, {Socket, SocketMode}, Acc, WsCallback);
+i_handle_data(<<>>, none, {_Socket, _SocketMode}, Acc, _WsCallback) ->
 	% return status
-	{buffer, none};
-i_handle_data(<<255, 0>>, _L, {Socket, SocketMode, _WsHandleLoopPid}) ->
+	{Acc, continue, {buffer, none}};
+i_handle_data(<<255, 0>>, _L, {Socket, SocketMode}, Acc, _WsCallback) ->
 	?LOG_DEBUG("websocket close message received from client, closing websocket with pid ~p", [self()]),
 	misultin_socket:send(Socket, <<255, 0>>, SocketMode),
 	% return command
-	websocket_close;
-i_handle_data(<<255, T/binary>>, L, {Socket, SocketMode, WsHandleLoopPid}) ->
-	misultin_websocket:send_to_browser(WsHandleLoopPid, binary_to_list(L)),
-	i_handle_data(T, none, {Socket, SocketMode, WsHandleLoopPid});
-i_handle_data(<<H, T/binary>>, L, {Socket, SocketMode, WsHandleLoopPid}) ->
-	i_handle_data(T, <<L/binary, H>>, {Socket, SocketMode, WsHandleLoopPid});
-i_handle_data(<<>>, L, {_Socket, _SocketMode, _WsHandleLoopPid}) ->
-	{buffer, L}.
+	{Acc, websocket_close};
+i_handle_data(<<255, T/binary>>, L, {Socket, SocketMode}, Acc, WsCallback) ->
+	Acc2 = WsCallback(L, Acc),
+	i_handle_data(T, none, {Socket, SocketMode}, Acc2, WsCallback);
+i_handle_data(<<H, T/binary>>, L, {Socket, SocketMode}, Acc, WsCallback) ->
+	i_handle_data(T, <<L/binary, H>>, {Socket, SocketMode}, Acc, WsCallback);
+i_handle_data(<<>>, L, {_Socket, _SocketMode}, Acc, _WsCallback) ->
+	{Acc, continue, {buffer, L}}.
 
 % ============================ /\ INTERNAL FUNCTIONS =======================================================
