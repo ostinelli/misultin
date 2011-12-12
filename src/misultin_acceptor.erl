@@ -113,7 +113,7 @@ acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTim
 					misultin_socket:close(Sock, SocketMode)
 			end,					
 			% get back to accept loop
-			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			?MODULE:acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{ok, Sock} ->
 			?LOG_DEBUG("received a new https request, spawning a controlling process",[]),
 			Pid = spawn(fun() ->
@@ -137,11 +137,11 @@ acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTim
 					misultin_socket:close(Sock, SocketMode)
 			end,
 			% get back to accept loop
-			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			?MODULE:acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{error, _Error} ->
 			?LOG_WARNING("accept failed with error: ~p", [_Error]),
 			% get back to accept loop
-			acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
+			?MODULE:acceptor(ServerRef, SessionsRef, TableDateRef, ListenSocket, ListenPort, RecvTimeout, SocketMode, CustomOpts);
 		{'EXIT', Error} ->
 			?LOG_ERROR("accept exited with error: ~p, quitting process", [Error]),
 			exit({error, {accept_failed, Error}})
