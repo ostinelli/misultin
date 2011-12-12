@@ -66,7 +66,7 @@ start_link(Options) when is_tuple(Options) ->
 % return session cookie
 -spec set_session_cookie(SessionId::string()) -> {http_header(), string()}.
 set_session_cookie(SessionId) ->
-	misultin_cookies:set_cookie(?SESSION_HEADER_NAME, SessionId, [{max_age, 365*24*3600}]).
+	misultin_cookies:set_cookie(?SESSION_HEADER_NAME, SessionId, [{max_age, 365*24*3600}, {path, "/"}]).
 
 % retrieve session info or start a session if necessary.
 -spec session(ServerRef::pid(), Cookies::gen_proplist(), PeerAddr::inet:ip_address()) -> {SessionId::string(), SessionState::term()}.
