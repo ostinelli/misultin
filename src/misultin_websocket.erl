@@ -170,24 +170,9 @@ ws_loop(WsHandleLoopPid, SessionsRef, #ws{vsn = Vsn, socket = Socket, socket_mod
 	misultin_socket:setopts(Socket, [{active, once}], SocketMode),
 	receive
 		{tcp, Socket, Data} ->
-			VsnMod = get_module_name_from_vsn(Vsn),
-			case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
-				websocket_close ->
-					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-				{websocket_close, CloseData} ->
-					misultin_socket:send(Socket, CloseData, SocketMode),
-					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-				NewState ->
-					ws_loop(WsHandleLoopPid, SessionsRef, Ws, NewState)
-			end;
+			handle_data_receive(SessionsRef, WsHandleLoopPid, Data, Ws, State);
 		{ssl, Socket, Data} ->
-			VsnMod = get_module_name_from_vsn(Vsn),
-			case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
-				{command, websocket_close} ->
-					misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
-				NewState ->
-					ws_loop(WsHandleLoopPid, SessionsRef, Ws, NewState)
-			end;
+			handle_data_receive(SessionsRef, WsHandleLoopPid, Data, Ws, State);
 		{WsHandleLoopPid, {wsinfo, WsInfo}} ->
 			WsResponse = case WsInfo of
 				raw				-> Ws;
@@ -266,6 +251,19 @@ ws_loop(WsHandleLoopPid, SessionsRef, #ws{vsn = Vsn, socket = Socket, socket_mod
 		_Ignored ->
 			?LOG_WARNING("received unexpected message, ignoring: ~p", [_Ignored]),
 			ws_loop(WsHandleLoopPid, SessionsRef, Ws, State)
+	end.
+
+-spec handle_data_receive(SessionsRef::pid(), WsHandleLoopPid::pid(), Data::binary(), Ws::#ws{}, State::term()) -> ok.
+handle_data_receive(SessionsRef, WsHandleLoopPid, Data, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, ws_autoexit = WsAutoExit} = Ws, State) ->
+	VsnMod = get_module_name_from_vsn(Vsn),
+	case VsnMod:handle_data(Data, State, {Socket, SocketMode, WsHandleLoopPid}) of
+		websocket_close ->
+			misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+		{websocket_close, CloseData} ->
+			misultin_socket:send(Socket, CloseData, SocketMode),
+			misultin_websocket:websocket_close(Socket, WsHandleLoopPid, SocketMode, WsAutoExit);
+		NewState ->
+			ws_loop(WsHandleLoopPid, SessionsRef, Ws, NewState)
 	end.
 
 % convert websocket version to module name
