@@ -34,7 +34,7 @@
 -vsn("0.9-dev").
 
 % API
--export([handle_data/11, build_error_message/4, build_error_message/5, get_reqinfo/2, session_cmd/2, body_recv/1]).
+-export([handle_data/11, build_error_message/4, build_error_message/5, build_error_message_body/1, build_error_message_body/2, get_reqinfo/2, session_cmd/2, body_recv/1]).
 
 % macros
 -define(MAX_HEADERS_COUNT, 100).
@@ -117,11 +117,7 @@ build_error_message(HttpCode, Req, TableDateRef, AccessLogFun) ->
 build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, MessageBody) ->
 	?LOG_DEBUG("building error message with httpcode: ~p and message body: ~p", [HttpCode, MessageBody]),
 	% building body
-	Body = [
-		"<h1>", misultin_utility:get_http_status_message(HttpCode), "</h1>\r\n",
-		MessageBody,
-		"<hr><i>", ?SERVER_VERSION_TAG, "</i>"
-		],
+	Body = build_error_message_body(HttpCode, MessageBody),
 	% build headers
 	Headers = [{'Content-Length', erlang:iolist_size(Body)}, {'Connection', Req#req.connection}],
 	Enc_headers = enc_headers(Headers),
@@ -130,6 +126,18 @@ build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, MessageBody) ->
 	% build and send response
 	[misultin_utility:get_http_status_code(HttpCode, Req#req.vsn), Enc_headers, "\r\n", Body].	
 
+% build error message message body
+-spec build_error_message_body(HttpCode::non_neg_integer()) -> iolist().
+-spec build_error_message_body(HttpCode::non_neg_integer(), MessageBody::iolist() | list() | binary()) -> iolist().
+build_error_message_body(HttpCode) ->
+	build_error_message_body(HttpCode, <<>>).
+build_error_message_body(HttpCode, MessageBody) ->
+	[
+		"<h1>", misultin_utility:get_http_status_message(HttpCode), "</h1>\r\n",
+		MessageBody,
+		"<hr><i>", ?SERVER_VERSION_TAG, "</i>"
+	].
+	
 % get request info from http process handler
 -spec get_reqinfo(SocketPid::pid(), ReqInfo::atom()) -> term().
 get_reqinfo(SocketPid, ReqInfo) ->
@@ -933,7 +941,9 @@ build_full_uri(Uri, Args) -> lists:concat([Uri, "?", Args]).
 % test if this is a static file request, otherwise fallback to original loop
 handle_static(Req, StaticDir, Loop) ->
 	?LOG_DEBUG("checking if this is a request to a static file",[]),
-	handle_static(Req:get(method), Req:resource([lowercase, urldecode]), Req, StaticDir, Loop).
+	handle_static(Req:get(method), Req:resource([urldecode]), Req, StaticDir, Loop).
+handle_static('GET', ["static"], Req, _StaticDir, _Loop) ->
+	Req:respond(403, build_error_message_body(403));
 handle_static('GET', ["static" | FilePath], Req, StaticDir, _Loop) ->
 	?LOG_DEBUG("static request found, sanitizing path",[]),
 	case misultin_utility:sanitize_path_tokens(FilePath) of
