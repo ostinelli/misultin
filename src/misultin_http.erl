@@ -36,6 +36,9 @@
 % API
 -export([handle_data/11, build_error_message/4, build_error_message/5, build_error_message_body/1, build_error_message_body/2, get_reqinfo/2, session_cmd/2, body_recv/1]).
 
+% internal
+-export([request/2]).
+
 % macros
 -define(MAX_HEADERS_COUNT, 100).
 -define(SUPPORTED_ENCODINGS, ["gzip", "deflate"]).

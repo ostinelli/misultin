@@ -37,7 +37,7 @@
 -export([start_link/6]).
 
 % internal
--export([init/6]).
+-export([init/6,acceptor/8]).
 
 % includes
 -include("../include/misultin.hrl").
