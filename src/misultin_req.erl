@@ -37,7 +37,7 @@
 -define(FILE_READ_BUFFER, 64*1024).
 
 % API
--export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5]).
+-export([ok/2, ok/3, ok/4, respond/2, respond/3, respond/4, respond/5, redirect/2, redirect/3]).
 -export([options/2]).
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
 -export([raw/1, get/2]).
@@ -188,6 +188,14 @@ respond(HttpCode, Headers, Template, {misultin_req, SocketPid, _TableDateRef}) -
 	SocketPid ! {response, HttpCode, Headers, Template}.
 respond(HttpCode, Headers, Template, Vars, {misultin_req, SocketPid, _TableDateRef}) when is_list(Template) =:= true ->
 	SocketPid ! {response, HttpCode, Headers, io_lib:format(Template, Vars)}.
+
+% shortcut for redirections
+-spec redirect(Url::string(), reqt()) -> term().
+-spec redirect(permanent, Url::string(), reqt()) -> term().
+redirect(Url, ReqT) ->
+	respond(302, [{'Location', Url}], "", ReqT).
+redirect(permanent, Url, ReqT) ->
+	respond(301, [{'Location', Url}], "", ReqT).
 
 % Chunked Transfer-Encoding.
 -spec chunk
