@@ -165,7 +165,8 @@ CHANGELOG
          node
        - added support for IP address specified in tuple format [thanks to
          okeuday suggestion]
-       - added support to extract plain uri unquoted as a list() [thanks to okeuday]
+       - added support to extract plain uri unquoted as a list() [thanks to
+         okeuday]
        - added Comet Long Polling example
        - added Comet iFrame example
        - added the killing of alive processes on server shutdown
@@ -207,8 +208,8 @@ CHANGELOG
 
 0.3.2: - optimized error handling [issue track #5, thanks to Max Lapshin]
 
-0.3.1: - added flow control using inet options {active, once} [issue track #4, thanks
-         to Max Lapshin]
+0.3.1: - added flow control using inet options {active, once} [issue track #4,
+         thanks to Max Lapshin]
        - added support to standard http headers response
        - added http 400 bad request error in socket handling
        - bug correction: removed erroneous sending of response timeout on listening
