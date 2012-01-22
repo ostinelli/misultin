@@ -58,7 +58,12 @@ check(WsVersions, _Path, Headers) ->
 connect(ServerRef, SessionsRef, #req{headers = Headers} = Req, #ws{vsn = Vsn, socket = Socket, socket_mode = SocketMode, path = Path} = Ws, WsLoop) ->
 	?LOG_DEBUG("building handshake response", []),
 	% get data
-	Origin = misultin_utility:header_get_value('Origin', Headers),
+	Origin = case misultin_utility:header_get_value('Origin', Headers) of
+		false ->
+			misultin_utility:header_get_value('Origin', Headers);
+		OriginHeader ->
+			OriginHeader
+	end,		
 	Host = misultin_utility:header_get_value('Host', Headers),
 	% build handshake
 	VsnMod = get_module_name_from_vsn(Vsn),
