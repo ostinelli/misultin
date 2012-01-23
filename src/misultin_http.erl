@@ -677,6 +677,19 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			misultin_socket:send(Sock, Data, SocketMode),
 			% loop and add to size sent
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent + erlang:iolist_size(Data));
+	        {send_file,FilePath} ->
+		        ?LOG_DEBUG("Sending file: ~p",[FilePath]),
+   		        case misultin_socket:send_file(Sock,FilePath) of
+		            {error,Reason} ->
+			       ?LOG_ERROR("error sending stream: ~p", [Reason]),
+			       misultin_socket:send(Sock, build_error_message(500, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+			       misultin_socket:close(Sock, SocketMode),
+			       % we already build an access log so reset HttpCodeSent & SizeSent
+			       socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, none, 0);
+		            {ok,Size} ->
+			       ?LOG_DEBUG("File sent with Ok. Size: ~p",[Size]),
+			       socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent + Size)
+		end;
 		stream_close ->
 			?LOG_DEBUG("closing stream", []),
 			misultin_socket:close(Sock, SocketMode),

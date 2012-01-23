@@ -351,7 +351,7 @@ clean_uri(_Unavailable, Uri) ->
 
 % sending of a file
 -spec file_send(FilePath::string(), Headers::http_headers(), reqt()) -> term().
-file_send(FilePath, Headers, ReqT) ->
+file_send(FilePath, Headers, {misultin_req, SocketPid, TableDateRef} = ReqT) ->
 	% get file size
 	case file:read_file_info(FilePath) of
 		{ok, FileInfo} ->
@@ -367,51 +367,14 @@ file_send(FilePath, Headers, ReqT) ->
 					% file has been modified, get filesize
 					FileSize = FileInfo#file_info.size,
 					% do the gradual sending
-					case file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) of
-				        {error, Reason} ->
-				        	stream({error, Reason}, ReqT);
-				        ok ->
-				        	% sending successful
-				        	ok
-					end
+				        HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)},{'Content-Length', FileSize},{'Last-Modified', FileModifiedTime},{'Expires', misultin_server:get_rfc_date(TableDateRef)} | Headers],
+ 				        stream(head, HeadersFull, ReqT),
+				       catch SocketPid ! {send_file,FilePath},
+                         	       ok
 			end;
 		{error, _Reason} ->
 			% file not found or other errors
 			stream({error, 404}, ReqT)
-	end.
--spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), FileModifiedTime::string(), Headers::http_headers(), reqt()) -> term().
-file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, {misultin_req, _SocketPid, TableDateRef} = ReqT) ->
-	case file:open(FilePath, [read, binary]) of
-		{error, Reason} ->
-			{error, Reason};
-		{ok, IoDevice} ->
-			% send headers
-			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize}, {'Last-Modified', FileModifiedTime}, {'Expires', misultin_server:get_rfc_date(TableDateRef)} | Headers],
-			stream(head, HeadersFull, ReqT),
-			% read portions
-			case file_read_and_send(IoDevice, 0, ReqT) of
-				{error, Reason} ->
-					file:close(IoDevice),
-					{error, Reason};
-				ok ->
-					file:close(IoDevice),
-					ok
-			end
-	end.
--spec file_read_and_send(IoDevice::file:io_device(), Position::non_neg_integer(), reqt()) -> term().
-file_read_and_send(IoDevice, Position, ReqT) ->
-	% read buffer
-	case file:pread(IoDevice, Position, ?FILE_READ_BUFFER) of
-		{ok, Data} ->
-			% file read, send
-			stream(Data, ReqT),
-			% loop
-			file_read_and_send(IoDevice, Position + ?FILE_READ_BUFFER, ReqT);
-		eof ->
-			% finished
-			ok;
-		{error, Reason} ->
-			{error, Reason}
 	end.
 
 % parse multipart data
