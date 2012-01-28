@@ -38,12 +38,14 @@ to:
 
 3. Test
 
-If you did proceed with step 2, CD to the Misultin examples directory and start an
-Erlang shell.
+CD to the Misultin examples directory.
 
-If you did not proceed with step 2, copy the file misultin_hello_world.erl from the
-Misultin examples directory to the directory where the .beam files compiled in step 1
-are located, then CD to this directory and start an Erlang shell.
+If you did proceed with step 2, start an Erlang shell:
+$ erl
+
+If you did not proceed with step 2, start an Erlang shell specifying where the
+compiled .beam files are:
+$ erl -pa ../ebin
 
 In the shell, compile and run misultin_hello_world by issuing:
 
