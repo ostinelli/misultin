@@ -122,7 +122,7 @@ build_error_message(HttpCode, Req, TableDateRef, AccessLogFun, MessageBody) ->
 	% building body
 	Body = build_error_message_body(HttpCode, MessageBody),
 	% build headers
-	Headers = [{'Content-Length', erlang:iolist_size(Body)}, {'Connection', Req#req.connection}],
+	Headers = [{'Content-Length', erlang:iolist_size(Body)}, {'Connection', connection_str(Req#req.connection)}],
 	Enc_headers = enc_headers(Headers),
 	% info log
 	build_access_log(Req, HttpCode, 0, TableDateRef, AccessLogFun),
