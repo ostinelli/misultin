@@ -32,7 +32,7 @@
 % ==========================================================================================================
 -module(misultin_acceptors_sup).
 -behaviour(supervisor).
--vsn("0.9-dev").
+-vsn("0.9").
 
 % API
 -export([start_link/7]).

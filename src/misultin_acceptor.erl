@@ -31,7 +31,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module(misultin_acceptor).
--vsn("0.9-dev").
+-vsn("0.9").
 
 % API
 -export([start_link/6]).

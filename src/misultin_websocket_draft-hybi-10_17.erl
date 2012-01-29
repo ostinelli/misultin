@@ -32,7 +32,7 @@
 % POSSIBILITY OF SUCH DAMAGE.
 % ==========================================================================================================
 -module('misultin_websocket_draft-hybi-10_17').
--vsn("0.9-dev").
+-vsn("0.9").
 
 % API
 -export([check_websocket/2, handshake/3, handle_data/3, send_format/2]).

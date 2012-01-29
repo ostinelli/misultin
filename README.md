@@ -127,8 +127,8 @@ handle_http(Req) ->
 
 You will need:
 
- * Erlang >= R14B01
- * 
+ * [Erlang >= R14B01](http://www.erlang.org/download.html)
+ * [Rebar](https://github.com/basho/rebar) to compile
 
 # Under the hood
 Misultin is built using the OTP principles. When you start it using the ```misultin:start_link/1``` command, you are actually starting a supervisor which handles all of Misultin's servers and modules.
