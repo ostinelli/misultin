@@ -127,7 +127,7 @@ handle_http(Req) ->
 
 You will need:
 
- * [Erlang >= R14B01](http://www.erlang.org/download.html)
+ * [Erlang](http://www.erlang.org/download.html) >= R14B01
  * [Rebar](https://github.com/basho/rebar) to compile
 
 # Under the hood
