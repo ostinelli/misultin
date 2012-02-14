@@ -42,7 +42,7 @@
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
 -export([raw/1, get/2]).
 -export([get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
--export([body_recv/1]).
+-export([body_recv/1,auto_body_recv/2]).
 -export([session/1, session/2, save_session_state/3]).
 -export([uri_unquote/1, parse_qs/1, parse_qs/2, parse_post/1, parse_post/2, file/2, file/3, file/4, resource/2]).
 
@@ -252,6 +252,12 @@ stream(head, HttpCode, Headers, {misultin_req, SocketPid, _TableDateRef}) ->
 -spec body_recv(reqt()) -> {ok | chunk, Body::binary()} | end_of_chunks | {error, Reason::term()}.
 body_recv({misultin_req, SocketPid, _TableDateRef}) ->
 	misultin_http:body_recv(SocketPid).
+
+% auto recv body of request ignoring auto_recv_body option
+-spec auto_body_recv(PostMaxSize::non_neg_integer(),reqt()) -> ok | {error, Reason::term()}.
+auto_body_recv(PostMaxSize,{misultin_req, SocketPid, _TableDateRef}) ->
+    misultin_http:auto_body_recv(SocketPid,PostMaxSize).
+    
 
 % Sends a file to the browser.
 -spec file
