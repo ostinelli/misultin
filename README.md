@@ -1,3 +1,32 @@
+***
+***
+***
+***
+
+Misultin development has been discontinued.
+
+There currently are three main webserver _libraries_ which basically do similar things:
+
+ * [Mochiweb](https://github.com/mochi/mochiweb)
+ * [Cowboy](https://github.com/extend/cowboy)
+ * [Misultin](https://github.com/ostinelli/misultin)
+
+**Mochiweb** has been around the block for a while and it's proven solid in production, I can only recommend it for all basic webserver needs you might have.
+**Cowboy** has a very interesting approach since it allows to use multiple TCP and UDP protocols on top of a common acceptor pool. It is a very modern approach, is very actively maintained and many projects are starting to be built around it.
+
+Especially since the recent heavy development of Cowboy's HTTP server, I believe there is way too much duplication of efforts going on here. This is why Misultin's current 'state of the art' has been frozen in the latest tag, [v0.9](https://github.com/ostinelli/misultin/tree/misultin-0.9), to support all the companies currently using Misultin in their production environment. I'm here to provide help, if needed, in moving away from it. Thus, this server should be robust and stable enough to continue serving your needs for some time.
+
+Thank you to everyone that has been supporting Misultin in these years. Hopefully its **code usability**, which I still believe to be unmatched (well, I have developed it so how could I feel differently about this ^^_), will provide inspiration for some library interfaces.
+
+Best to you all,
+
+r.
+
+***
+***
+***
+***
+
 # MISULTIN
 
 Misultin is an HTTP(S) library which can easily be embedded in your own application. 
