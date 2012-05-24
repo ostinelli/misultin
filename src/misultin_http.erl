@@ -36,6 +36,7 @@
 % API
 -export([handle_data/11, build_error_message/4, build_error_message/5, build_error_message_body/1, build_error_message_body/2, get_reqinfo/2, session_cmd/2, body_recv/1]).
 
+-export([auto_body_recv/2]).
 % internal
 -export([request/2]).
 
@@ -155,6 +156,11 @@ session_cmd(SocketPid, SessionCmd) ->
 -spec body_recv(SocketPid::pid()) -> {ok | chunk, binary()} | end_of_chunks | {error, Reason::term()}.
 body_recv(SocketPid) ->
 	misultin_utility:call(SocketPid, body_recv).
+
+% call {auto_body_recv,PostMaxSize} on the http process handler
+-spec auto_body_recv(SocketPid::pid(),PostMaxSize::non_neg_integer()) -> ok | {error, Reason::term()}.
+auto_body_recv(SocketPid,PostMaxSize) ->
+    misultin_utility:call(SocketPid,{auto_body_recv,PostMaxSize}).
 
 % ============================ /\ API ======================================================================
 
@@ -436,8 +442,7 @@ read_post_body(C, #req{content_length = ContentLength} = Req, NoContentNoChunkOu
 						"chunked" ->
 							?LOG_DEBUG("chunked content being sent by the client",[]),
 							chunked_body;
-					_ ->
-						NoContentNoChunkOutput
+					_ ->						NoContentNoChunkOutput
 				end
 			end;
 		Len ->
@@ -655,6 +660,30 @@ socket_loop(#c{compress = Compress} = C, #req{socket = Sock, socket_mode = Socke
 			misultin_utility:respond(CallerPid, read_body(chunk, C, Req)),
 			% loop
 			socket_loop(C, Req, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
+	        {CallerPid,{auto_body_recv,PostMaxSize}} ->
+		        ?LOG_DEBUG("automatically read body of request",[]),
+		        case read_body(full, C#c{post_max_size=PostMaxSize}, Req) of
+		            {ok, Bin} ->
+        			?LOG_DEBUG("full body read: ~p", [Bin]),
+	        		Req0 = Req#req{body = Bin},
+			        misultin_utility:respond(CallerPid,ok),
+        			socket_loop(C, Req0, LoopPid, ReqOptions, AppHeaders, HttpCodeSent, SizeSent);
+		            {error, timeout} ->
+			        ?LOG_WARNING("request timeout, sending error", []),
+        			misultin_utility:respond(CallerPid,{error,timeout}),
+	        		% misultin_socket:send(Sock, build_error_message(408, Req, C#c.table_date_ref, C#c.access_log), SocketMode),
+		        	handle_keepalive(close, C, Req);
+        		    {error, post_max_size} ->	
+	        		?LOG_WARNING("post request entity too large", []),
+		        	misultin_utility:respond(CallerPid,{error,post_max_size}),
+			        % misultin_socket:send(Sock, build_error_message(413, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
+        			handle_keepalive(close, C, Req);
+	        	    {error, Reason} ->
+		        	?LOG_ERROR("tcp error treating post data: ~p, send bad request error back", [Reason]),
+			        misultin_utility:respond(CallerPid,{error,Reason}),
+        			% misultin_socket:send(Sock, build_error_message(400, Req#req{connection = close}, C#c.table_date_ref, C#c.access_log), SocketMode),
+	        		handle_keepalive(close, C, Req)
+		        end;		
 		{set_cookie, CookieHeader} ->
 			?LOG_DEBUG("received a cookie: ~p", [CookieHeader]),
 			% add cookie header
