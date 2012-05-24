@@ -294,13 +294,13 @@ sanity_check(Frame) ->
 %%	clear and an opcode other than 0, followed by zero or more frames
 %%	with the FIN bit clear and the opcode set to 0, and terminated by
 %%	a single frame with the FIN bit set and an opcode of 0"
-handle_frame(#frame{fin = 0, opcode = Opcode}, %% first fragment
-			 State = #state{fragments = []} = Frame, 
+handle_frame(#frame{fin = 0, opcode = Opcode} = Frame, %% first fragment
+			 State = #state{fragments = []},
 			 _) when Opcode =/= ?OP_CONT ->
 	?LOG_DEBUG("first fragment: ~p", [Frame]),
 	State#state{fragments = [Frame]};
-handle_frame(#frame{fin = 0, opcode = ?OP_CONT}, %% subsequent fragments
-			 State = #state{fragments = Frags} = Frame, 
+handle_frame(#frame{fin = 0, opcode = ?OP_CONT} = Frame, %% subsequent fragments
+			 State = #state{fragments = Frags},
 			 _) when Frags =/= [] ->
 	?LOG_DEBUG("next fragment: ~p", [Frame]),
 	State#state{fragments = [Frame | Frags]};
