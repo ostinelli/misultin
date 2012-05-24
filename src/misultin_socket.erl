@@ -34,7 +34,7 @@
 -vsn("0.9").
 
 % API
--export([listen/3, accept/2, controlling_process/3, peername/2, peercert/2, setopts/3, recv/4, send/3, close/2]).
+-export([listen/3, accept/2, controlling_process/3, peername/2, peercert/2, setopts/3, recv/4, send/3, close/2,send_file/2]).
 
 % includes
 -include("../include/misultin.hrl").
@@ -106,6 +106,10 @@ send(Sock, Data, F) ->
 			?LOG_ERROR("error sending data: ~p", [_Reason]),
 			exit(kill)
 	end.
+
+% send file
+send_file(Sock,FilePath) ->
+    file:sendfile(FilePath,Sock).
 
 % TCP close
 -spec close(Sock::socket(), socketmode() | function()) -> ok.

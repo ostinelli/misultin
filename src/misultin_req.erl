@@ -42,7 +42,7 @@
 -export([chunk/2, chunk/3, stream/2, stream/3, stream/4]).
 -export([raw/1, get/2]).
 -export([get_variable/3, get_cookies/1, get_cookie_value/3, set_cookie/3, set_cookie/4, delete_cookie/2]).
--export([body_recv/1]).
+-export([body_recv/1,auto_body_recv/2]).
 -export([session/1, session/2, save_session_state/3]).
 -export([uri_unquote/1, parse_qs/1, parse_qs/2, parse_post/1, parse_post/2, file/2, file/3, file/4, resource/2]).
 
@@ -253,6 +253,12 @@ stream(head, HttpCode, Headers, {misultin_req, SocketPid, _TableDateRef}) ->
 body_recv({misultin_req, SocketPid, _TableDateRef}) ->
 	misultin_http:body_recv(SocketPid).
 
+% auto recv body of request ignoring auto_recv_body option
+-spec auto_body_recv(PostMaxSize::non_neg_integer(),reqt()) -> ok | {error, Reason::term()}.
+auto_body_recv(PostMaxSize,{misultin_req, SocketPid, _TableDateRef}) ->
+    misultin_http:auto_body_recv(SocketPid,PostMaxSize).
+    
+
 % Sends a file to the browser.
 -spec file
 	(FilePath::string(), reqt()) -> term().
@@ -351,7 +357,7 @@ clean_uri(_Unavailable, Uri) ->
 
 % sending of a file
 -spec file_send(FilePath::string(), Headers::http_headers(), reqt()) -> term().
-file_send(FilePath, Headers, ReqT) ->
+file_send(FilePath, Headers, {misultin_req, SocketPid, TableDateRef} = ReqT) ->
 	% get file size
 	case file:read_file_info(FilePath) of
 		{ok, FileInfo} ->
@@ -367,51 +373,14 @@ file_send(FilePath, Headers, ReqT) ->
 					% file has been modified, get filesize
 					FileSize = FileInfo#file_info.size,
 					% do the gradual sending
-					case file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, ReqT) of
-				        {error, Reason} ->
-				        	stream({error, Reason}, ReqT);
-				        ok ->
-				        	% sending successful
-				        	ok
-					end
+				        HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)},{'Content-Length', FileSize},{'Last-Modified', FileModifiedTime},{'Expires', misultin_server:get_rfc_date(TableDateRef)} | Headers],
+ 				        stream(head, HeadersFull, ReqT),
+				       catch SocketPid ! {send_file,FilePath},
+                         	       ok
 			end;
 		{error, _Reason} ->
 			% file not found or other errors
 			stream({error, 404}, ReqT)
-	end.
--spec file_open_and_send(FilePath::string(), FileSize::non_neg_integer(), FileModifiedTime::string(), Headers::http_headers(), reqt()) -> term().
-file_open_and_send(FilePath, FileSize, FileModifiedTime, Headers, {misultin_req, _SocketPid, TableDateRef} = ReqT) ->
-	case file:open(FilePath, [read, binary]) of
-		{error, Reason} ->
-			{error, Reason};
-		{ok, IoDevice} ->
-			% send headers
-			HeadersFull = [{'Content-Type', misultin_utility:get_content_type(FilePath)}, {'Content-Length', FileSize}, {'Last-Modified', FileModifiedTime}, {'Expires', misultin_server:get_rfc_date(TableDateRef)} | Headers],
-			stream(head, HeadersFull, ReqT),
-			% read portions
-			case file_read_and_send(IoDevice, 0, ReqT) of
-				{error, Reason} ->
-					file:close(IoDevice),
-					{error, Reason};
-				ok ->
-					file:close(IoDevice),
-					ok
-			end
-	end.
--spec file_read_and_send(IoDevice::file:io_device(), Position::non_neg_integer(), reqt()) -> term().
-file_read_and_send(IoDevice, Position, ReqT) ->
-	% read buffer
-	case file:pread(IoDevice, Position, ?FILE_READ_BUFFER) of
-		{ok, Data} ->
-			% file read, send
-			stream(Data, ReqT),
-			% loop
-			file_read_and_send(IoDevice, Position + ?FILE_READ_BUFFER, ReqT);
-		eof ->
-			% finished
-			ok;
-		{error, Reason} ->
-			{error, Reason}
 	end.
 
 % parse multipart data
