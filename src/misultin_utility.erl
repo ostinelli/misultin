@@ -533,9 +533,9 @@ get_peer(Headers, ConnectionPeerAddr) ->
 		_ ->
 			case inet_parse:address(Host) of
 				{error, _Reason} ->
-					ConnectionPeerAddr;
+					{ok, ConnectionPeerAddr};
 				{ok, IpTuple} ->
-					IpTuple
+					{ok, IpTuple}
 			end
 	end.
 
