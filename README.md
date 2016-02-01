@@ -8,7 +8,7 @@ Misultin development has been discontinued.
 There currently are three main webserver _libraries_ which basically do similar things:
 
  * [Mochiweb](https://github.com/mochi/mochiweb)
- * [Cowboy](https://github.com/extend/cowboy)
+ * [Cowboy](https://github.com/ninenines/cowboy)
  * [Misultin](https://github.com/ostinelli/misultin)
 
 **Mochiweb** has been around the block for a while and it's proven solid in production, I can only recommend it for all basic webserver needs you might have.
@@ -158,7 +158,7 @@ handle_http(Req) ->
 
 You will need:
 
- * [Erlang](http://www.erlang.org/download.html) >= R14B01
+ * [Erlang](http://www.erlang.org/downloads) >= R14B01
  * [Rebar](https://github.com/basho/rebar) to compile
 
 # Under the hood
@@ -174,7 +174,7 @@ If you are running misultin behind an SSL terminator such as stunnel or stud, an
 {ws_force_ssl, true} 
 ```
 
-If you are using stunnel to terminate, to make misultin expect a PROXY.. line as per the [proxy protocol](http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt) you can also set in the starting options:
+If you are using stunnel to terminate, to make misultin expect a PROXY.. line as per the [proxy protocol](http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt) you can also set in the starting options:
 ```erlang
 {proxy_protocol, true}
 ```
