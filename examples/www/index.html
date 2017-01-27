@@ -1,0 +1,104 @@
+<html>
+<head>
+<meta id="module" name="index" content="EasyIce start page" />
+<title>Easyice</title>
+<script src="websocket.js"></script>
+<script src="domassistantcomplete-2.8.js"></script>
+<script type="text/javascript">   
+
+    function chat(box) { 
+        var V = $$(box.parentNode).elmsByTag('input');
+	    var Data = '{chat,[' + box.parentNode.id;
+	    var i=0;
+	    for (i=0;i<V.length;i++)
+		    if(V[i].value)  
+			    Data = Data + ',' + V[i].value
+        client._send(Data + '],{' + box.id + ',' + box.value + '}}.');
+    }
+	
+    function add_or_delete(r,c) {
+        delete_list();
+        client._send('{add_or_delete,' + r + ',' + c + '}.');
+    }
+
+    function delete_list() {
+        rows= $$(data).elmsByTag('div');
+        $(rows).remove();
+    }
+    
+    function create_list(arr) {
+        var rows = arr[0];
+        var cols = arr[1];
+        var i;
+        var j;
+        for (i=1;i<=rows;i++){
+            var values = $(data).create("div", {
+                id : "r"+i
+            },true);
+        
+            var values_s = $(data).create("div", {
+                id : "r"+i+"s"
+            },true);
+
+            for (j=1;j<=cols;j++){
+                $(values).create("input", {
+                    size : "1",
+                    type : "text",
+                    onchange : "chat(this)",
+                    maxlength : "3",
+                    name : "a"+j,
+                    id : "a"+j
+                },true);
+            }
+
+            $(values_s).create("input", {
+                    type : "text",
+                    size : "1",
+                    maxlength : "3",
+                    name : "a",
+                    id : "a",
+                    readonly : "true",
+                    value : "r"+i
+                },true);
+        }
+    }
+</script>
+
+<style type="text/css">
+<!--
+#controls {background-color: #CCCCCC; width: 470px;}
+#data {background-color: #00CCCC; width: 470px;}
+#r1 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r1s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r2 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r2s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r3 {background-color: #CC9999; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r3s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r4 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r4s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r5 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r5s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r6 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r6s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r7 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r7s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r8 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r8s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r9 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r9s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+#r10 {background-color: #CCCC99; width: 400px; text-align: right; float: left; padding-right: 10px;}
+#r10s {background-color: #CCCC99; width: 40px; text-align: center; float: left; padding-left: 10px; padding-right: 10px;}
+-->
+</style>
+</head>
+<body onload="client.connect()">
+<div id="controls">
+<input type="button" onclick="add_or_delete(1,0)" size="1" maxlength="3" name="c1" id="c1" value="addrow"/>
+<input type="button" onclick="add_or_delete(-1,0)" size="1" maxlength="3" name="c2" id="c2" value="deleterow"/>
+<input type="button" onclick="add_or_delete(0,1)" size="1" maxlength="3" name="c1" id="c1" value="addcolumn"/>
+<input type="button" onclick="add_or_delete(0,-1)" size="1" maxlength="3" name="c2" id="c2" value="deletecolumn"/>
+</div>
+<div id="data">	
+</div>
+</body>
+</html>
